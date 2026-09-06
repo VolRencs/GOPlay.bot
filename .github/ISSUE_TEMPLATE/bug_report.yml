@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a bug in the bot or dashboard
+title: "[bug]: "
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you were doing and what went wrong.
+      placeholder: "Ran /play … got an error …"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it reproduce?
+      options:
+        - Discord bot (commands)
+        - Dashboard (/dashboard)
+        - Admin panel (/admin)
+        - Music (/play)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Step by step, so it can be repeated.
+      placeholder: "1. …\n2. …\n3. …"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: A fragment of data/logs/bot.log or a screenshot. Remove secrets (tokens, cookies)!
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Node, OS, ffmpeg / yt-dlp versions.
+      placeholder: "Node 22, Ubuntu 24.04, ffmpeg 6.x (libopus), yt-dlp 2026.x"

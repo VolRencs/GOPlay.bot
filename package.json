@@ -1,0 +1,36 @@
+{
+  "name": "goplaybot",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "mkdir -p data/logs && node scripts/rotate-log.mjs && { pnpm migrate:auth && concurrently -k \"next dev\" \"node --env-file=.env src/bot/index.ts\"; } 2>&1 | tee -a data/logs/bot.log",
+    "build": "next build",
+    "start": "mkdir -p data/logs && node scripts/rotate-log.mjs && { pnpm migrate:auth && concurrently -k \"next start\" \"node --env-file=.env src/bot/index.ts\"; } >> data/logs/bot.log 2>&1",
+    "migrate:auth": "node --env-file=.env scripts/migrate-auth.ts",
+    "test": "node --test test/*.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.19.2",
+    "@resvg/resvg-js": "2.6.2",
+    "better-auth": "^1.7.2",
+    "discord.js": "^14.27.0",
+    "frimousse": "^0.3.0",
+    "libsodium-wrappers": "^0.8.4",
+    "lucide-react": "1.40.0",
+    "next": "^16.3.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "^19.2.7",
+    "concurrently": "latest",
+    "typescript": "^7.0.2"
+  }
+}

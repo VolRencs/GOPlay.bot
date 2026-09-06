@@ -1,0 +1,39 @@
+name: Feature request
+description: Suggest a new feature
+title: "[feat]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve?
+      description: What problem do server owners or moderators have.
+      placeholder: "Missing … have to do manually …"
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: How it should work (command, dashboard tab, behavior).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other options you considered.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      multiple: true
+      options:
+        - Discord bot (commands)
+        - Dashboard (/dashboard)
+        - Admin panel (/admin)
+        - Music
+        - Automod
+        - i18n (RU/EN)
+        - DB / migrations
+        - Documentation

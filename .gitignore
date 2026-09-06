@@ -1,0 +1,9 @@
+node_modules/
+.next/
+.env
+data/*
+!data/.gitkeep
+public/uploads/*
+*.tsbuildinfo
+TODO.md
+.directory

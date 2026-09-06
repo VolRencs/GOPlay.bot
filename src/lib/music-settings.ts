@@ -1,0 +1,21 @@
+import { stmt } from "../bot/db/statements.ts";
+import { parseStringArray } from "./json.ts";
+
+// Настройки музыки (/play): единственный парсер для бота и панели.
+// и Turbopack не тянет плеерный стек (spawn yt-dlp/ffmpeg) в трассировку.
+// leave_after_seconds: единый таймер автовыхода при любом бездействии —
+// нет слушателей в канале, тишина или пауза. 0 = автовыход выключен.
+
+export type MusicSettings = { command_channel_id: string | null; voice_channel_ids: string[]; allowed_role_ids: string[]; leave_after_seconds: number };
+
+export function musicSettingsFor(guildId: string): MusicSettings {
+  const row = stmt.musicSettings.get(guildId) as { command_channel_id?: string | null; voice_channel_ids_json?: string; allowed_role_ids_json?: string; leave_after_seconds?: number } | undefined;
+  return {
+    command_channel_id: row?.command_channel_id ?? null,
+    voice_channel_ids: parseStringArray(row?.voice_channel_ids_json),
+    allowed_role_ids: parseStringArray(row?.allowed_role_ids_json),
+    // Значение из БД прошлых версий может быть любым числом: клампим к тому же
+    // диапазону, что и API записи (0 = автовыход выключен).
+    leave_after_seconds: Math.max(0, Math.min(3600, row?.leave_after_seconds ?? 300)),
+  };
+}
