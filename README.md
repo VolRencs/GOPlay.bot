@@ -169,7 +169,7 @@ pnpm start
 ## License and attribution
 
 Licensed under **GPL-3.0** — see [`LICENSE`](LICENSE).
-Copyright (C) 2026 VolRencs.
+Copyright (C) 2026 VolRen.
 
 - `public/fonts/NotoSans-*.ttf` — Noto Sans under the SIL Open Font License.
 - `public/bot-logo.png`, `app/icon.png` — original project assets.

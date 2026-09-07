@@ -171,7 +171,7 @@ pnpm start
 ## Лицензия и атрибуция
 
 Проект под лицензией **GPL-3.0** — см. [`LICENSE`](LICENSE).
-Copyright (C) 2026 VolRencs.
+Copyright (C) 2026 VolRen.
 
 - Шрифты `public/fonts/NotoSans-*.ttf` — Noto Sans под SIL Open Font License.
 - `public/bot-logo.png`, `app/icon.png` — собственные ассеты проекта.
