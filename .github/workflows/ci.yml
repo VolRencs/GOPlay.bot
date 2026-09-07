@@ -8,6 +8,7 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -34,8 +35,13 @@ jobs:
       - name: Tests
         run: pnpm test
 
-      - name: Build
-        run: pnpm build
+      - name: Warmup build DB (serial)
+        run: |
+          rm -f data/bot.sqlite* "${{ runner.temp }}/ci-build.sqlite*"
+          if [ ! -f .env ]; then touch .env; fi
+          DATABASE_PATH="${{ runner.temp }}/ci-build.sqlite" pnpm migrate:auth
+          sqlite3 "${{ runner.temp }}/ci-build.sqlite" "PRAGMA wal_checkpoint(TRUNCATE);" || true
+          ls -lh "${{ runner.temp }}/ci-build.sqlite"*
         env:
           DISCORD_TOKEN: ci-dummy-token
           DISCORD_CLIENT_ID: "0"
@@ -43,3 +49,25 @@ jobs:
           BETTER_AUTH_SECRET: ci-dummy-secret-32-chars-long-ok
           BETTER_AUTH_URL: http://localhost:3000
           NEXT_PUBLIC_APP_URL: http://localhost:3000
+          DATABASE_PATH: ${{ runner.temp }}/ci-build.sqlite
+
+      - name: Build
+        run: |
+          for i in 1 2 3; do
+            pnpm build && break || {
+              code=$?
+              if [ "$i" -eq 3 ]; then exit "$code"; fi
+              echo "build attempt $i failed, retrying..."
+              rm -f "${{ runner.temp }}/ci-build.sqlite-shm" "${{ runner.temp }}/ci-build.sqlite-wal"
+              sleep 5
+            }
+          done
+        env:
+          DISCORD_TOKEN: ci-dummy-token
+          DISCORD_CLIENT_ID: "0"
+          DISCORD_CLIENT_SECRET: ci-dummy-secret
+          BETTER_AUTH_SECRET: ci-dummy-secret-32-chars-long-ok
+          BETTER_AUTH_URL: http://localhost:3000
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          DATABASE_PATH: ${{ runner.temp }}/ci-build.sqlite
+          NEXT_TELEMETRY_DISABLED: 1
