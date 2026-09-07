@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { appealStatusMeta, punishmentLabels } from "../../../src/lib/labels.ts";
-import type { AppealView } from "../../../src/lib/appeals.ts";
+import type { AppealsListGet, AppealView } from "../../../src/lib/appeals.ts";
 import { formatTime, Select, useAsyncAction } from "./ui.tsx";
 import { apiGet, apiSend } from "./api.ts";
 
@@ -10,10 +10,16 @@ export function AppealsPanel({guildId,onDone,onError}:{guildId:string;onDone:(me
   const APPEAL_TONE: Record<string, string> = { pending: "pill-info", reviewing: "pill-accent", approved: "pill-ok", rejected: "pill-err", closed: "", declined: "pill-dim" };
   const [appeals,setAppeals]=useState<AppealView[]|null>(null),[filters,setFilters]=useState({status:"all",userId:"",moderatorId:"",from:"",to:""}),[offset,setOffset]=useState(0),[expanded,setExpanded]=useState<number|null>(null),[comment,setComment]=useState("");
   const [refresh, setRefresh] = useState(0);
+  // Дебаунс текстовых фильтров: каждый кейстрок не должен DDoSить собственный API.
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedFilters(filters), 300);
+    return () => clearTimeout(timer);
+  }, [filters]);
   const { busy, run } = useAsyncAction();
-  const query=(nextOffset:number)=>{const params=new URLSearchParams({status:filters.status,limit:"100",offset:String(nextOffset)});if(filters.userId.trim())params.set("userId",filters.userId.trim());if(filters.moderatorId.trim())params.set("moderatorId",filters.moderatorId.trim());if(filters.from)params.set("from",String(new Date(`${filters.from}T00:00:00`).getTime()));if(filters.to)params.set("to",String(new Date(`${filters.to}T23:59:59`).getTime()));return params;};
-  useEffect(()=>{if(!guildId)return;let active=true;setAppeals(null);setOffset(0);setExpanded(null);apiGet(`/api/guilds/${guildId}/appeals?${query(0)}`,{appeals:[]}).then(data=>{if(active)setAppeals(data.appeals as AppealView[]);}).catch(()=>{if(active)setAppeals([]);});return()=>{active=false;};},[guildId,filters,refresh]);
-  const more=()=>{const params=query(offset);void apiGet(`/api/guilds/${guildId}/appeals?${params}`,{appeals:[]}).then(data=>{const rows=data.appeals as AppealView[];setAppeals(value=>[...(value??[]),...rows]);setOffset(value=>value+rows.length);});};
+  const query=(nextOffset:number, f = debouncedFilters)=>{const params=new URLSearchParams({status:f.status,limit:"100",offset:String(nextOffset)});if(f.userId.trim())params.set("userId",f.userId.trim());if(f.moderatorId.trim())params.set("moderatorId",f.moderatorId.trim());if(f.from)params.set("from",String(new Date(`${f.from}T00:00:00`).getTime()));if(f.to)params.set("to",String(new Date(`${f.to}T23:59:59`).getTime()));return params;};
+  useEffect(()=>{if(!guildId)return;let active=true;setAppeals(null);setOffset(0);setExpanded(null);apiGet<AppealsListGet>(`/api/guilds/${guildId}/appeals?${query(0)}`,{appeals:[]}).then(data=>{if(!active)return;const rows=data.appeals;setAppeals(rows);setOffset(rows.length);}).catch(()=>{if(active)setAppeals([]);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
+  const more=()=>{const params=query(offset);void apiGet<AppealsListGet>(`/api/guilds/${guildId}/appeals?${params}`,{appeals:[]}).then(data=>{const rows=data.appeals;if(!rows.length)return;setAppeals(value=>[...(value??[]),...rows]);setOffset(value=>value+rows.length);});};
   const review=async(row:AppealView,action:string)=>{if(busy)return;
   await run(async()=>{const sent=await apiSend<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,comment:comment.trim()||undefined})},"Не удалось изменить статус апелляции.");if(!sent.ok)return onError(sent.error);const data=sent.data;const label=appealStatusMeta[data.appeal?.status ?? ""]?.label??action;const dmNote=data.notified===false?" · личное сообщение пользователю не доставлено":"";const revNote=data.reversal?` · ${data.reversal.failed?"Снять не удалось":"Снят"}: ${data.reversal.label}.`:"";const failed = Boolean(data.reversal?.failed);
       onDone(data.reversal

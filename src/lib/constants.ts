@@ -2,6 +2,7 @@ export const DAY_MS = 86_400_000;
 export const MAX_TIMEOUT_SECONDS = 2_419_200;
 export const DEFAULT_TIMEOUT_SECONDS = 300;
 export const BOT_TOKEN_ERROR = "Бот недоступен. Попробуйте позже.";
+export const SERVER_FALLBACK_NAME = "Discord server";
 
 // Discord component-button style identifiers, shared by the bot's builders
 // (значения совпадают с enum discord.js) и payload'ам панели.

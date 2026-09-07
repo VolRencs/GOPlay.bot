@@ -4,6 +4,7 @@ import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 import { logger } from "../../../../../src/bot/utils/logger.ts";
 import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId } from "../../../../../src/lib/constants.ts";
+import type { RolePanelRow } from "../../../../../src/components/dashboard/types.ts";
 
 type PanelPayload = {
   panelId?: number; embedId: number; style: "buttons" | "select" | "reaction";
@@ -22,9 +23,17 @@ function discordEmoji(value?: string) {
 function reactionEmoji(value?: string) { const emoji=discordEmoji(value); return emoji?.id ? `${emoji.name}:${emoji.id}` : emoji?.name ?? "✅"; }
 
 function readOptions(value: PanelPayload) {
-  const valid = (raw: { roleId: string; label: string; emoji: string; buttonColor: string }[]) => raw.filter(o => typeof o.roleId === "string" && o.roleId).slice(0, 25).map(o => ({ roleId: o.roleId, label: String(o.label ?? ""), emoji: String(o.emoji ?? ""), buttonColor: typeof o.buttonColor === "string" && o.buttonColor in BUTTON_STYLE_IDS ? o.buttonColor : "primary" }));
+  const valid = (raw: { roleId: string; label: string; emoji: string; buttonColor: string }[]) => raw
+    .filter(o => typeof o.roleId === "string" && o.roleId)
+    .slice(0, 25)
+    .map(o => ({
+      roleId: o.roleId,
+      label: String(o.label ?? ""),
+      emoji: typeof o.emoji === "string" ? o.emoji.slice(0, 96) : "",
+      buttonColor: typeof o.buttonColor === "string" && o.buttonColor in BUTTON_STYLE_IDS ? o.buttonColor : "primary",
+    }));
   if (Array.isArray(value.options)) return valid(value.options);
-  if (value.roleId) return [{ roleId: value.roleId, label: value.label ?? "", emoji: value.emoji ?? "", buttonColor: "primary" }];
+  if (typeof value.roleId === "string" && value.roleId) return [{ roleId: value.roleId, label: typeof value.label === "string" ? value.label : String(value.label ?? ""), emoji: typeof value.emoji === "string" ? value.emoji.slice(0, 96) : "", buttonColor: "primary" }];
   return [];
 }
 async function assignableRoleIds(guildId: string, roleIds: string[]): Promise<Set<string> | null> {
@@ -44,7 +53,7 @@ async function assignableRoleIds(guildId: string, roleIds: string[]): Promise<Se
 export async function GET(_: Request, { params }: { params: Promise<{ guildId: string }> }) {
   const { guildId } = await params, access = await withGuild(guildId);
   if (access instanceof Response) return access;
-  return NextResponse.json(db.prepare("SELECT p.*,o.role_id,o.label,o.emoji,o.button_color FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? ORDER BY p.updated_at DESC").all(guildId));
+  return NextResponse.json(db.prepare("SELECT p.*,o.role_id,o.label,o.emoji,o.button_color FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? ORDER BY p.updated_at DESC").all(guildId) as RolePanelRow[]);
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
@@ -60,7 +69,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ gui
     return NextResponse.json({ error: "Некорректный канал или роль." }, { status: 400 });
   const explicitMessage = Boolean(value.channelId && value.messageId);
   const tpl = db.prepare("SELECT channel_id,message_id,name FROM embeds WHERE id=? AND guild_id=?").get(value.embedId, guildId) as {channel_id:string;message_id:string;name:string}|undefined;
-  const embed = !tpl ? undefined : explicitMessage ? (tpl.name ? {channel_id:value.channelId!,message_id:value.messageId!,name:tpl.name} : undefined) : (tpl.channel_id&&tpl.message_id ? {channel_id:tpl.channel_id,message_id:tpl.message_id,name:tpl.name} : undefined);
+  const reqChannelId = value.channelId, reqMessageId = value.messageId;
+  function resolveEmbed() {
+    if (!tpl) return undefined;
+    if (explicitMessage) {
+      if (!tpl.name || !reqChannelId || !reqMessageId) return undefined;
+      return { channel_id: reqChannelId, message_id: reqMessageId, name: tpl.name };
+    }
+    if (!tpl.channel_id || !tpl.message_id) return undefined;
+    return { channel_id: tpl.channel_id, message_id: tpl.message_id, name: tpl.name };
+  }
+  const embed = resolveEmbed();
   if(!embed)return NextResponse.json({error:explicitMessage?"Шаблон не найден":"Выберите уже отправленное сообщение"},{status:explicitMessage?404:400});
   const token = process.env.DISCORD_TOKEN;
   if (!token) return NextResponse.json({ error: BOT_TOKEN_ERROR }, { status: 503 });
@@ -68,7 +87,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ gui
   if (assignable === null) return NextResponse.json({ error: "Не удалось проверить иерархию ролей в Discord." }, { status: 502 });
   if (options.some(o => !assignable.has(o.roleId))) return NextResponse.json({ error: "Некоторые роли нельзя выдавать: переместите роль бота выше них в Discord." }, { status: 400 });
   const style = ["buttons", "select", "reaction"].includes(value.style) ? value.style : "buttons";
-  const roleLimit = Math.max(0, Math.min(25, Number(value.roleLimit) || 0)), roleMode = ["toggle", "add", "remove"].includes(value.roleMode ?? "") ? value.roleMode! : "toggle", template = value.notifyTemplate?.slice(0, 500) || "✅ Выдана роль **{role}**";
+  if (value.roleLimit !== undefined && value.roleLimit !== null && !Number.isInteger(Number(value.roleLimit))) return NextResponse.json({ error: "Некорректный лимит ролей." }, { status: 400 });
+  if (value.notifyTemplate !== undefined && value.notifyTemplate !== null && typeof value.notifyTemplate !== "string") return NextResponse.json({ error: "Некорректный шаблон уведомления." }, { status: 400 });
+  const roleLimit = Math.max(0, Math.min(25, Number(value.roleLimit) || 0));
+  const roleMode = ["toggle", "add", "remove"].includes(value.roleMode ?? "") ? value.roleMode! : "toggle";
+  const template = (typeof value.notifyTemplate === "string" ? value.notifyTemplate.slice(0, 500) : "") || "✅ Выдана роль **{role}**";
   // Свежая строка панели создаётся первой: custom_id компонентов содержит её id
   // (`role:<panelId>:<roleId>`); при сбое Discord строка удаляется обратно.
   let panelId: number;

@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { BarChart3, Bot, CalendarDays, Gavel, History, Image, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, X } from "lucide-react";
-import { parseImageConfig, welcomeDefaults } from "../../../src/lib/welcome.ts";
-import { automodRules } from "../../../src/lib/labels.ts";
+import { buildWelcomePutBody, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../src/lib/welcome.ts";
+import { automodRules, buildLoggingPutBody, type LoggingGet, type LoggingPutBody } from "../../../src/lib/labels.ts";
+import { buildRulePutBody, type AutomodGet, type AutomodRulePutBody, type AutomodSecurityPutBody } from "../../../src/lib/automod.ts";
+import { buildTempPutBody, type TempchannelsGet, type TempPutBody } from "../../../src/lib/tempchannels.ts";
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
-import type { Channel, LoggingState, MusicSettingsState, Role, Rule, ServerEmoji, ServerIdentity, ServerStats, TempChannelsState, TempPresetApi, Welcome } from "../../../src/components/dashboard/types.ts";
-import { defaultTempChannels, tempPresetFromApi } from "../../../src/components/dashboard/types.ts";
+import { SERVER_FALLBACK_NAME } from "../../../src/lib/constants.ts";
+import type { MusicSettings } from "../../../src/lib/music-settings.ts";
+import type { Channel, LoggingState, Role, Rule, ServerEmoji, ServerIdentity, ServerStats, TempChannelsState, TempPresetApi, Welcome } from "../../../src/components/dashboard/types.ts";
+import { buildMusicPutBody, defaultTempChannels, tempPresetFromApi, type LangGet, type LangPutBody, type MusicPutBody, type ResourcesGet } from "../../../src/components/dashboard/types.ts";
 import { ConfirmHost, ModalShell, stableStringify } from "../../../src/components/dashboard/ui.tsx";
 import { apiSend } from "../../../src/components/dashboard/api.ts";
 import { ServerStatistics } from "../../../src/components/dashboard/StatsPanel.tsx";
@@ -41,15 +45,15 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
   const [tab, setTab] = useState<TabKey>("stats");
   const [serverLang, setServerLang] = useState<"ru" | "en">("ru");
   const [savedServerLang, setSavedServerLang] = useState<"ru" | "en">("ru");
-  const [music, setMusic] = useState<MusicSettingsState>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: 300 });
-  const [savedMusic, setSavedMusic] = useState<MusicSettingsState | null>(null);
+  const [music, setMusic] = useState<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: 300 });
+  const [savedMusic, setSavedMusic] = useState<MusicSettings | null>(null);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [voiceChannels, setVoiceChannels] = useState<Channel[]>([]);
   const [categories, setCategories] = useState<Channel[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [emojis, setEmojis] = useState<ServerEmoji[]>([]);
-  const [stats, setStats] = useState<ServerStats>({ members: null, online: null, channels: 0, roles: 0 });
-  const [server, setServer] = useState<ServerIdentity>({ name: "Discord server", icon: null });
+  const [stats, setStats] = useState<ServerStats>({ members: null, online: null });
+  const [server, setServer] = useState<ServerIdentity>({ name: SERVER_FALLBACK_NAME, icon: null });
   const [welcome, setWelcome] = useState<Welcome>({ ...welcomeDefaults });
   const [bgTimestamp, setBgTimestamp] = useState(0);
   const [rules, setRules] = useState<Record<string, Rule>>({});
@@ -106,15 +110,14 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       try {
       setGuildId(id);
       const loadFail = "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу.";
-      type ResourcesData = { channels: Channel[]; voiceChannels?: Channel[]; categories?: Channel[]; roles: Role[]; emojis?: ServerEmoji[]; server?: ServerIdentity; stats?: ServerStats };
       const [resourcesRes, welcomeRes, rulesRes, loggingRes, tempRes, langRes, musicRes] = await Promise.all([
-        apiSend<ResourcesData>(`/api/guilds/${id}/resources`, {}, loadFail),
-        apiSend<Welcome>(`/api/guilds/${id}/welcome`, {}, loadFail),
-        apiSend<{rules:Rule[];ignoredRoleIds?:string[];protectedChannelId?:string|null}>(`/api/guilds/${id}/automod`, {}, loadFail),
-        apiSend<{channel_id?:string;categories_json?:string}>(`/api/guilds/${id}/logging`, {}, loadFail),
-        apiSend<{presets?:TempPresetApi[]}>(`/api/guilds/${id}/tempchannels`, {}, loadFail),
-        apiSend<{lang:"ru"|"en"}>(`/api/guilds/${id}/lang`, {}, loadFail),
-        apiSend<MusicSettingsState>(`/api/guilds/${id}/music`, {}, loadFail),
+        apiSend<ResourcesGet>(`/api/guilds/${id}/resources`, {}, loadFail),
+        apiSend<WelcomeGet>(`/api/guilds/${id}/welcome`, {}, loadFail),
+        apiSend<AutomodGet>(`/api/guilds/${id}/automod`, {}, loadFail),
+        apiSend<LoggingGet>(`/api/guilds/${id}/logging`, {}, loadFail),
+        apiSend<TempchannelsGet>(`/api/guilds/${id}/tempchannels`, {}, loadFail),
+        apiSend<LangGet>(`/api/guilds/${id}/lang`, {}, loadFail),
+        apiSend<MusicSettings>(`/api/guilds/${id}/music`, {}, loadFail),
       ]);
       if (!resourcesRes.ok || !welcomeRes.ok || !rulesRes.ok || !loggingRes.ok || !tempRes.ok || !langRes.ok || !musicRes.ok) {
         const failed=[resourcesRes,welcomeRes,rulesRes,loggingRes,tempRes,langRes,musicRes].find(response=>!response.ok);
@@ -124,21 +127,20 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       const resourceData = resourcesRes.data, welcomeData = welcomeRes.data, automodData = rulesRes.data, loggingData = loggingRes.data, tempData = tempRes.data, langData = langRes.data, musicData = musicRes.data;
       if(!active) return;
       setServerLang(langData.lang); setSavedServerLang(langData.lang);
-      const musicValue = { command_channel_id: musicData.command_channel_id ?? null, voice_channel_ids: musicData.voice_channel_ids ?? [], allowed_role_ids: musicData.allowed_role_ids ?? [], leave_after_seconds: musicData.leave_after_seconds ?? 300 };
-      setMusic(musicValue); setSavedMusic(musicValue);
+      setMusic(musicData); setSavedMusic(musicData);
       setChannels(resourceData.channels);
-      setVoiceChannels(resourceData.voiceChannels ?? []);
-      setCategories(resourceData.categories ?? []);
+      setVoiceChannels(resourceData.voiceChannels);
+      setCategories(resourceData.categories);
       setRoles(resourceData.roles);
-      setEmojis(resourceData.emojis ?? []);
-      setStats(resourceData.stats ?? { members: null, online: null, channels: resourceData.channels.length, roles: resourceData.roles.length });
-      setServer(resourceData.server ?? { name: "Discord server", icon: null });
+      setEmojis(resourceData.emojis);
+      setStats(resourceData.stats);
+      setServer(resourceData.server);
       const rulesData = Object.fromEntries(automodData.rules.map((rule) => [rule.kind, rule]));
       setWelcome(welcomeData); setSavedWelcome(welcomeData);
-      setRules(rulesData); setIgnoredRoleIds(automodData.ignoredRoleIds??[]);setProtectedChannelId(automodData.protectedChannelId??null);setSavedRules(rulesData);setSavedSecurity({roles:automodData.ignoredRoleIds??[],channel:automodData.protectedChannelId??null});
-      const loggingCategories = safeJson<Record<string, boolean>>(loggingData.categories_json ?? "{}", {});
+      setRules(rulesData); setIgnoredRoleIds(automodData.ignoredRoleIds);setProtectedChannelId(automodData.protectedChannelId);setSavedRules(rulesData);setSavedSecurity({roles:automodData.ignoredRoleIds,channel:automodData.protectedChannelId});
+      const loggingCategories = safeJson<Record<string, boolean>>(loggingData.categories_json, {});
       const loggingValue={channelId:loggingData.channel_id??"",categories:loggingCategories};setLogging(loggingValue);setSavedLogging(loggingValue);
-      const tempValue = { presets: (tempData.presets ?? []).map(tempPresetFromApi) };
+      const tempValue = { presets: tempData.presets.map(tempPresetFromApi) };
       setTemp(tempValue); setSavedTemp(tempValue);
       } catch {
         if(active) fail("Не удалось соединиться с сервером.");
@@ -149,35 +151,29 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
     return () => { active = false; };
   }, [params]);
 
-  const apiPut = async (url:string, body:unknown, onOk:()=>void, okMsg:string, report=true): Promise<boolean> => { const sent=await apiSend<{unchanged?:boolean}>(url,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить изменения."); if(!sent.ok){fail(sent.error);return false;} onOk(); if(report) notify(sent.data.unchanged?"Изменений нет.":okMsg); return true; };
+  const apiPut = async <TBody,>(url:string, body:TBody, onOk:()=>void, okMsg:string, report=true): Promise<boolean> => { const sent=await apiSend<{unchanged?:boolean}>(url,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить изменения."); if(!sent.ok){fail(sent.error);return false;} onOk(); if(report) notify(sent.data.unchanged?"Изменений нет.":okMsg); return true; };
   async function saveWelcome(report=true): Promise<boolean> {
     if ((welcome.enabled && !welcome.channel_id) || (welcome.goodbye_enabled && !welcome.goodbye_channel_id)) return fail("Выберите канал для каждого включённого события."), false;
-    return apiPut(`/api/guilds/${guildId}/welcome`, { enabled:Boolean(welcome.enabled), channelId:welcome.channel_id, message:welcome.message, imageEnabled:Boolean(welcome.image_enabled), imageConfig:parseImageConfig(welcome.image_config_json), goodbyeEnabled:Boolean(welcome.goodbye_enabled), goodbyeChannelId:welcome.goodbye_channel_id, goodbyeMessage:welcome.goodbye_message }, ()=>setSavedWelcome(welcome), "Настройки приветствия и прощания сохранены.", report);
+    return apiPut<WelcomePutBody>(`/api/guilds/${guildId}/welcome`, buildWelcomePutBody(welcome), ()=>setSavedWelcome(welcome), "Настройки приветствия и прощания сохранены.", report);
   }
   async function saveRule(kind:string, report=true): Promise<boolean> {
     const c=rules[kind]??defaultRule(kind);
-    return apiPut(`/api/guilds/${guildId}/automod`, { kind, enabled:Boolean(c.enabled), actions:parseActions(c.action_json), threshold:safeJson<Record<string, unknown>>(c.threshold_json,{}), window:c.window_seconds, escalation:Boolean(c.escalation) }, ()=>{setRules(v=>({...v,[kind]:c})); setSavedRules(v=>v?{...v,[kind]:c}:{[kind]:c});}, `Правило «${automodRules[kind]?.title ?? kind}» сохранено.`, report);
+    return apiPut<AutomodRulePutBody>(`/api/guilds/${guildId}/automod`, buildRulePutBody(kind, c, parseActions, (raw) => safeJson<Record<string, unknown>>(raw, {})), ()=>{setRules(v=>({...v,[kind]:c})); setSavedRules(v=>v?{...v,[kind]:c}:{[kind]:c});}, `Правило «${automodRules[kind]?.title ?? kind}» сохранено.`, report);
   }
-  async function saveSecurity(report=true): Promise<boolean>{ return apiPut(`/api/guilds/${guildId}/automod`, { kind:"security", ignoredRoleIds, protectedChannelId }, ()=>setSavedSecurity({roles:ignoredRoleIds,channel:protectedChannelId}), "Общие исключения сохранены.", report); }
-  async function saveLogging(report=true): Promise<boolean>{ return apiPut(`/api/guilds/${guildId}/logging`, { channelId:logging.channelId||null, categories:logging.categories }, ()=>setSavedLogging(logging), "Настройки логов сохранены.", report); }
+  async function saveSecurity(report=true): Promise<boolean>{ return apiPut<AutomodSecurityPutBody>(`/api/guilds/${guildId}/automod`, { kind:"security", ignoredRoleIds, protectedChannelId }, ()=>setSavedSecurity({roles:ignoredRoleIds,channel:protectedChannelId}), "Общие исключения сохранены.", report); }
+  async function saveLogging(report=true): Promise<boolean>{ return apiPut<LoggingPutBody>(`/api/guilds/${guildId}/logging`, buildLoggingPutBody(logging), ()=>setSavedLogging(logging), "Настройки логов сохранены.", report); }
   async function saveTemp(report=true): Promise<boolean>{
-    const body={ presets:temp.presets.map(p=>({name:p.name,triggerChannelIds:p.triggerChannelIds,config:p.config})) };
+    const body: TempPutBody = buildTempPutBody(temp.presets);
     const sent=await apiSend<{presets?:TempPresetApi[];unchanged?:boolean}>(`/api/guilds/${guildId}/tempchannels`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить временные каналы.");
     if(!sent.ok){fail(sent.error);return false;}
     const n=sent.data.presets?{presets:sent.data.presets.map(tempPresetFromApi)}:temp; setTemp(n); setSavedTemp(n); if(report) notify(sent.data.unchanged?"Изменений нет.":"Настройки временных каналов сохранены."); return true;
   }
   async function saveLang(report=true): Promise<boolean> {
-    return apiPut(`/api/guilds/${guildId}/lang`, { lang: serverLang }, () => setSavedServerLang(serverLang), "Язык сообщений бота сохранён.", report);
+    return apiPut<LangPutBody>(`/api/guilds/${guildId}/lang`, { lang: serverLang }, () => setSavedServerLang(serverLang), "Язык сообщений бота сохранён.", report);
   }
   async function saveMusic(report=true): Promise<boolean> {
-    const payload = {
-      command_channel_id: music.command_channel_id || null,
-      voice_channel_ids: music.voice_channel_ids,
-      allowed_role_ids: music.allowed_role_ids,
-      // 0 = автовыход выключен; остальное клампится в рабочий диапазон.
-      leave_after_seconds: music.leave_after_seconds === 0 ? 0 : Math.max(30, Math.min(3600, Math.round(music.leave_after_seconds) || 300)),
-    };
-    return apiPut(`/api/guilds/${guildId}/music`, payload, () => { setMusic(payload); setSavedMusic(payload); }, "Настройки музыки сохранены.", report);
+    const payload: MusicPutBody = buildMusicPutBody(music);
+    return apiPut<MusicPutBody>(`/api/guilds/${guildId}/music`, payload, () => { setMusic(payload); setSavedMusic(payload); }, "Настройки музыки сохранены.", report);
   }
   async function saveAutoMod(): Promise<void>{let ok=await saveSecurity(false); for(const k of Object.keys(rules)) ok=(await saveRule(k,false))&&ok; if(ok) notify("Настройки автомодерации сохранены.");}
 

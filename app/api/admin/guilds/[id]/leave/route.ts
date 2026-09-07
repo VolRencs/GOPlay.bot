@@ -24,7 +24,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (wipe) {
     // стирания намеренно не остаётся.
     wipeGuildData(guildId);
-    void deleteGuildFiles(guildId);
+    // Ждём удаления файлов до ответа, иначе {wiped:true} врёт.
+    try {
+      await deleteGuildFiles(guildId);
+    } catch {
+      return NextResponse.json({ ok: true, leftOnDiscord, wiped: false, warning: "Данные стёрты, но часть файлов не удалена." });
+    }
   }
 
   return NextResponse.json({ ok: true, leftOnDiscord, wiped: wipe });

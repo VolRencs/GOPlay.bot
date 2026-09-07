@@ -2,7 +2,7 @@ import { NextResponse } from "next/server.js";
 import { isSnowflake, withGuild } from "../../../../../src/lib/guild-access.ts";
 import { db } from "../../../../../src/db/database.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
-import { logKeys } from "../../../../../src/lib/labels.ts";
+import { logKeys, type LoggingGet, type LoggingPutBody } from "../../../../../src/lib/labels.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 
@@ -13,13 +13,13 @@ export async function GET(_:Request,{params}:{params:Promise<{guildId:string}>})
   if(access instanceof Response)return access;
   const saved=stmt.loggingSettings.get(guildId) as {channel_id:string|null;categories_json:string}|undefined;
   const categories={...defaults,...safeJson<Record<string,boolean>>(saved?.categories_json,{})};
-  return NextResponse.json({channel_id:saved?.channel_id??null,categories_json:JSON.stringify(categories)});
+  return NextResponse.json<LoggingGet>({channel_id:saved?.channel_id??null,categories_json:JSON.stringify(categories)});
 }
 
 export async function PUT(request:Request,{params}:{params:Promise<{guildId:string}>}) {
   const {guildId}=await params, access=await withGuild(guildId);
   if(access instanceof Response)return access;
-  const body=await request.json().catch(()=>null) as {channelId:string|null;categories?:Record<string,unknown>}|null;
+  const body=await request.json().catch(()=>null) as LoggingPutBody|null;
   // Snowflake-валидация: опечатка иначе молча отключила бы доставку логов —
   // бот не разрешил бы канал и терял записи без ошибок.
   if(!body||(body.channelId!==null&&(!isSnowflake(body.channelId))))return NextResponse.json({error:"Некорректный канал"},{status:400});

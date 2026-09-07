@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { cleanupTargets } from "../../../src/lib/labels.ts";
 import { apiGet, apiSend } from "./api.ts";
 import { CardHeader, confirmAction, formatTime, Select, useAsyncAction } from "./ui.tsx";
-
-type AuditEntry = { id: number; user_name: string; section: string; summary: string; created_at: number };
+import type { AuditEntry, AuditListGet } from "./types.ts";
 
 const auditSections = ["Апелляции", "Автомодерация", "Embeds", "События", "Логи", "Приветствие", "Роли", "Временные каналы", "Очистка", "Настройки", "Музыка"];
 export function DashboardAuditLog({ guildId }: { guildId: string }) {
@@ -15,11 +14,11 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
   const load = async (nextOffset: number, append: boolean, signal?: AbortSignal) => {
     const params = new URLSearchParams({ limit: "50", offset: String(nextOffset) });
     if (section !== "all") params.set("section", section);
-    const data = await apiGet(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 }, signal);
+    const data = await apiGet<AuditListGet>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 }, signal);
     if (signal?.aborted) return;
     if (append) setEntries(value => [...(value ?? []), ...data.entries]);
     else setEntries(data.entries);
-    setTotal(data.total ?? 0);
+    setTotal(data.total);
   };
   useEffect(() => {
     if (!guildId) return;

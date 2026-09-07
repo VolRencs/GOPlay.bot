@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type Guild = { id: string; name: string; icon: string | null };
+import type { GuildListGet, GuildListItem } from "../../src/components/dashboard/types.ts";
 
 export default function Dashboard() {
-  const [guilds, setGuilds] = useState<Guild[]>([]);
+  const [guilds, setGuilds] = useState<GuildListItem[]>([]);
   const [error, setError] = useState("");
   const [reauth, setReauth] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -23,7 +22,7 @@ export default function Dashboard() {
         setReauth(Boolean(body?.reauth));
         return;
       }
-      setGuilds(await response.json());
+      setGuilds((await response.json()) as GuildListGet);
     }
     void loadGuilds().catch(() => setError("Не удалось соединиться с сервером.")).finally(() => setLoading(false));
   }, []);

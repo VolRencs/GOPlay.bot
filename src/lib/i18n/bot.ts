@@ -15,6 +15,10 @@ export function guildLang(guildId: string): Locale {
   return langCache.get(guildId);
 }
 
+export function invalidateGuildLang(guildId: string): void {
+  langCache.delete(guildId);
+}
+
 export function makeTr<M extends Record<string, Bi>>(messages: M) {
   return (lang: Locale, key: keyof M & string, vars?: Record<string, string | number>): string => {
     let text = messages[key]?.[lang] ?? messages[key]?.ru ?? key;

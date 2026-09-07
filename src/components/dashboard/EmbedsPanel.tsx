@@ -5,9 +5,7 @@ import { Image, Trash2, User } from "lucide-react";
 import { safeJson } from "../../../src/lib/json.ts";
 import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, Select, TemplateLibrary, useAsyncAction, useObjectUrl } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
-import { DEFAULT_ACCENT, type Channel, type EmbedPayload, type EmbedSending, type SavedEmbed } from "./types.ts";
-
-type EmbedField = { name: string; value: string; inline: boolean };
+import { DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type SavedEmbed } from "./types.ts";
 
 type EmbedForm = {
   id?: number;
@@ -91,9 +89,9 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
   };
 
   const load = async (verify = false) => {
-    const data = await apiGet(`/api/guilds/${guildId}/embeds${verify ? "?verify=1" : ""}`, { embeds: [], sendings: [] });
-    setItems(data.embeds ?? []);
-    setSendings(data.sendings ?? []);
+    const data = await apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds${verify ? "?verify=1" : ""}`, { embeds: [], sendings: [] });
+    setItems(data.embeds);
+    setSendings(data.sendings);
   };
   useEffect(() => { load(); }, [guildId]);
 

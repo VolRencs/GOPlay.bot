@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, ArrowRight, Check, ChevronDown } from "lucide-react";
-import { COLOR_PRESETS, type Channel, type ServerEmoji } from "./types.ts";
+import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
+import { stableJson } from "../../lib/json.ts";
+import { EmojiPicker as FrimoussePicker, type EmojiPickerListCategoryHeaderProps, type EmojiPickerListEmojiProps, type EmojiPickerListRowProps } from "frimousse";
 
 export function channelOptions(channels: Channel[], emptyLabel: string) {
   return [{ value: "", label: emptyLabel }, ...channels.map(c => ({ value: c.id, label: `# ${c.name}` }))];
@@ -25,8 +27,6 @@ export function ColorRow({ color, onChange }: { color: string; onChange: (color:
     </div>
   );
 }
-
-type EmbedField = { name: string; value: string; inline: boolean };
 
 export function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (fields: EmbedField[]) => void }) {
   return (
@@ -57,9 +57,9 @@ export function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onCha
 
 export const formatTime = (ts: number) => new Date(ts).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
-export function stableStringify(value: unknown): string {
-  return JSON.stringify(value, (_key, item) => Array.isArray(item) && item.every(entry => typeof entry === "string") ? [...item].sort() : item);
-}
+// Единая каноническая сериализация с сервером (src/lib/json.ts):
+// dirty-check клиента сходится с no-op детектом роутов.
+export const stableStringify = stableJson;
 
 export function useAsyncAction() {
   const [busy, setBusy] = useState(false);
@@ -73,9 +73,45 @@ export function useAsyncAction() {
   return { busy, run };
 }
 
-export function CheckList({items,selected,onChange,channel=false,label}:{items:{id:string;name:string}[];selected:string[];onChange:(ids:string[])=>void;channel?:boolean;label?:string}) { const toggle=(id:string)=>onChange(selected.includes(id)?selected.filter(value=>value!==id):[...selected,id]); return <div className="choice-list" role="group" aria-label={label}>{items.length?items.map(item=><button type="button" aria-pressed={selected.includes(item.id)} className={selected.includes(item.id)?"choice-item selected":"choice-item"} key={item.id} onClick={()=>toggle(item.id)}><span className="choice-check" aria-hidden="true">{selected.includes(item.id)&&<Check size={14}/>}</span><span>{channel?"# ":""}{item.name}</span></button>):<span className="hint">Нет доступных вариантов.</span>}</div>; }
+type CheckListProps = {
+  items: { id: string; name: string }[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  channel?: boolean;
+  label?: string;
+};
 
-import { EmojiPicker as FrimoussePicker, type EmojiPickerListCategoryHeaderProps, type EmojiPickerListEmojiProps, type EmojiPickerListRowProps } from "frimousse";
+export function CheckList({ items, selected, onChange, channel = false, label }: CheckListProps) {
+  const toggle = (id: string) => onChange(
+    selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id],
+  );
+  if (!items.length) {
+    return (
+      <div className="choice-list" role="group" aria-label={label}>
+        <span className="hint">Нет доступных вариантов.</span>
+      </div>
+    );
+  }
+  return (
+    <div className="choice-list" role="group" aria-label={label}>
+      {items.map(item => {
+        const active = selected.includes(item.id);
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={active}
+            className={active ? "choice-item selected" : "choice-item"}
+            onClick={() => toggle(item.id)}
+          >
+            <span className="choice-check" aria-hidden="true">{active && <Check size={14} />}</span>
+            <span>{channel ? "# " : ""}{item.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function PickerRow({ children, ...props }: EmojiPickerListRowProps) {
   return <div {...props} className="ep-row">{children}</div>;

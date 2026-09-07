@@ -4,16 +4,13 @@ import { useEffect, useState } from "react";
 import { Image, Trash2 } from "lucide-react";
 import { eventStatusMeta } from "../../../src/lib/labels.ts";
 import { safeJson } from "../../../src/lib/json.ts";
-import { buttonColorOptions, DEFAULT_ACCENT, type Channel, type Role, type ServerEmoji } from "./types.ts";
+import type { EventListGet, EventListItem } from "../../../src/lib/events.ts";
+import { buttonColorOptions, DEFAULT_ACCENT, type Channel, type EmbedField, type Role, type ServerEmoji } from "./types.ts";
 import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, Select, TemplateLibrary, useAsyncAction, useObjectUrl } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 
-type EventButtonInput = { key: "join" | "leave"; label: string; emoji: string; style: string; enabled: boolean; order: number };
-
 const EVENT_TONE: Record<string, string> = { scheduled: "pill-info", live: "pill-ok", completed: "pill-accent", cancelled: "pill-err" };
-
-type EventApi = { id: string; channelId: string; embed: { title?: string; description?: string; color?: number; footer?: { text?: string }; thumbnail?: { url?: string }; image?: { url?: string }; fields?: { name: string; value: string; inline?: boolean }[]; timestamp?: boolean }; buttons: EventButtonInput[]; scheduledAt: number; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: string; eventRoleId: string | null; reminders: number[]; recurrence: { freq: string; interval: number }; counts: { joined: number; waitlist: number }; participants: { userId: string; name: string | null; joinedAt: number; waitlist: boolean }[]; stats: Record<string, unknown> | null };
-type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: string; eventRoleId: string; reminders: string; recurrenceFreq: string; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; thumbnailFile: File | null; imageFile: File | null; fields: { name: string; value: string; inline: boolean }[]; joinLabel: string; joinEmoji: string; joinStyle: string; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: string; leaveEnabled: boolean };
+type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: string; eventRoleId: string; reminders: string; recurrenceFreq: string; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; thumbnailFile: File | null; imageFile: File | null; fields: EmbedField[]; joinLabel: string; joinEmoji: string; joinStyle: string; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: string; leaveEnabled: boolean };
 const toLocalInput = (ts: number) => new Date(ts - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const defaultEventDraft = (): EventDraft => ({ channelId: "", scheduledAt: toLocalInput(Date.now() + 3_600_000), maxParticipants: 0, registrationEnabled: true, waitlistEnabled: true, status: "scheduled", eventRoleId: "", reminders: "", recurrenceFreq: "none", recurrenceInterval: 7, title: "", description: "", color: DEFAULT_ACCENT, footer: "", timestamp: true, thumbnail: "", image: "", thumbnailFile: null, imageFile: null, fields: [], joinLabel: "Участвовать", joinEmoji: "✅", joinStyle: "primary", joinEnabled: true, leaveLabel: "Отказаться", leaveEmoji: "❌", leaveStyle: "danger", leaveEnabled: true });
 
@@ -40,7 +37,7 @@ function ButtonEditor({ title, label, emoji, style, enabled, emojis, onChange }:
 }
 
 export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError }: { guildId: string; channels: Channel[]; roles: Role[]; emojis: ServerEmoji[]; onDone: (message: string, tone?: "ok" | "warn") => void; onError: (message: string) => void }) {
-  const [events, setEvents] = useState<EventApi[] | null>(null);
+  const [events, setEvents] = useState<EventListItem[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventDraft>(defaultEventDraft);
   const { busy, run } = useAsyncAction();
@@ -98,11 +95,11 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     } catch { /* malformed draft */ }
   }, [guildId]);
 
-  const load = () => void apiGet(`/api/guilds/${guildId}/events`, { events: [] }).then(data => setEvents(data.events ?? []));
+  const load = () => void apiGet<EventListGet>(`/api/guilds/${guildId}/events`, { events: [] }).then(data => setEvents(data.events));
   useEffect(() => { load(); }, [guildId]);
   const editing = events?.find(e => e.id === editingId) ?? null;
 
-  function edit(e: EventApi) {
+  function edit(e: EventListItem) {
     const join = e.buttons.find(b => b.key === "join"), leave = e.buttons.find(b => b.key === "leave");
     setDraft({
       channelId: e.channelId, scheduledAt: toLocalInput(e.scheduledAt), maxParticipants: e.maxParticipants,
@@ -155,7 +152,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     });
   }
 
-  async function remove(e: EventApi) {
+  async function remove(e: EventListItem) {
     if (busy) return;
     if (!(await confirmAction(`Удалить событие «${e.embed.title ?? "без названия"}»? Сообщение в Discord тоже будет удалено.`, "Удалить"))) return;
     await run(async () => {
@@ -167,7 +164,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     });
   }
 
-  async function removeParticipant(e: EventApi, userId: string) {
+  async function removeParticipant(e: EventListItem, userId: string) {
     if (busy) return;
     if (!(await confirmAction(`Удалить участника ${userId} из события?`, "Удалить"))) return;
     await run(async () => {

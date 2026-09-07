@@ -20,7 +20,18 @@ export class AssetError extends Error {}
 export type StoredAsset<T extends string> = { target: T; filename: string; file: File; bytes: Buffer };
 type OriginalAsset<T extends string> = { target: T; url: string };
 
-const safeName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
+const safeName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "image";
+
+// Расширение должно соответствовать заявленному MIME: File.type контролирует
+// клиент, имя — тоже, но расхождение — явный мусор вместо 500 на writeFile.
+function extMatchesMime(filename: string, mime: string): boolean {
+  const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
+  if (mime === "image/png") return ext === "png";
+  if (mime === "image/jpeg") return ext === "jpg" || ext === "jpeg";
+  if (mime === "image/webp") return ext === "webp";
+  if (mime === "image/gif") return ext === "gif";
+  return false;
+}
 
 // Читает свежие файлы из формы, валидирует MIME/размер, регистрирует
 // attachment:// через setAsset и буферизует байты.
@@ -30,6 +41,7 @@ export async function collectNewUploads<T extends string>(form: FormData | null,
     const file = form?.get(formKey);
     if (!(file instanceof File)) continue;
     if (!imageMimeTypes.includes(file.type) || file.size > MAX_UPLOAD_BYTES) throw new AssetError("Изображения: PNG, JPG, WEBP или GIF до 8 МБ");
+    if (!extMatchesMime(file.name, file.type)) throw new AssetError("Расширение файла не соответствует его типу");
     const filename = `${target}-${Date.now()}-${safeName(file.name)}`;
     setAsset(target, `attachment://${filename}`);
     assets.push({ target, filename, file, bytes: Buffer.from(await file.arrayBuffer()) });

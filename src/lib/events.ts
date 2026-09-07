@@ -45,7 +45,7 @@ export type EventRow = {
   completed_at: number | null; cancelled_at: number | null; stats_json: string | null;
 };
 type ParticipantRow = { event_id: string; user_id: string; joined_at: number; waitlist: number };
-type EventCounts = { joined: number; waitlist: number };
+export type EventCounts = { joined: number; waitlist: number };
 
 const MAX_REMINDER_MINUTES = 525_600;
 const MAX_PARTICIPANTS_LIMIT = 100_000;
@@ -300,7 +300,7 @@ function intervalDays(recurrence: EventRecurrence): number {
   if (recurrence.freq === "daily") return 1;
   if (recurrence.freq === "weekly") return 7;
   if (recurrence.freq === "biweekly") return 14;
-  return Math.max(1, Math.min(365, recurrence.interval));
+  return recurrence.interval;
 }
 
 export type EventInput = {
@@ -393,7 +393,7 @@ export function detachEventMessage(messageId: string) {
   eventDetachByMessage.run(Date.now(), messageId);
 }
 
-type EventView = {
+export type EventView = {
   id: string; guildId: string; channelId: string; messageId: string | null;
   embed: EventEmbed; buttons: EventButton[];
   scheduledAt: number; maxParticipants: number;
@@ -441,6 +441,11 @@ export function listEvents(guildId: string): EventView[] {
     participants: (participants.get(row.id) ?? []).map(p => ({ userId: p.userId, joinedAt: p.joinedAt, waitlist: Boolean(p.waitlist) })),
   }));
 }
+
+export type EventListItem = Omit<EventView, "participants"> & {
+  participants: (EventView["participants"][number] & { name: string | null })[];
+};
+export type EventListGet = { events: EventListItem[] };
 
 export async function applyEventRole(guildId: string, userId: string, roleId: string | null, add: boolean): Promise<void> {
   if (!roleId) return;

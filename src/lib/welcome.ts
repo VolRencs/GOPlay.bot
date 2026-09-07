@@ -70,6 +70,45 @@ export const welcomePreviewValues: Record<string, string> = {
 
 export const welcomeDefaults = { enabled: 0, channel_id: null, message: "Добро пожаловать, {user}!", image_enabled: 0, image_config_json: "{}", goodbye_enabled: 0, goodbye_channel_id: null, goodbye_message: "До встречи, {username}!" };
 
+export type WelcomeGet = {
+  enabled: number; channel_id: string | null; message: string; image_enabled: number;
+  background_path: string | null; image_config_json: string;
+  goodbye_enabled: number; goodbye_channel_id: string | null; goodbye_message: string;
+};
+
+export type WelcomePutBody = {
+  enabled: boolean;
+  channelId: string | null;
+  message: string;
+  imageEnabled: boolean;
+  imageConfig: WelcomeImageConfig;
+  goodbyeEnabled: boolean;
+  goodbyeChannelId: string | null;
+  goodbyeMessage: string;
+};
+
+export function buildWelcomePutBody(w: {
+  enabled: number | boolean;
+  channel_id: string | null;
+  message: string;
+  image_enabled: number | boolean;
+  image_config_json: string;
+  goodbye_enabled: number | boolean;
+  goodbye_channel_id: string | null;
+  goodbye_message: string;
+}): WelcomePutBody {
+  return {
+    enabled: Boolean(w.enabled),
+    channelId: w.channel_id,
+    message: w.message,
+    imageEnabled: Boolean(w.image_enabled),
+    imageConfig: parseImageConfig(w.image_config_json),
+    goodbyeEnabled: Boolean(w.goodbye_enabled),
+    goodbyeChannelId: w.goodbye_channel_id,
+    goodbyeMessage: w.goodbye_message,
+  };
+}
+
 const escapeXml = (value: string) => value.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[c] ?? c);
 
 // Размеры из заголовков PNG/GIF/WEBP/JPEG без декодирования картинки.
@@ -110,5 +149,13 @@ export function buildWelcomeSvg(input: { backgroundHref?: string | null; backgro
   const bg = input.backgroundHref
     ? `<image href="${escapeXml(input.backgroundHref)}" width="${input.backgroundWidth}" height="${input.backgroundHeight}"/>`
     : `<defs><linearGradient id="g"><stop stop-color="#111827"/><stop offset="1" stop-color="#312e81"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/>`;
-  return `<svg viewBox="0 0 ${input.backgroundWidth} ${input.backgroundHeight}" width="${input.backgroundWidth}" height="${input.backgroundHeight}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#111827"/>${bg}<rect width="100%" height="100%" fill="#000" opacity=".25"/><clipPath id="c"><ellipse cx="${ax}" cy="${ay}" rx="${aw / 2}" ry="${ah / 2}"/></clipPath><image href="${escapeXml(input.avatarHref)}" x="${ax - aw / 2}" y="${ay - ah / 2}" width="${aw}" height="${ah}" preserveAspectRatio="xMidYMid slice" clip-path="url(#c)"/><text x="${x(config.titleX)}" y="${y(config.titleY)}" text-anchor="middle" fill="${escapeXml(config.titleColor)}" font-family="Noto Sans, sans-serif" font-size="${x(config.titleSize)}" font-weight="700">${escapeXml(input.title)}</text><text x="${x(config.subtitleX)}" y="${y(config.subtitleY)}" text-anchor="middle" fill="${escapeXml(config.subtitleColor)}" font-family="Noto Sans, sans-serif" font-size="${x(config.subtitleSize)}">${escapeXml(input.subtitle)}</text></svg>`;
+  const avatar = `<clipPath id="c"><ellipse cx="${ax}" cy="${ay}" rx="${aw / 2}" ry="${ah / 2}"/></clipPath>`
+    + `<image href="${escapeXml(input.avatarHref)}" x="${ax - aw / 2}" y="${ay - ah / 2}" width="${aw}" height="${ah}" preserveAspectRatio="xMidYMid slice" clip-path="url(#c)"/>`;
+  const title = `<text x="${x(config.titleX)}" y="${y(config.titleY)}" text-anchor="middle" fill="${escapeXml(config.titleColor)}" font-family="Noto Sans, sans-serif" font-size="${x(config.titleSize)}" font-weight="700">${escapeXml(input.title)}</text>`;
+  const subtitle = `<text x="${x(config.subtitleX)}" y="${y(config.subtitleY)}" text-anchor="middle" fill="${escapeXml(config.subtitleColor)}" font-family="Noto Sans, sans-serif" font-size="${x(config.subtitleSize)}">${escapeXml(input.subtitle)}</text>`;
+  return `<svg viewBox="0 0 ${input.backgroundWidth} ${input.backgroundHeight}" width="${input.backgroundWidth}" height="${input.backgroundHeight}" xmlns="http://www.w3.org/2000/svg">`
+    + `<rect width="100%" height="100%" fill="#111827"/>${bg}`
+    + `<rect width="100%" height="100%" fill="#000" opacity=".25"/>`
+    + avatar + title + subtitle
+    + `</svg>`;
 }

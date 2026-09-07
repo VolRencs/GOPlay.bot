@@ -2,7 +2,8 @@ import { NextResponse } from "next/server.js";
 import { isSnowflake, withGuild } from "../../../../../src/lib/guild-access.ts";
 import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { parseStringArray, stableJson } from "../../../../../src/lib/json.ts";
-import { DEFAULT_SETTINGS } from "../../../../../src/lib/tempchannels.ts";
+import { DEFAULT_SETTINGS, clampUserLimit, type TempPutBody, type TempchannelsGet } from "../../../../../src/lib/tempchannels.ts";
+import type { TempPresetApi } from "../../../../../src/components/dashboard/types.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 
@@ -15,16 +16,15 @@ type ConfigPayload = { categoryId: string | null; nameTemplate: string; userLimi
 function parseConfig(value: unknown): ConfigPayload {
   const v = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
   const nameTemplate = typeof v.nameTemplate === "string" && v.nameTemplate.trim().length ? v.nameTemplate.trim().slice(0, 100) : DEFAULT_SETTINGS.name_template;
-  const userLimit = Number(v.userLimit ?? 0);
   return {
     categoryId: typeof v.categoryId === "string" && isSnowflake(v.categoryId) ? v.categoryId : null,
     nameTemplate,
-    userLimit: Number.isInteger(userLimit) ? Math.max(0, Math.min(99, userLimit)) : 0,
+    userLimit: clampUserLimit(v.userLimit),
     canRename: Boolean(v.canRename), canManageAccess: Boolean(v.canManageAccess), canClose: Boolean(v.canClose),
   };
 }
 
-function toJson(row: PresetRow) {
+function toJson(row: PresetRow): TempPresetApi {
   return { id: row.id, name: row.name, triggerChannelIds: parseStringArray(row.trigger_channel_ids_json), categoryId: row.category_id, nameTemplate: row.name_template, userLimit: row.user_limit, canRename: Boolean(row.can_rename), canManageAccess: Boolean(row.can_manage_access), canClose: Boolean(row.can_close) };
 }
 
@@ -32,16 +32,16 @@ export async function GET(_: Request, { params }: { params: Promise<{ guildId: s
   const { guildId } = await params;
   const access = await withGuild(guildId);
   if (access instanceof Response) return access;
-  return NextResponse.json({ presets: (stmt.tempPresets.all(guildId) as PresetRow[]).map(toJson) });
+  return NextResponse.json<TempchannelsGet>({ presets: (stmt.tempPresets.all(guildId) as PresetRow[]).map(toJson) });
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
   const { guildId } = await params;
   const access = await withGuild(guildId);
   if (access instanceof Response) return access;
-  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  const body = await request.json().catch(() => null) as TempPutBody | null;
   if (!body) return NextResponse.json({ error: "Некорректные данные." }, { status: 400 });
-  const rawPresets = body.presets;
+  const rawPresets: unknown = body.presets;
   if (!Array.isArray(rawPresets) || rawPresets.length > 50) return NextResponse.json({ error: "Некорректный список шаблонов." }, { status: 400 });
   const presets: { name: string; triggers: string[]; config: ConfigPayload }[] = [];
   for (const raw of rawPresets) {

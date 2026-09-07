@@ -88,7 +88,7 @@ export default function AdminPage() {
               description="Все серверы, где есть бот. Выход из сервера необратимо удаляет его настройки только после вашего выбора."
               empty="Бот пока не добавлен ни на один сервер."
             >
-              {guilds.length > 0 && (
+              {guilds.length > 0 ? (
                 <div className="template-list">
                   {guilds.map(g => (
                     <article className="template-item" key={g.id}>
@@ -102,7 +102,7 @@ export default function AdminPage() {
                     </article>
                   ))}
                 </div>
-              )}
+              ) : null}
             </TemplateLibrary>
           </>
         )}

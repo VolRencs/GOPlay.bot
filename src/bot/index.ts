@@ -101,20 +101,57 @@ client.on(Events.GuildCreate, g => {
   onboardGuild(g);
   logger.info("Бот добавлен на сервер:", g.id, g.name);
 });
-type MemberEventSettings = { enabled: number; channel_id: string | null; message: string; image_enabled: number; background_path: string | null; image_config_json: string; goodbye_enabled: number; goodbye_channel_id: string | null; goodbye_message: string };
-function memberTemplate(template: string, member: GuildMember) { const count = String(member.guild.memberCount); return renderWelcomeTemplate(template.replace(/\r\n?/g, "\n"), { user: `<@${member.id}>`, username: member.user.username, displayName: member.displayName, server: member.guild.name, count, memberCount: count, userId: member.id, userAvatar: member.user.displayAvatarURL(), serverIcon: member.guild.iconURL() ?? "" }); }
+type MemberEventSettings = {
+  enabled: number; channel_id: string | null; message: string; image_enabled: number;
+  background_path: string | null; image_config_json: string;
+  goodbye_enabled: number; goodbye_channel_id: string | null; goodbye_message: string;
+};
+function memberTemplate(template: string, member: GuildMember) {
+  const count = String(member.guild.memberCount);
+  return renderWelcomeTemplate(template.replace(/\r\n?/g, "\n"), {
+    user: `<@${member.id}>`,
+    username: member.user.username,
+    displayName: member.displayName,
+    server: member.guild.name,
+    count,
+    memberCount: count,
+    userId: member.id,
+    userAvatar: member.user.displayAvatarURL(),
+    serverIcon: member.guild.iconURL() ?? "",
+  });
+}
+async function renderMemberImage(member: GuildMember, setting: MemberEventSettings, event: "welcome" | "goodbye") {
+  const started = performance.now();
+  try {
+    return await welcomeImage({
+      avatar: member.user.displayAvatarURL({ extension: "png" }),
+      name: member.displayName,
+      username: member.user.username,
+      userId: member.id,
+      server: member.guild.name,
+      count: member.guild.memberCount,
+      backgroundPath: setting.background_path,
+      config: setting.image_config_json,
+    });
+  } catch (error) {
+    logger.warn(`[${event}] Рендер изображения не удался`, member.guild.id, error);
+    return null;
+  } finally {
+    time("welcome.render", performance.now() - started);
+  }
+}
 async function sendMemberEvent(member: GuildMember, event: "welcome" | "goodbye") {
   const setting = stmt.welcomeSettings.get(member.guild.id) as MemberEventSettings | undefined;
   const welcome = event === "welcome";
-  const enabled = welcome ? setting?.enabled : setting?.goodbye_enabled, channelId = welcome ? setting?.channel_id : setting?.goodbye_channel_id;
+  const enabled = welcome ? setting?.enabled : setting?.goodbye_enabled;
+  const channelId = welcome ? setting?.channel_id : setting?.goodbye_channel_id;
   if (!setting || !enabled || !channelId) return;
-  const content = memberTemplate(welcome ? setting.message : setting.goodbye_message, member).slice(0, 2000) || "\u200b";
-  const imagePromise = welcome && setting.image_enabled
-    ? (started => welcomeImage({ avatar: member.user.displayAvatarURL({ extension: "png" }), name: member.displayName, username: member.user.username, userId: member.id, server: member.guild.name, count: member.guild.memberCount, backgroundPath: setting.background_path, config: setting.image_config_json }).catch(error => { logger.warn(`[${event}] Рендер изображения не удался`, member.guild.id, error); return null; }).finally(() => time("welcome.render", performance.now() - started)))(performance.now())
-    : null;
-  const [channel, image] = await Promise.all([resolveChannel(channelId), imagePromise]);
+  // Сначала резолвим канал: рендерить картинку для удалённого канала нечего.
+  const channel = await resolveChannel(channelId);
   if (!channel) return;
-  await channel.send({ content, ...(image ? { files: [{ attachment: Buffer.from(image), name: "welcome.png" }] } : {}) }).catch(error => logger.warn(`[${event}] Доставка сообщения не удалась`, member.guild.id, error));
+  const content = memberTemplate(welcome ? setting.message : setting.goodbye_message, member).slice(0, 2000) || "\u200b";
+  const image = welcome && setting.image_enabled ? await renderMemberImage(member, setting, event) : null;
+  await channel.send({ content, ...(image ? { files: [{ attachment: image, name: "welcome.png" }] } : {}) }).catch(error => logger.warn(`[${event}] Доставка сообщения не удалась`, member.guild.id, error));
 }
 client.on(Events.GuildMemberAdd, member => {
   count("events.member_join");
@@ -136,14 +173,19 @@ client.on(Events.GuildMemberRemove, member => {
   });
 });
 const roleLocks = new Map<string, Promise<void>>();
+const ROLE_LOCK_TIMEOUT_MS = 10_000;
+function lockTimeout(ms: number): Promise<never> {
+  return new Promise<never>((_, reject) => setTimeout(() => reject(new Error("role lock timeout")), ms));
+}
 async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = roleLocks.get(key) ?? Promise.resolve();
   let release: () => void;
   const cur = new Promise<void>((res) => (release = res));
   roleLocks.set(key, cur);
-  await prev;
+  // Зависший предшественник не должен держать очередь вечно.
+  await Promise.race([prev, lockTimeout(ROLE_LOCK_TIMEOUT_MS)]).catch(() => null);
   try {
-    return await fn();
+    return await Promise.race([fn(), lockTimeout(ROLE_LOCK_TIMEOUT_MS)]);
   } finally {
     release!();
     if (roleLocks.get(key) === cur) roleLocks.delete(key);
@@ -205,7 +247,9 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   } else {
     logger.warn("[AUTOMOD] Ни одна мера не применилась", guild.id, row.kind, author.id, actions.join(","));
   }
-  if (applied.some(action => action !== "delete" && action !== "kick") && (!burstKind || shouldWarn(rule, data))) {
+  // applied содержит только timeout/kick/ban (delete в applied не пушится):
+  // апелляцию предлагаем при timeout/ban, kick-only — без апелляции.
+  if (applied.some(action => action === "timeout" || action === "ban") && (!burstKind || shouldWarn(rule, data))) {
     if (punishmentId !== null) void offerAppeal(client, { punishmentId, guildId: guild.id, guildName: guild.name, userId: author.id, type: "automod", reason });
     if (burstKind) markWarned(rule, data);
   }
@@ -234,11 +278,17 @@ function purgeUserMessages(guild: Guild, userId: string, hours: number): Promise
   const state: { cutoff: number; requeue: boolean; promise: Promise<number> } = { cutoff, requeue: false, promise: Promise.resolve(0) };
   state.promise = (async () => {
     let deleted = 0;
-    do {
-      state.requeue = false;
-      deleted += await purgeMessages(guild, userId, state.cutoff);
-    } while (state.requeue);
-    userPurges.delete(key);
+    try {
+      do {
+        state.requeue = false;
+        deleted += await purgeMessages(guild, userId, state.cutoff);
+      } while (state.requeue);
+    } catch (error) {
+      // Purge — best-effort чистка: ошибку логируем, уже удалённое не теряем.
+      logger.warn("[PURGE] Чистка сообщений прервана", guild.id, userId, error);
+    } finally {
+      userPurges.delete(key);
+    }
     return deleted;
   })();
   userPurges.set(key, state);
@@ -358,7 +408,9 @@ async function routeInteraction(i: Interaction) {
       const id = Number(i.customId.split(":")[1]);
       const member = i.guild ? await resolveMember(i.guild, i.user.id) : null;
       if (!member) return;
-      const results = await Promise.all(i.values.map(roleId => applyPanelRole(i.guildId!, id, roleId, member)));
+      const results = await Promise.all(i.values.map(roleId =>
+        applyPanelRole(i.guildId!, id, roleId, member).catch(() => ({ text: automodTr(guildLang(i.guildId!), "roleUpdateFail"), notify: true })),
+      ));
       const messages = results.filter(r => r.notify).map(r => r.text);
       if (messages.length) await i.reply({ content: messages.join("\n"), flags: MessageFlags.Ephemeral });
       else await i.deferUpdate();

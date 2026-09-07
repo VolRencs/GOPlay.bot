@@ -69,7 +69,7 @@ export function flushMessageCache(): void {
 const nextPruneAt = new Map<string, number>();
 
 /** Сброс троттлинга prune (при полном стирании гильдии). */
-export function resetPruneThrottle(guildId: string): void {
+function resetPruneThrottle(guildId: string): void {
   nextPruneAt.delete(guildId);
 }
 

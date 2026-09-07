@@ -3,7 +3,7 @@ import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isSnowflake, withGuild } from "../../../../../src/lib/guild-access.ts";
 import { db } from "../../../../../src/db/database.ts";
-import { parseImageConfig, welcomeDefaults } from "../../../../../src/lib/welcome.ts";
+import { parseImageConfig, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../../../src/lib/welcome.ts";
 import { stableJson } from "../../../../../src/lib/json.ts";
 import { rejectOversized } from "../../../../../src/lib/uploads.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
@@ -14,20 +14,15 @@ const jsonError = (error: string, status = 400) => NextResponse.json({ error }, 
 export async function GET(_: Request, { params }: { params: Promise<{ guildId: string }> }) {
   const { guildId } = await params; const access = await withGuild(guildId);
   if (access instanceof Response) return access;
-  const saved = stmt.welcomeSettings.get(guildId) as Record<string, unknown> | undefined;
-  return NextResponse.json({ ...welcomeDefaults, ...saved });
+  const saved = stmt.welcomeSettings.get(guildId) as Partial<WelcomeGet> | undefined;
+  return NextResponse.json<WelcomeGet>({ ...welcomeDefaults, ...saved } as WelcomeGet);
 }
-
-type SettingsPayload = {
-  enabled: boolean; channelId: string | null; message: string; imageEnabled: boolean; imageConfig?: unknown;
-  goodbyeEnabled: boolean; goodbyeChannelId: string | null; goodbyeMessage: string;
-};
 
 export async function PUT(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
   const { guildId } = await params; const access = await withGuild(guildId);
   if (access instanceof Response) return access;
-  let value: SettingsPayload;
-  try { value = await request.json() as SettingsPayload; } catch { return jsonError("Некорректный запрос."); }
+  let value: WelcomePutBody;
+  try { value = await request.json() as WelcomePutBody; } catch { return jsonError("Некорректный запрос."); }
   if (typeof value.message !== "string" || typeof value.goodbyeMessage !== "string" || value.message.length > 2000 || value.goodbyeMessage.length > 2000) return jsonError("Текст сообщения не должен превышать 2000 символов.");
   if ((value.enabled && !value.channelId) || (value.goodbyeEnabled && !value.goodbyeChannelId)) return jsonError("Для включённого события выберите канал.");
   if ((value.channelId && !isSnowflake(value.channelId)) || (value.goodbyeChannelId && !isSnowflake(value.goodbyeChannelId))) return jsonError("Некорректный канал.");

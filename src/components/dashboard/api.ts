@@ -3,7 +3,7 @@
 export type ApiError = { error?: unknown };
 
 /** Достаёт человекочитаемую ошибку из ответа API (единый формат `{error}`). */
-export async function apiErrorMessage(response: Response, fallback: string): Promise<string> {
+async function apiErrorMessage(response: Response, fallback: string): Promise<string> {
   const data = await response.json().catch(() => ({}) as ApiError);
   const error = (data as ApiError).error;
   return typeof error === "string" && error ? error : fallback;

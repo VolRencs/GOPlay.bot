@@ -7,9 +7,10 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "dev": "mkdir -p data/logs && node scripts/rotate-log.mjs && { pnpm migrate:auth && concurrently -k \"next dev\" \"node --env-file=.env src/bot/index.ts\"; } 2>&1 | tee -a data/logs/bot.log",
+    "dev": "pnpm logs:rotate && { pnpm migrate:auth && concurrently -k \"next dev\" \"node --env-file=.env src/bot/index.ts\"; } 2>&1 | tee -a data/logs/bot.log",
     "build": "next build",
-    "start": "mkdir -p data/logs && node scripts/rotate-log.mjs && { pnpm migrate:auth && concurrently -k \"next start\" \"node --env-file=.env src/bot/index.ts\"; } >> data/logs/bot.log 2>&1",
+    "start": "pnpm logs:rotate && { pnpm migrate:auth && concurrently -k \"next start\" \"node --env-file=.env src/bot/index.ts\"; } >> data/logs/bot.log 2>&1",
+    "logs:rotate": "mkdir -p data/logs && find data/logs -maxdepth 1 -name bot.log -size +5M -exec mv {} {}.1 \\;",
     "migrate:auth": "node --env-file=.env scripts/migrate-auth.ts",
     "test": "node --test test/*.test.ts",
     "check": "tsc --noEmit"

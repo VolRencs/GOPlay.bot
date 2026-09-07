@@ -269,11 +269,20 @@ function launch(s: Session, track: Track, offsetSec: number): void {
   if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
     count("music.limit_wait"); // слот занят другой гильдией — ждём, не выметая очередь
     const gen = s.generation;
-    setTimeout(() => {
-      // Skip в окне ожидания слота отменяет запуск: player.stop() при Idle
-      // не порождает Idle-события, поэтому флаг проверяем здесь явно.
-      if (!s.skipFlag && sessions.get(s.guildId) === s && s.generation === gen && s.current === track && s.player.state.status !== AudioPlayerStatus.Playing) launch(s, track, offsetSec);
-    }, 1_000).unref?.();
+    const retry = () => {
+      // Сессия пересоздана/трек сменился — ждать больше нечего.
+      if (sessions.get(s.guildId) !== s || s.generation !== gen || s.current !== track) return;
+      // Skip в окне ожидания отменяет запуск: player.stop() при Idle
+      // не порождает Idle-события, очередь двигаем явно без возврата в луп.
+      if (s.skipFlag) { s.skipFlag = false; advance(s, track, false); return; }
+      if (s.player.state.status === AudioPlayerStatus.Playing) return;
+      if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
+        setTimeout(retry, 1_000).unref?.();
+        return;
+      }
+      launch(s, track, offsetSec);
+    };
+    setTimeout(retry, 1_000).unref?.();
     return;
   }
   s.handle?.cancel();
@@ -288,7 +297,8 @@ async function handleIdle(s: Session, playedMs: number): Promise<void> {
     ? await Promise.race([s.handle.outcome, new Promise<null>(r => setTimeout(r, OUTCOME_RACE_MS))])
     : null;
   if (sessions.get(s.guildId) !== s || s.current !== finished) return;
-  if (s.skipFlag) { s.skipFlag = false; advance(s, finished); return; }
+  // Скип не возвращает трек в луп очереди, естественное завершение — возвращает.
+  if (s.skipFlag) { s.skipFlag = false; advance(s, finished, false); return; }
 
   const naturalEnd = !outcome || (outcome.kind === "eof" && isNaturalEnd(playedSec, finished?.duration));
   if (finished && s.loopMode === "track" && naturalEnd) { launch(s, finished, 0); return; }
@@ -331,8 +341,8 @@ function failForward(s: Session, reason: string): void {
   advance(s, null); // битый трек сознательно не возвращается в луп очереди
 }
 
-function advance(s: Session, finished: Track | null): void {
-  if (s.loopMode === "queue" && finished) s.queue.push(finished);
+function advance(s: Session, finished: Track | null, requeue = true): void {
+  if (requeue && s.loopMode === "queue" && finished) s.queue.push(finished);
   if (s.queue.length > 0) { playNext(s.guildId); return; }
   s.current = null;
   refreshActivityTimer(s);

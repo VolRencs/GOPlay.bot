@@ -5,6 +5,7 @@ import { ttlCacheAsync } from "../../../../../src/lib/cache.ts";
 import { moderationLabel } from "../../../../../src/lib/labels.ts";
 import { guildLang } from "../../../../../src/lib/i18n/bot.ts";
 import { DAY_MS } from "../../../../../src/lib/constants.ts";
+import type { StatsGet } from "../../../../../src/components/dashboard/types.ts";
 
 const iso = (at: number) => new Date(at).toISOString().slice(0, 10);
 
@@ -65,5 +66,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ guil
 
   const peakHour = (peakHourStmt.get(guildId, cutoff) as { day: string; hour: number; messages: number } | undefined) ?? null;
 
-  return NextResponse.json({ period, points, totals, moderation, topChannels, topUsers, peakHour });
+  return NextResponse.json<StatsGet>({ period, points, totals, moderation, topChannels, topUsers, peakHour });
 }

@@ -17,6 +17,7 @@ type Punishment = { id: number; guild_id: string; user_id: string; type: string;
 // берётся из guilds.appeal_counter.
 type Appeal = { id: number; number: number; guild_id: string; user_id: string; punishment_id: number; type: string; reason: string; moderator_comment: string | null; status: AppealStatus; created_at: number; updated_at: number; reviewed_by: string | null; reviewed_at: number | null };
 export type AppealView = Appeal & { punishment_reason: string | null; punishment_created_at: number };
+export type AppealsListGet = { appeals: AppealView[] };
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 type ReviewResultValue = { ok: true; value: ReviewResult } | { ok: false; error: string; status: number };

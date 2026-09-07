@@ -95,7 +95,8 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
   let background: Buffer | null = null;
   let bgDataUri: string | null = null;
   const backgroundPath = input.backgroundPath;
-  if (backgroundVersion && backgroundPath) {
+  // backgroundVersion === "none" означает инвалид: читать с диска нечего.
+  if (backgroundVersion !== "none" && backgroundPath) {
     background = await readFile(resolve(PUBLIC_ROOT, "." + backgroundPath)).catch(() => null);
     if (background) bgDataUri = `data:image/${backgroundPath.endsWith(".jpg") ? "jpeg" : backgroundPath.split(".").pop()};base64,${background.toString("base64")}`;
   }

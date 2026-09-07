@@ -2,14 +2,14 @@
 
 import { CardHeader, CheckList, Select, channelOptions, useAsyncAction } from "./ui.tsx";
 import type { Channel, Role } from "./types.ts";
-import type { MusicSettingsState } from "./types.ts";
+import type { MusicSettings } from "../../lib/music-settings.ts";
 
 export function MusicSettingsCard({ channels, voiceChannels, roles, value, onChange, onSave }: {
   channels: Channel[];
   voiceChannels: Channel[];
   roles: Role[];
-  value: MusicSettingsState;
-  onChange: (value: MusicSettingsState) => void;
+  value: MusicSettings;
+  onChange: (value: MusicSettings) => void;
   onSave: () => unknown;
 }) {
   const { busy: saving, run } = useAsyncAction();

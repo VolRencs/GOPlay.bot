@@ -7,7 +7,7 @@ import { cleanupOrphanedFiles, embedUploadPrefix, embedUploadsDir, extractFilena
 import { logger } from "../../../../../src/bot/utils/logger.ts";
 import { BOT_TOKEN_ERROR } from "../../../../../src/lib/constants.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "../../../../../src/lib/assets.ts";
-import type { EmbedPayload } from "../../../../../src/components/dashboard/types.ts";
+import type { EmbedPayload, EmbedSending, EmbedsGet, SavedEmbed } from "../../../../../src/components/dashboard/types.ts";
 
 type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedPayload };
 
@@ -25,8 +25,8 @@ async function cleanupUnusedDraftImages(guildId:string) {
 
 export async function GET(request:Request,{params}:{params:Promise<{guildId:string}>}) {
   const {guildId}=await params; const a=await withGuild(guildId); if(a instanceof Response) return a;
-  const embeds=db.prepare("SELECT * FROM embeds WHERE guild_id=? ORDER BY updated_at DESC").all(guildId) as {id:number;name:string;payload_json:string;channel_id:string|null;message_id:string|null;mode:string}[];
-  let sendings=db.prepare("SELECT s.id,s.embed_id,s.channel_id,s.message_id,s.sent_at FROM embed_sendings s WHERE s.guild_id=? ORDER BY s.sent_at DESC LIMIT 50").all(guildId) as {id:number;embed_id:number;channel_id:string;message_id:string;sent_at:number}[];
+  const embeds=db.prepare("SELECT * FROM embeds WHERE guild_id=? ORDER BY updated_at DESC").all(guildId) as SavedEmbed[];
+  let sendings=db.prepare("SELECT s.id,s.embed_id,s.channel_id,s.message_id,s.sent_at FROM embed_sendings s WHERE s.guild_id=? ORDER BY s.sent_at DESC LIMIT 50").all(guildId) as EmbedSending[];
   const verify=new URL(request.url).searchParams.get("verify")==="1";
   if(verify&&process.env.DISCORD_TOKEN&&sendings.length>0){
     const staleIds:number[]=[];
@@ -48,7 +48,7 @@ export async function GET(request:Request,{params}:{params:Promise<{guildId:stri
     }
     if(staleIds.length>0){ db.prepare(`DELETE FROM embed_sendings WHERE id IN (${staleIds.map(()=>"?").join(",")})`).run(...staleIds); sendings=sendings.filter(s=>!staleIds.includes(s.id)); }
   }
-  return NextResponse.json({embeds,sendings});
+  return NextResponse.json<EmbedsGet>({embeds,sendings});
 }
 
 export async function POST(request:Request,{params}:{params:Promise<{guildId:string}>}) {

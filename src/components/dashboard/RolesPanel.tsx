@@ -2,12 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { buttonColorOptions, type Channel, type EmbedSending, type Role, type SavedEmbed, type ServerEmoji } from "./types.ts";
+import { buttonColorOptions, type Channel, type EmbedSending, type EmbedsGet, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
 import { CardHeader, confirmAction, EmojiPicker, Select, TemplateLibrary, useAsyncAction } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 
-type SavedRolePanel = { id: number; channel_id: string; message_id: string; title: string; style: "buttons" | "select" | "reaction"; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string; options: { role_id: string; label: string | null; emoji: string | null; button_color: string }[] };
-type RoleRow = { id: number; channel_id: string | null; message_id: string | null; title: string | null; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null; role_id: string | null; label: string | null; emoji: string | null; button_color: string | null };
 type PanelOptionInput = { roleId: string; label: string; emoji: string; buttonColor: string };
 const defaultPanelOption = { roleId: "", label: "", emoji: "", buttonColor: "primary" };
 
@@ -63,11 +61,11 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
 
   const load = async () => {
     const [embedData, rows] = await Promise.all([
-      apiGet(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }),
-      apiGet<RoleRow[]>(`/api/guilds/${guildId}/roles`, []),
+      apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }),
+      apiGet<RolePanelRow[]>(`/api/guilds/${guildId}/roles`, []),
     ]);
-    setEmbeds(embedData.embeds ?? []);
-    setSendings(embedData.sendings ?? []);
+    setEmbeds(embedData.embeds);
+    setSendings(embedData.sendings);
     const map = new Map<number, SavedRolePanel>();
     for (const row of rows) {
       let panel = map.get(row.id);

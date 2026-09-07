@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ServerStats } from "./types.ts";
-
-type StatsData = { period: "24h" | "7d" | "30d"; points: { label: string; messages: number }[]; totals: { joins: number; leaves: number; messages: number; moderation: number }; moderation: { type: string; label: string; count: number }[]; topChannels: { id: string; name: string; messages: number }[]; topUsers: { id: string; name: string; messages: number }[]; peakHour: { day: string; hour: number; messages: number } | null };
+import type { ServerStats, StatsGet } from "./types.ts";
 
 const num = (value: number) => value.toLocaleString("ru-RU");
 
@@ -33,7 +31,7 @@ function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] |
 
 export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guildId: string }) {
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("7d");
-  const [data, setData] = useState<StatsData | null>(null);
+  const [data, setData] = useState<StatsGet | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -42,7 +40,7 @@ export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guild
     setLoaded(false);
     setData(null);
     fetch(`/api/guilds/${guildId}/stats?period=${period}`, { signal: controller.signal })
-      .then(r => r.ok ? r.json() : null)
+      .then(r => r.ok ? r.json() as Promise<StatsGet> : null)
       .then(value => { if (!controller.signal.aborted) setData(value); })
       .catch(() => null)
       .finally(() => { if (!controller.signal.aborted) setLoaded(true); });

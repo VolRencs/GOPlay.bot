@@ -1,24 +1,24 @@
 import { NextResponse } from "next/server.js";
 import { discordFetch, withGuild } from "../../../../../src/lib/guild-access.ts";
-import { BOT_TOKEN_ERROR } from "../../../../../src/lib/constants.ts";
+import { BOT_TOKEN_ERROR, SERVER_FALLBACK_NAME } from "../../../../../src/lib/constants.ts";
 import { ttlCacheAsync } from "../../../../../src/lib/cache.ts";
+import type { ResourcesGet } from "../../../../../src/components/dashboard/types.ts";
 
 type DiscordChannel = { id: string; name: string; type: number; position: number };
 type DiscordRole = { id: string; name: string; managed: boolean; position: number };
 type DiscordEmoji = { id: string | null; name: string | null; animated: boolean };
 type DiscordMember = { roles: string[] };
-type Resources = { channels:{id:string;name:string}[]; voiceChannels:{id:string;name:string}[]; categories:{id:string;name:string}[]; roles:{id:string;name:string}[]; emojis:{id:string;name:string;animated:boolean;value:string}[];  server:{name:string;icon:string|null}; stats:{members:number|null;online:number|null;channels:number;roles:number} };
 
 const ttl = 60_000;
 class DiscordTokenMissingError extends Error {}
 
-const resourceCache = ttlCacheAsync<string, Resources>(async (guildId) => {
+const resourceCache = ttlCacheAsync<string, ResourcesGet>(async (guildId) => {
   const token = process.env.DISCORD_TOKEN, botUserId = process.env.DISCORD_CLIENT_ID;
   if (!token || !botUserId) throw new DiscordTokenMissingError("DISCORD_TOKEN missing");
   return loadResources(guildId, botUserId);
-}, ttl);
+}, ttl, true);
 
-async function loadResources(guildId: string, botUserId: string): Promise<Resources> {
+async function loadResources(guildId: string, botUserId: string): Promise<ResourcesGet> {
   const request = (path: string) => discordFetch(`/guilds/${guildId}/${path}`);
   const [channelsResponse, rolesResponse, emojisResponse, guildResponse, botMemberResponse] = await Promise.all([request("channels"), request("roles"), request("emojis"), discordFetch(`/guilds/${guildId}?with_counts=true`), request(`members/${botUserId}`)]);
   if (!channelsResponse.ok || !rolesResponse.ok || !botMemberResponse.ok) throw new Error("Discord guild resources are unavailable");
@@ -33,7 +33,7 @@ async function loadResources(guildId: string, botUserId: string): Promise<Resour
   const roles = allRoles.filter(role => !role.managed && role.name !== "@everyone" && role.position < botHighestPosition).sort((a, b) => b.position - a.position).map(({ id, name }) => ({ id, name }));
   const emojis = emojisResponse.ok ? (await emojisResponse.json() as DiscordEmoji[]).filter(emoji => emoji.id && emoji.name).map(emoji => ({ id: emoji.id!, name: emoji.name!, animated: emoji.animated, value: `<${emoji.animated ? "a" : ""}:${emoji.name!}:${emoji.id!}>` })) : [];
   const guild = guildResponse.ok ? await guildResponse.json() as { name?: string; icon?: string | null; approximate_member_count?: number; approximate_presence_count?: number } : {};
-  return { channels, voiceChannels, categories, roles, emojis, server: { name: guild.name ?? "Discord server", icon: guild.icon ?? null }, stats: { members: guild.approximate_member_count ?? null, online: guild.approximate_presence_count ?? null, channels: channels.length, roles: roles.length } };
+  return { channels, voiceChannels, categories, roles, emojis, server: { name: guild.name ?? SERVER_FALLBACK_NAME, icon: guild.icon ?? null }, stats: { members: guild.approximate_member_count ?? null, online: guild.approximate_presence_count ?? null } };
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ guildId: string }> }) {

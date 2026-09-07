@@ -84,3 +84,18 @@ export const cleanupTargetsM: { key: CleanupTarget; label: Bi; description: Bi; 
   { key: "events", label: { ru: "События", en: "Events" }, description: { ru: "Все события сервера, их участники и запланированные напоминания.", en: "All server events, participants and scheduled reminders." }, confirm: { ru: "Удалить все события сервера? Это действие нельзя отменить.", en: "Delete all server events? This cannot be undone." }, done: { ru: "Все события сервера удалены.", en: "All server events deleted." } },
 ];
 export const cleanupTargets: { key: CleanupTarget; label: string; description: string; confirm: string; done: string }[] = cleanupTargetsM.map(t => ({ key: t.key, label: t.label.ru, description: t.description.ru, confirm: t.confirm.ru, done: t.done.ru }));
+
+export type LoggingPutBody = {
+  channelId: string | null;
+  categories: Record<string, boolean>;
+};
+
+export function buildLoggingPutBody(s: { channelId: string; categories: Record<string, boolean> }): LoggingPutBody {
+  return { channelId: s.channelId || null, categories: { ...s.categories } };
+}
+
+export type LoggingGet = { channel_id: string | null; categories_json: string };
+
+export function clampMusicSeconds(seconds: number): number {
+  return seconds === 0 ? 0 : Math.max(30, Math.min(3600, seconds));
+}

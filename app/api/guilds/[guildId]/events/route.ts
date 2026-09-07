@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server.js";
 import { randomUUID } from "node:crypto";
-import { discordFetch, guildMemberNames, withGuild } from "../../../../../src/lib/guild-access.ts";
+import { discordFetch, guildMemberNames, isSnowflake, withGuild } from "../../../../../src/lib/guild-access.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 import { guildLang } from "../../../../../src/lib/i18n/bot.ts";
 import { BOT_TOKEN_ERROR, buttonStyleId } from "../../../../../src/lib/constants.ts";
 import { db } from "../../../../../src/db/database.ts";
 import { cleanupOrphanedFiles, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "../../../../../src/lib/uploads.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "../../../../../src/lib/assets.ts";
-import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "../../../../../src/lib/events.ts";
+import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventListGet, type EventRow, type RenderableEvent, type RenderedEventButton } from "../../../../../src/lib/events.ts";
 
 type EventImageTarget = "thumbnail" | "image";
 
@@ -69,7 +69,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ guildId: s
   const access = await withGuild(guildId);
   if (access instanceof Response) return access;
   const names = await guildMemberNames(guildId).catch(() => new Map<string, string>());
-  return NextResponse.json({ events: listEvents(guildId).map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
+  return NextResponse.json<EventListGet>({ events: listEvents(guildId).map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
@@ -160,6 +160,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ g
   const participant = url.searchParams.get("participant");
   const token = process.env.DISCORD_TOKEN;
   if (participant) {
+    if (!isSnowflake(participant)) return NextResponse.json({ error: "Некорректный ID участника." }, { status: 400 });
     const result = removeParticipant(id, participant, guildId);
     if (!result) return NextResponse.json({ error: "Событие или участник не найдены." }, { status: 404 });
     const event = getEventInGuild(guildId, id);
