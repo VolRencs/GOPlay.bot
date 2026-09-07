@@ -32,7 +32,6 @@
   --inset-line: rgba(193, 94, 255, .14);
 
   --grad: linear-gradient(100deg, var(--violet), var(--pink));
-  --grad-hover: linear-gradient(100deg, #9f45ff, #ff4ac8);
   --grad-panel: linear-gradient(145deg, rgba(29, 17, 53, .88), rgba(13, 8, 27, .86));
   --grad-active: linear-gradient(90deg, rgba(157, 46, 255, .25), rgba(255, 44, 189, .13));
 
@@ -113,7 +112,7 @@ button { font: inherit; color: inherit; }
   font-weight: 650;
   text-decoration: none;
   cursor: pointer;
-  transition: transform var(--t), box-shadow var(--t), filter var(--t), background var(--t), border-color var(--t);
+  transition: box-shadow var(--t), filter var(--t), background var(--t), border-color var(--t);
 }
 
 .btn:hover {
@@ -169,8 +168,6 @@ button { font: inherit; color: inherit; }
 }
 
 .btn.icon-only { padding: .45rem; line-height: 1; }
-
-.btn.small:hover { transform: none; }
 
 textarea,
 .select-trigger,
@@ -515,7 +512,7 @@ code {
 }
 
 .hero h1 {
-  margin: .5rem 0 1.4rem;
+  margin: 0 0 1.4rem;
   font-size: clamp(3rem, 7vw, 6.2rem);
   letter-spacing: -.07em;
   line-height: .92;
@@ -671,7 +668,14 @@ code {
   display: inline-flex;
   align-items: center;
   gap: .35rem;
+  color: #edbcff;
+  font-weight: 700;
+  text-decoration: none;
 }
+
+.landing-footer-links a:hover { color: #fff; text-decoration: underline; }
+
+.landing-footer-links svg { flex: none; }
 
 .auth-page {
   display: flex;
