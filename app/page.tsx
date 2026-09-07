@@ -1,5 +1,4 @@
 import { Bot, Check, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
-import type { ReactNode } from "react";
 import UserMenu from "../src/components/user-menu.tsx";
 import { accountAccess } from "../src/lib/access.ts";
 
@@ -9,13 +8,14 @@ function GithubMark() {
   </svg>;
 }
 
-function ExtLink({ href, children }: { href: string; children: ReactNode }) {
-  return <a href={href} target="_blank" rel="noreferrer">{children}</a>;
-}
-
 const GITHUB_REPO = "https://github.com/VolRencs/GOPlay.bot";
 const GITHUB_ISSUES = "https://github.com/VolRencs/GOPlay.bot/issues";
 const GITHUB_LICENSE = "https://github.com/VolRencs/GOPlay.bot/blob/Dev/LICENSE";
+
+const footerLinks = [
+  { href: GITHUB_REPO, label: "GitHub", mark: true },
+  { href: GITHUB_ISSUES, label: "Сообщить об ошибке", mark: false },
+] as const;
 
 const features = [
   [Sparkles, "Приветствия", "Текст, изображения и шаблоны для новых участников."],
@@ -57,10 +57,9 @@ export default async function Home() {
       </article>)}
     </section>
     <footer className="landing-footer">
-      <p>GOPlay — открытый исходный код под <ExtLink href={GITHUB_LICENSE}>GPL-3.0</ExtLink>.</p>
+      <p>GOPlay — открытый исходный код под <a href={GITHUB_LICENSE} target="_blank" rel="noreferrer">GPL-3.0</a>.</p>
       <nav className="landing-footer-links" aria-label="Ссылки проекта">
-        <ExtLink href={GITHUB_REPO}><GithubMark/>GitHub</ExtLink>
-        <ExtLink href={GITHUB_ISSUES}>Сообщить об ошибке</ExtLink>
+        {footerLinks.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer">{link.mark && <GithubMark/>}{link.label}</a>)}
       </nav>
     </footer>
   </main>;

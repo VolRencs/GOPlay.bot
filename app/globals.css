@@ -512,7 +512,7 @@ code {
 }
 
 .hero h1 {
-  margin: 0 0 1.4rem;
+  margin: 1.5rem 0 1.4rem;
   font-size: clamp(3rem, 7vw, 6.2rem);
   letter-spacing: -.07em;
   line-height: .92;
@@ -634,10 +634,13 @@ code {
   color: #f1b3ff;
 }
 
-.landing-footer {
+.landing-footer, .landing-footer-links {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.landing-footer {
   justify-content: space-between;
   gap: .75rem 1.5rem;
   margin-top: 1.5rem;
@@ -650,21 +653,6 @@ code {
 .landing-footer p { margin: 0; }
 
 .landing-footer a {
-  color: #edbcff;
-  font-weight: 700;
-  text-decoration: none;
-}
-
-.landing-footer a:hover { color: #fff; text-decoration: underline; }
-
-.landing-footer-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: .5rem 1.1rem;
-}
-
-.landing-footer-links a {
   display: inline-flex;
   align-items: center;
   gap: .35rem;
@@ -673,7 +661,9 @@ code {
   text-decoration: none;
 }
 
-.landing-footer-links a:hover { color: #fff; text-decoration: underline; }
+.landing-footer a:hover { color: #fff; text-decoration: underline; }
+
+.landing-footer-links { gap: .5rem 1.1rem; }
 
 .landing-footer-links svg { flex: none; }
 
