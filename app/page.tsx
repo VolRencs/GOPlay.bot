@@ -10,7 +10,6 @@ function GithubMark({ size = 16 }: { size?: number }) {
 
 const GITHUB_REPO = "https://github.com/VolRencs/GOPlay.bot";
 const GITHUB_ISSUES = "https://github.com/VolRencs/GOPlay.bot/issues";
-const GITHUB_NEW_ISSUE = "https://github.com/VolRencs/GOPlay.bot/issues/new";
 const GITHUB_LICENSE = "https://github.com/VolRencs/GOPlay.bot/blob/Dev/LICENSE";
 
 const features = [
@@ -57,9 +56,7 @@ export default async function Home() {
       <p>GOPlay — открытый исходный код под <a href={GITHUB_LICENSE} target="_blank" rel="noreferrer">GPL-3.0</a>.</p>
       <nav className="landing-footer-links" aria-label="Ссылки проекта">
         <a href={GITHUB_REPO} target="_blank" rel="noreferrer"><GithubMark size={15}/>GitHub</a>
-        <a href={GITHUB_NEW_ISSUE} target="_blank" rel="noreferrer">Сообщить об ошибке</a>
-        <a href={GITHUB_ISSUES} target="_blank" rel="noreferrer">Issues</a>
-        <a href={GITHUB_LICENSE} target="_blank" rel="noreferrer">Лицензия</a>
+        <a href={GITHUB_ISSUES} target="_blank" rel="noreferrer">Сообщить об ошибке</a>
       </nav>
     </footer>
   </main>;
