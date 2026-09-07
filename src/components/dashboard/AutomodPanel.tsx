@@ -89,7 +89,7 @@ function DomainListEditor({ domains, onChange }: { domains: string[]; onChange: 
         ? <div className="domain-list">{list.map((domain, index) => (
             <span className="domain-item" key={`${domain}-${index}`}>
               <input value={domain} aria-label={`Домен ${index + 1}`} onChange={e => update(index, e.target.value)}/>
-              <button type="button" className="btn danger small" onClick={() => onChange(list.filter((_, i) => i !== index))} aria-label={`Удалить ${domain}`}><Trash2 size={14}/></button>
+              <button type="button" className="btn danger small icon-only" onClick={() => onChange(list.filter((_, i) => i !== index))} aria-label={`Удалить ${domain}`}><Trash2 size={14}/></button>
             </span>
           ))}</div>
         : <span className="hint">Домены без протокола, например example.com. Проверяется точное имя хоста — при необходимости добавьте поддомен отдельно.</span>}

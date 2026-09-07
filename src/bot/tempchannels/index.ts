@@ -6,6 +6,7 @@ import { count } from "../perf.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { parseStringArray } from "../../lib/json.ts";
 import { DEFAULT_SETTINGS, type TempConfig } from "../../lib/tempchannels.ts";
+import { stopAndLeave } from "../../lib/player/session.ts";
 import { tempTr, guildLang } from "../../lib/i18n/bot.ts";
 import { isMissingDiscordResource, replyInteractionError } from "../../lib/errors.ts";
 
@@ -68,7 +69,11 @@ async function handleOwnerLeave(guild: Guild, userId: string) {
 
 async function handleVoiceState(oldState: VoiceState, newState: VoiceState) {
   count("events.voice_state");
-  const guild = newState.guild;
+  const guild = newState.guild ?? oldState.guild;
+  if (oldState.channelId && oldState.channelId !== newState.channelId) {
+    const row = stmt.tempByChannel.get(oldState.channelId) as TempRow | undefined;
+    if (row) scheduleEmptinessCheck(guild, oldState.channelId);
+  }
   const config = guildConfig(guild.id);
   if (!config) return;
   const member = newState.member ?? oldState.member;
@@ -76,10 +81,6 @@ async function handleVoiceState(oldState: VoiceState, newState: VoiceState) {
 
   if (newState.channelId && newState.channelId !== oldState.channelId && config.has(newState.channelId)) {
     await handleTriggerJoin(guild, member, newState.channelId);
-  }
-  if (oldState.channelId && oldState.channelId !== newState.channelId) {
-    const row = stmt.tempByChannel.get(oldState.channelId) as TempRow | undefined;
-    if (row) scheduleEmptinessCheck(guild, oldState.channelId, oldState.channel as VoiceChannel | null);
   }
 }
 
@@ -121,20 +122,25 @@ async function fetchTempChannel(guild: Guild, channelId: string): Promise<VoiceC
   );
 }
 
+function isTempEmpty(channel: VoiceChannel): boolean {
+  return !channel.members.some((m) => !m.user.bot);
+}
+
 // Один таймер на канал: уход всей компании эмитит по voice-event на каждого,
 // коалесинг в одну проверку даёт ровно одно удаление канала (и его DB/REST).
 const emptinessTimers = new Map<string, ReturnType<typeof setTimeout>>();
-function scheduleEmptinessCheck(guild: Guild, channelId: string, cachedChannel: VoiceChannel | null) {
+function scheduleEmptinessCheck(guild: Guild, channelId: string) {
   const existing = emptinessTimers.get(channelId);
   if (existing) clearTimeout(existing);
   emptinessTimers.set(channelId, setTimeout(async () => {
     emptinessTimers.delete(channelId);
     try {
-      const channel = cachedChannel ?? await fetchTempChannel(guild, channelId);
+      const channel = await fetchTempChannel(guild, channelId);
       if (channel === undefined) return; // транзиентный сбой — строка ждёт следующей проверки
       if (!channel) { stmt.tempDelete.run(channelId); return; }
-      if (channel.members.size === 0) {
+      if (isTempEmpty(channel)) {
         stmt.tempDelete.run(channelId);
+        if (guild.members.me?.voice.channelId === channelId) stopAndLeave(guild.id);
         await channel.delete().catch((error) => logger.warn("[TEMP] Удаление пустого канала не удалось", guild.id, error));
       }
     } catch (error) {
@@ -343,8 +349,9 @@ export async function cleanupTempChannels(client: Client) {
     const fetched = await fetchTempChannel(guild, row.channel_id);
     if (fetched === undefined) continue;
     if (!fetched) { stmt.tempDelete.run(row.channel_id); continue; }
-    if (fetched.members.size === 0) {
+    if (isTempEmpty(fetched)) {
       stmt.tempDelete.run(row.channel_id);
+      if (guild.members.me?.voice.channelId === row.channel_id) stopAndLeave(guild.id);
       await fetched.delete().catch((error) => logger.warn("[TEMP] Очистка канала не удалась", row.guild_id, error));
       continue;
     }

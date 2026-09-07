@@ -2,6 +2,17 @@ import { Bot, Check, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-r
 import UserMenu from "../src/components/user-menu.tsx";
 import { accountAccess } from "../src/lib/access.ts";
 
+function GithubMark({ size = 16 }: { size?: number }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+  </svg>;
+}
+
+const GITHUB_REPO = "https://github.com/VolRencs/GOPlay.bot";
+const GITHUB_ISSUES = "https://github.com/VolRencs/GOPlay.bot/issues";
+const GITHUB_NEW_ISSUE = "https://github.com/VolRencs/GOPlay.bot/issues/new";
+const GITHUB_LICENSE = "https://github.com/VolRencs/GOPlay.bot/blob/Dev/LICENSE";
+
 const features = [
   [Sparkles, "Приветствия", "Текст, изображения и шаблоны для новых участников."],
   [ShieldCheck, "Защита", "Настраиваемые правила против спама, ссылок и флуда."],
@@ -22,16 +33,17 @@ export default async function Home() {
     </nav>
     <section className="hero">
       <div>
-        <p className="eyebrow">GOPLAY · DISCORD BOT</p>
         <h1>Управляйте<br/><em>сервером проще.</em></h1>
         <p className="hero-text">Один бот и одна понятная панель для ежедневных задач вашего Discord-сервера.</p>
         <div className="hero-actions">
           <a className="btn" href={invite}><Bot size={18}/>Добавить бота</a>
           <a className="btn secondary" href="/dashboard">Открыть панель</a>
+          <a className="btn secondary" href={GITHUB_REPO} target="_blank" rel="noreferrer"><GithubMark size={18}/>Исходный код</a>
         </div>
         <ul className="hero-points">
           <li><Check size={16}/>Настройка без команд</li>
           <li><Check size={16}/>Роли и сообщения в одном месте</li>
+          <li><Check size={16}/>Открытый код под GPL-3.0</li>
         </ul>
       </div>
       <div className="hero-art" aria-hidden="true"><div className="hero-ring"/><img src="/bot-logo.png" alt=""/></div>
@@ -41,5 +53,14 @@ export default async function Home() {
         <span className="feature-icon"><Icon size={21}/></span><h2>{title}</h2><p>{text}</p>
       </article>)}
     </section>
+    <footer className="landing-footer">
+      <p>GOPlay — открытый исходный код под <a href={GITHUB_LICENSE} target="_blank" rel="noreferrer">GPL-3.0</a>.</p>
+      <nav className="landing-footer-links" aria-label="Ссылки проекта">
+        <a href={GITHUB_REPO} target="_blank" rel="noreferrer"><GithubMark size={15}/>GitHub</a>
+        <a href={GITHUB_NEW_ISSUE} target="_blank" rel="noreferrer">Сообщить об ошибке</a>
+        <a href={GITHUB_ISSUES} target="_blank" rel="noreferrer">Issues</a>
+        <a href={GITHUB_LICENSE} target="_blank" rel="noreferrer">Лицензия</a>
+      </nav>
+    </footer>
   </main>;
 }

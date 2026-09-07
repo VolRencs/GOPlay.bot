@@ -233,7 +233,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
                           return (
                             <span key={s.id} className="sending-item">#{ch?.name ?? s.channel_id} — {new Date(s.sent_at).toLocaleString("ru-RU")}
                               {" "}
-                              <button type="button" className="sending-remove" aria-label={`Удалить отправленную копию от ${new Date(s.sent_at).toLocaleString("ru-RU")}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
+                              <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${new Date(s.sent_at).toLocaleString("ru-RU")}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
                             </span>
                           );
                         })}

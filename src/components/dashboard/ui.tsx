@@ -386,14 +386,17 @@ export function ModalShell({ labelledBy, onClose, children }: { labelledBy: stri
   return <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby={labelledBy}><div ref={dialogRef} className="modal">{children}</div></div>;
 }
 
-type ConfirmItem = { message: string; confirmLabel: string; resolve: (ok: boolean) => void };
+type ConfirmTone = "default" | "danger";
+type ConfirmItem = { message: string; confirmLabel: string; tone: ConfirmTone; resolve: (ok: boolean) => void };
 let queue: ConfirmItem[] = [];
 const subscribers = new Set<(items: ConfirmItem[]) => void>();
 const emit = () => { for (const subscriber of subscribers) subscriber(queue); };
 
-export function confirmAction(message: string, confirmLabel = "Подтвердить"): Promise<boolean> {
+const DESTRUCTIVE_LABEL = /удали|убра|стереть|сотр|очист/i;
+
+export function confirmAction(message: string, confirmLabel = "Подтвердить", opts?: { tone?: ConfirmTone }): Promise<boolean> {
   return new Promise(resolve => {
-    const item: ConfirmItem = { message, confirmLabel, resolve };
+    const item: ConfirmItem = { message, confirmLabel, tone: opts?.tone ?? (DESTRUCTIVE_LABEL.test(confirmLabel) ? "danger" : "default"), resolve };
     queue = [...queue, item];
     emit();
   });
@@ -418,7 +421,7 @@ export function ConfirmHost() {
     <h2 id="confirm-dialog-title">Подтвердите действие</h2>
     <p className="muted">{current.message}</p>
     <div className="modal-actions">
-      <button type="button" className="btn" onClick={() => close(true)}>{current.confirmLabel}</button>
+      <button type="button" className={current.tone === "danger" ? "btn danger" : "btn"} onClick={() => close(true)}>{current.confirmLabel}</button>
       <button type="button" data-autofocus className="btn secondary" onClick={() => close(false)}>Отмена</button>
     </div>
   </ModalShell>;
