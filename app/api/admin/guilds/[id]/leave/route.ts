@@ -1,24 +1,21 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, isSnowflake, requireAdmin } from "../../../../../../src/lib/guild-access.ts";
+import { adminRoute, discordFetch, isSnowflake, jsonError, readJson } from "../../../../../../src/lib/guild-access.ts";
 import { wipeGuildData } from "../../../../../../src/lib/server-cleanup.ts";
 import { deleteGuildFiles } from "../../../../../../src/lib/uploads.ts";
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await requireAdmin();
-  if (gate instanceof Response) return gate;
-  const { id: guildId } = await params;
+export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) => {
   // не-snowflake вида ".." превратил бы стирание в обход каталога загрузок.
-  if (!isSnowflake(guildId)) return NextResponse.json({ error: "Некорректный идентификатор сервера." }, { status: 400 });
-  const body = await request.json().catch(() => null) as { wipe?: unknown } | null;
+  if (!isSnowflake(guildId)) return jsonError("Некорректный идентификатор сервера.");
+  const body = await readJson<{ wipe?: unknown }>(request);
   const wipe = Boolean(body?.wipe);
 
   let leftOnDiscord = true;
   try {
     const response = await discordFetch(`/users/@me/guilds/${guildId}`, { method: "DELETE" });
     if (response.status === 404) leftOnDiscord = false; // бот уже не на сервере
-    else if (!response.ok) return NextResponse.json({ error: `Discord ответил ${response.status}.` }, { status: 502 });
+    else if (!response.ok) return jsonError(`Discord ответил ${response.status}.`, 502);
   } catch {
-    return NextResponse.json({ error: "Не удалось связаться с Discord." }, { status: 502 });
+    return jsonError("Не удалось связаться с Discord.", 502);
   }
 
   if (wipe) {
@@ -33,4 +30,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   return NextResponse.json({ ok: true, leftOnDiscord, wiped: wipe });
-}
+});

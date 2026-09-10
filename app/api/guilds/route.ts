@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server.js";
-import { headers } from "next/headers.js";
-import { DiscordRateLimitError, canManageGuild, discordGuilds, requireUser } from "../../../src/lib/guild-access.ts";
+import { DiscordRateLimitError, canManageGuild, discordGuilds, requireUser, jsonError } from "../../../src/lib/guild-access.ts";
 import { db } from "../../../src/db/database.ts";
 import { logger } from "../../../src/bot/utils/logger.ts";
 import type { GuildListGet } from "../../../src/components/dashboard/types.ts";
 
 export async function GET() {
   const gate = await requireUser();
-  if (!gate.ok) return NextResponse.json({ error: gate.error }, { status: gate.status });
+  if (!gate.ok) return jsonError(gate.error, gate.status);
 
   try {
-    const requestHeaders = await headers();
-    const allowed = (await discordGuilds(requestHeaders)).filter(canManageGuild);
+    const allowed = (await discordGuilds(gate.requestHeaders, gate.discordAccount?.id)).filter(canManageGuild);
     if (!allowed.length) return NextResponse.json([]);
     const marks = allowed.map(() => "?").join(","), configured = new Set((db.prepare(`SELECT id FROM guilds WHERE id IN (${marks})`).all(...allowed.map(guild=>guild.id)) as {id:string}[]).map(row=>row.id));
     return NextResponse.json<GuildListGet>(allowed.filter(guild=>configured.has(guild.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(({id,name,icon})=>({id,name,icon})));

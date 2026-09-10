@@ -9,3 +9,12 @@ export const SERVER_FALLBACK_NAME = "Discord server";
 export const BUTTON_STYLE_IDS = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;
 type ButtonStyleName = keyof typeof BUTTON_STYLE_IDS;
 export const buttonStyleId = (name: string): number => BUTTON_STYLE_IDS[name as ButtonStyleName] ?? BUTTON_STYLE_IDS.primary;
+
+/** Парсит число в диапазон: нечисло → fallback; mode — округление/целочисленность. */
+export function clampNumber(value: unknown, fallback: number, min: number, max: number, mode: "exact" | "round" | "integer" = "exact"): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (mode === "integer" && !Number.isInteger(parsed)) return fallback;
+  const next = mode === "round" ? Math.round(parsed) : parsed;
+  return Math.min(max, Math.max(min, next));
+}

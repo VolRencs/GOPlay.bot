@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server.js";
-import { DiscordRateLimitError, discordFetch, isSnowflake, withGuild } from "../../../../../src/lib/guild-access.ts";
+import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
 import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { safeJson } from "../../../../../src/lib/json.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
@@ -11,22 +11,36 @@ import type { EmbedPayload, EmbedSending, EmbedsGet, SavedEmbed } from "../../..
 
 type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedPayload };
 
+// Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
+const embedListStmt = db.prepare("SELECT * FROM embeds WHERE guild_id=? ORDER BY updated_at DESC");
+const sendingListStmt = db.prepare("SELECT s.id,s.embed_id,s.channel_id,s.message_id,s.sent_at FROM embed_sendings s WHERE s.guild_id=? ORDER BY s.sent_at DESC LIMIT 50");
+const embedPayloadsStmt = db.prepare("SELECT payload_json FROM embeds WHERE guild_id=?");
+const embedSaveUpdateStmt = db.prepare("UPDATE embeds SET name=?,payload_json=?,mode=?,channel_id=COALESCE(NULLIF(?,''),channel_id),updated_at=? WHERE id=? AND guild_id=?");
+const embedSaveInsertStmt = db.prepare("INSERT INTO embeds(guild_id,name,payload_json,channel_id,mode,updated_at) VALUES(?,?,?,?,?,?)");
+const embedByIdStmt = db.prepare("SELECT channel_id,message_id,payload_json,name FROM embeds WHERE id=? AND guild_id=?");
+const embedPublishUpdateStmt = db.prepare("UPDATE embeds SET name=?,payload_json=?,channel_id=?,message_id=?,mode=?,updated_at=? WHERE id=? AND guild_id=?");
+const embedPublishInsertStmt = db.prepare("INSERT INTO embeds(guild_id,name,payload_json,channel_id,message_id,mode,updated_at) VALUES(?,?,?,?,?,?,?)");
+const sendingInsertStmt = db.prepare("INSERT INTO embed_sendings(guild_id,embed_id,channel_id,message_id,sent_at) VALUES(?,?,?,?,?)");
+const sendingByIdStmt = db.prepare("SELECT channel_id,message_id FROM embed_sendings WHERE id=? AND guild_id=?");
+const sendingDeleteStmt = db.prepare("DELETE FROM embed_sendings WHERE id=? AND guild_id=?");
+const sendingsByEmbedDeleteStmt = db.prepare("DELETE FROM embed_sendings WHERE embed_id=? AND guild_id=?");
+const embedDeleteStmt = db.prepare("DELETE FROM embeds WHERE id=? AND guild_id=?");
+
 function draftImageNames(payloadJson:string,guildId:string) {
   const payload=safeJson<{author?:{icon_url?:string};thumbnail?:{url?:string};image?:{url?:string}}>(payloadJson,{});
   return extractFilenames(embedUploadPrefix(guildId), [payload.author?.icon_url, payload.thumbnail?.url, payload.image?.url]);
 }
 
 async function cleanupUnusedDraftImages(guildId:string) {
-  const referenced=new Set(db.prepare("SELECT payload_json FROM embeds WHERE guild_id=?").all(guildId).flatMap(row=>draftImageNames(String((row as {payload_json:string}).payload_json),guildId)));
+  const referenced=new Set(embedPayloadsStmt.all(guildId).flatMap(row=>draftImageNames(String((row as {payload_json:string}).payload_json),guildId)));
   // Тот же часовой minAge, что у events: файл мог быть записан параллельным
   // сохранением, которое ещё не закоммитило ссылку в БД.
   await cleanupOrphanedFiles(embedUploadsDir(guildId), referenced, 60 * 60_000);
 }
 
-export async function GET(request:Request,{params}:{params:Promise<{guildId:string}>}) {
-  const {guildId}=await params; const a=await withGuild(guildId); if(a instanceof Response) return a;
-  const embeds=db.prepare("SELECT * FROM embeds WHERE guild_id=? ORDER BY updated_at DESC").all(guildId) as SavedEmbed[];
-  let sendings=db.prepare("SELECT s.id,s.embed_id,s.channel_id,s.message_id,s.sent_at FROM embed_sendings s WHERE s.guild_id=? ORDER BY s.sent_at DESC LIMIT 50").all(guildId) as EmbedSending[];
+export const GET = guildRoute(async (request, { guildId }) => {
+  const embeds=embedListStmt.all(guildId) as SavedEmbed[];
+  let sendings=sendingListStmt.all(guildId) as EmbedSending[];
   const verify=new URL(request.url).searchParams.get("verify")==="1";
   if(verify&&process.env.DISCORD_TOKEN&&sendings.length>0){
     const staleIds:number[]=[];
@@ -49,10 +63,9 @@ export async function GET(request:Request,{params}:{params:Promise<{guildId:stri
     if(staleIds.length>0){ db.prepare(`DELETE FROM embed_sendings WHERE id IN (${staleIds.map(()=>"?").join(",")})`).run(...staleIds); sendings=sendings.filter(s=>!staleIds.includes(s.id)); }
   }
   return NextResponse.json<EmbedsGet>({embeds,sendings});
-}
+});
 
-export async function POST(request:Request,{params}:{params:Promise<{guildId:string}>}) {
-  const {guildId}=await params, access=await withGuild(guildId); if(access instanceof Response)return access;
+export const POST = guildRoute(async (request, { guildId, user }) => {
   const oversized=rejectOversized(request); if(oversized) return oversized;
   const form=request.headers.get("content-type")?.includes("multipart/form-data")?await request.formData():null;
   let data:RequestData;
@@ -60,23 +73,24 @@ export async function POST(request:Request,{params}:{params:Promise<{guildId:str
     const serialized=form?.get("data");
     data=(form?JSON.parse(typeof serialized==="string"?serialized:"{}"):await request.json()) as RequestData;
   } catch {
-    return NextResponse.json({error:"Не удалось прочитать данные сообщения. Попробуйте выбрать изображение заново."},{status:400});
+    return jsonError("Не удалось прочитать данные сообщения. Попробуйте выбрать изображение заново.");
   }
   if(form) {
     const formName=form.get("name"), formChannelId=form.get("channelId");
     if(typeof formName==="string")data.name=formName;
     if(typeof formChannelId==="string")data.channelId=formChannelId;
   }
-  if(!data.payload||typeof data.payload!=="object")return NextResponse.json({error:"Некорректные данные сообщения."},{status:400});
-  if(!data.name?.trim()||(!data.saveOnly&&!data.updateMessage&&!data.channelId)) return NextResponse.json({error:data.saveOnly?"Укажите название шаблона":"Укажите название и канал"},{status:400});
+  if(!data||typeof data!=="object")return jsonError("Некорректные данные сообщения.");
+  if(!data.payload||typeof data.payload!=="object")return jsonError("Некорректные данные сообщения.");
+  if(typeof data.name!=="string"||!data.name.trim()||(!data.saveOnly&&!data.updateMessage&&!data.channelId)) return jsonError(data.saveOnly?"Укажите название шаблона":"Укажите название и канал");
   // channelId интерполируется в путь Discord REST — только snowflake.
-  if(data.channelId&&!isSnowflake(data.channelId))return NextResponse.json({error:"Некорректный канал."},{status:400});
-  if(data.name.trim().length>100)return NextResponse.json({error:"Название шаблона не должно превышать 100 символов."},{status:400});
+  if(data.channelId&&!isSnowflake(data.channelId))return jsonError("Некорректный канал.");
+  if(data.name.trim().length>100)return jsonError("Название шаблона не должно превышать 100 символов.");
   const rawPayload=data.payload as Record<string,unknown>;
   const text=(v:unknown):string|undefined=>typeof v==="string"?v:undefined;
   const fieldsRaw=Array.isArray(rawPayload.fields)?rawPayload.fields.filter((f):f is Record<string,unknown>=>Boolean(f)&&typeof f==="object"):[];
   const enteredFields=fieldsRaw.map(f=>({name:text(f.name)??"",value:text(f.value)??"",inline:Boolean(f.inline)}));
-  if(enteredFields.some(f=>Boolean(f.name.trim())!==Boolean(f.value.trim())))return NextResponse.json({error:"Заполните и заголовок, и текст каждого поля или очистите поле полностью."},{status:400});
+  if(enteredFields.some(f=>Boolean(f.name.trim())!==Boolean(f.value.trim())))return jsonError("Заполните и заголовок, и текст каждого поля или очистите поле полностью.");
   const clean=(value?:string)=>value?.trim()||undefined;
   const footerText=text((rawPayload.footer as {text?:unknown}|undefined)?.text);
   const authorName=text((rawPayload.author as {name?:unknown}|undefined)?.name);
@@ -102,56 +116,57 @@ export async function POST(request:Request,{params}:{params:Promise<{guildId:str
     originals=stored.originals;
   } catch (error) {
     if (!(error instanceof AssetError)) throw error;
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return jsonError(error.message);
   }
   const persistAssets=async()=>persistUploadedAssets(embedUploadsDir(guildId),embedUploadPrefix(guildId),assets,originals,setAsset);
   const mode=data.mode==="text"?"text":"embed";
-  if(mode==="text"&&(payload.description?.length??0)>2000)return NextResponse.json({error:"Текст сообщения не должен превышать 2000 символов."},{status:400});
+  if(mode==="text"&&(payload.description?.length??0)>2000)return jsonError("Текст сообщения не должен превышать 2000 символов.");
   if(data.saveOnly) {
     await persistAssets();
     const saved=JSON.stringify(payload), result=data.id
-      ? db.prepare("UPDATE embeds SET name=?,payload_json=?,mode=?,channel_id=COALESCE(NULLIF(?,''),channel_id),updated_at=? WHERE id=? AND guild_id=?").run(data.name.trim(),saved,mode,data.channelId??"",Date.now(),data.id,guildId)
-      : db.prepare("INSERT INTO embeds(guild_id,name,payload_json,channel_id,mode,updated_at) VALUES(?,?,?,?,?,?)").run(guildId,data.name.trim(),saved,data.channelId||null,mode,Date.now());
+      ? embedSaveUpdateStmt.run(data.name.trim(),saved,mode,data.channelId??"",Date.now(),data.id,guildId)
+      : embedSaveInsertStmt.run(guildId,data.name.trim(),saved,data.channelId||null,mode,Date.now());
+    // Шаблон мог быть удалён в другой вкладке: не рапортуем успех и не пишем аудит впустую.
+    if (data.id && result.changes === 0) return jsonError("Шаблон не найден.", 404);
     await cleanupUnusedDraftImages(guildId);
-    recordDashboardChange(guildId,access.user,"Embeds",`Шаблон «${data.name.trim()}» ${data.id ? "изменён" : "создан"} (${mode === "text" ? "текст" : "embed"})`);
+    recordDashboardChange(guildId,user,"Embeds",`Шаблон «${data.name.trim()}» ${data.id ? "изменён" : "создан"} (${mode === "text" ? "текст" : "embed"})`);
     return NextResponse.json({ok:true,id:data.id??Number(result.lastInsertRowid)});
   }
-  const current=data.id?db.prepare("SELECT channel_id,message_id FROM embeds WHERE id=? AND guild_id=?").get(data.id,guildId) as {channel_id:string|null;message_id:string|null}|undefined:undefined;
-  if(data.updateMessage&&(!current?.channel_id||!current.message_id))return NextResponse.json({error:"Сначала отправьте шаблон в канал — обновлять пока нечего."},{status:400});
-  const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return NextResponse.json({error:BOT_TOKEN_ERROR},{status:503});
+  const current=data.id?embedByIdStmt.get(data.id,guildId) as {channel_id:string|null;message_id:string|null}|undefined:undefined;
+  if(data.updateMessage&&(!current?.channel_id||!current.message_id))return jsonError("Сначала отправьте шаблон в канал — обновлять пока нечего.");
+  const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return jsonError(BOT_TOKEN_ERROR, 503);
   // allowed_mentions: панель публикует от имени бота — упоминания в тексте
   // не должны пинговать никого (в т.ч. @everyone).
   const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[payload],allowed_mentions:{parse:[]}}; let body:BodyInit=JSON.stringify(bodyData), headers:Record<string,string>={"content-type":"application/json"};
   if(assets.length) { const multipart=new FormData(); multipart.set("payload_json",JSON.stringify(bodyData)); assets.forEach((asset,i)=>multipart.append(`files[${i}]`,asset.file,asset.filename)); body=multipart; headers={}; }
   const endpoint=`/channels/${channelId}/messages${data.updateMessage?`/${current!.message_id}`:""}`;
   let sent: Response | null = null; try { sent=await discordFetch(endpoint,{method:data.updateMessage?"PATCH":"POST",headers,body}); } catch { /* единый ответ ниже */ }
-  if(!sent?.ok)return NextResponse.json({error:data.updateMessage?"Не удалось обновить опубликованное сообщение":"Не удалось отправить сообщение в выбранный канал"},{status:502}); const message=await sent.json() as {id:string};
+  if(!sent?.ok)return jsonError(data.updateMessage?"Не удалось обновить опубликованное сообщение":"Не удалось отправить сообщение в выбранный канал", 502); const message=await sent.json() as {id:string};
   await persistAssets();
   const persisted=JSON.stringify(payload);
   // Атомарно: шаблон и история отправки не должны расходиться при сбое между
   // записями (иначе «Отправки» показывают сообщение, которого нет в истории).
   withTransaction(() => {
     const result=data.id
-      ? db.prepare("UPDATE embeds SET name=?,payload_json=?,channel_id=?,message_id=?,mode=?,updated_at=? WHERE id=? AND guild_id=?").run(data.name.trim(),persisted,channelId,message.id,mode,Date.now(),data.id,guildId)
-      : db.prepare("INSERT INTO embeds(guild_id,name,payload_json,channel_id,message_id,mode,updated_at) VALUES(?,?,?,?,?,?,?)").run(guildId,data.name.trim(),persisted,channelId,message.id,mode,Date.now());
-    if(!data.updateMessage){const embedId=data.id??Number(result.lastInsertRowid);db.prepare("INSERT INTO embed_sendings(guild_id,embed_id,channel_id,message_id,sent_at) VALUES(?,?,?,?,?)").run(guildId,embedId,channelId,message.id,Date.now());}
+      ? embedPublishUpdateStmt.run(data.name.trim(),persisted,channelId,message.id,mode,Date.now(),data.id,guildId)
+      : embedPublishInsertStmt.run(guildId,data.name.trim(),persisted,channelId,message.id,mode,Date.now());
+    if(!data.updateMessage){const embedId=data.id??Number(result.lastInsertRowid);sendingInsertStmt.run(guildId,embedId,channelId,message.id,Date.now());}
   });
   await cleanupUnusedDraftImages(guildId);
-  recordDashboardChange(guildId,access.user,"Embeds",`Шаблон «${data.name.trim()}» ${data.updateMessage ? "обновлён" : data.id ? "отправлен заново" : "опубликован"} в канале <#${channelId}>`);
+  recordDashboardChange(guildId,user,"Embeds",`Шаблон «${data.name.trim()}» ${data.updateMessage ? "обновлён" : data.id ? "отправлен заново" : "опубликован"} в канале <#${channelId}>`);
   return NextResponse.json({ok:true,messageId:message.id});
-}
+});
 
-export async function DELETE(request:Request,{params}:{params:Promise<{guildId:string}>}) {
-  const {guildId}=await params, access=await withGuild(guildId); if(access instanceof Response)return access;
+export const DELETE = guildRoute(async (request, { guildId, user }) => {
   const url=new URL(request.url); const sendingId=Number(url.searchParams.get("sendingId")); const id=Number(url.searchParams.get("id"));
-  if(Number.isInteger(sendingId)&&sendingId>0){const sending=db.prepare("SELECT channel_id,message_id FROM embed_sendings WHERE id=? AND guild_id=?").get(sendingId,guildId) as {channel_id:string;message_id:string}|undefined;if(!sending)return NextResponse.json({error:"Отправка не найдена."},{status:404});const token=process.env.DISCORD_TOKEN;if(token){await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`,{method:"DELETE"}).catch(()=>null);}db.prepare("DELETE FROM embed_sendings WHERE id=? AND guild_id=?").run(sendingId,guildId);recordDashboardChange(guildId,access.user,"Embeds",`Удалено отправленное сообщение embed в канале <#${sending.channel_id}>`);return NextResponse.json({ok:true});}
-  if(!Number.isInteger(id)||id<1)return NextResponse.json({error:"Некорректный идентификатор сообщения."},{status:400});
-  const item=db.prepare("SELECT channel_id,message_id,payload_json,name FROM embeds WHERE id=? AND guild_id=?").get(id,guildId) as {channel_id:string|null;message_id:string|null;payload_json:string;name:string}|undefined;
-  if(!item)return NextResponse.json({error:"Сообщение не найдено."},{status:404});
-  if(item.channel_id&&item.message_id){const token=process.env.DISCORD_TOKEN;if(!token)return NextResponse.json({error:BOT_TOKEN_ERROR},{status:503});let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return NextResponse.json({error:"Не удалось удалить сообщение в Discord."},{status:502});}if(!result.ok&&result.status!==404)return NextResponse.json({error:"Не удалось удалить сообщение в Discord."},{status:502});}
-  db.prepare("DELETE FROM embed_sendings WHERE embed_id=? AND guild_id=?").run(id,guildId);
-  db.prepare("DELETE FROM embeds WHERE id=? AND guild_id=?").run(id,guildId);
+  if(Number.isInteger(sendingId)&&sendingId>0){const sending=sendingByIdStmt.get(sendingId,guildId) as {channel_id:string;message_id:string}|undefined;if(!sending)return jsonError("Отправка не найдена.", 404);const token=process.env.DISCORD_TOKEN;if(token){await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`,{method:"DELETE"}).catch(()=>null);}sendingDeleteStmt.run(sendingId,guildId);recordDashboardChange(guildId,user,"Embeds",`Удалено отправленное сообщение embed в канале <#${sending.channel_id}>`);return NextResponse.json({ok:true});}
+  if(!Number.isInteger(id)||id<1)return jsonError("Некорректный идентификатор сообщения.");
+  const item=embedByIdStmt.get(id,guildId) as {channel_id:string|null;message_id:string|null;payload_json:string;name:string}|undefined;
+  if(!item)return jsonError("Сообщение не найдено.", 404);
+  if(item.channel_id&&item.message_id){const token=process.env.DISCORD_TOKEN;if(!token)return jsonError(BOT_TOKEN_ERROR, 503);let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
+  sendingsByEmbedDeleteStmt.run(id,guildId);
+  embedDeleteStmt.run(id,guildId);
   await cleanupUnusedDraftImages(guildId);
-  recordDashboardChange(guildId, access.user, "Embeds", `Удалён шаблон «${item.name}»`);
+  recordDashboardChange(guildId, user, "Embeds", `Удалён шаблон «${item.name}»`);
   return NextResponse.json({ok:true});
-}
+});

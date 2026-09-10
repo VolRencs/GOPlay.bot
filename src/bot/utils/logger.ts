@@ -41,4 +41,10 @@ export const logger = {
   info: (...parts: unknown[]) => emit("info", parts),
   warn: (...parts: unknown[]) => emit("warn", parts),
   error: (...parts: unknown[]) => emit("error", parts),
+  /** Спам-контроль ретрай-циклов: первая ошибка и далее каждая everyN-я. */
+  warnEvery(count: number, everyN: number, ...parts: unknown[]): number {
+    const next = count + 1;
+    if (next === 1 || next % everyN === 0) emit("warn", [...parts, `повтор #${next}`]);
+    return next;
+  },
 };

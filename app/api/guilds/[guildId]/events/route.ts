@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server.js";
 import { randomUUID } from "node:crypto";
-import { discordFetch, guildMemberNames, isSnowflake, withGuild } from "../../../../../src/lib/guild-access.ts";
+import { discordFetch, guildMemberNames, guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 import { guildLang } from "../../../../../src/lib/i18n/bot.ts";
 import { BOT_TOKEN_ERROR, buttonStyleId } from "../../../../../src/lib/constants.ts";
@@ -28,7 +28,8 @@ async function cleanupUnusedEventImages(guildId: string) {
 type SendResult = { id: string } | { status: number };
 async function sendOrEdit(channelId: string, messageId: string | null, embed: EventEmbedPayload, buttons: RenderedEventButton[], eventId: string, files: readonly StoredAsset<EventImageTarget>[]): Promise<SendResult> {
   const components = buttons.length ? [{ type: 1, components: buttons.map(b => ({ type: 2, style: buttonStyleId(b.style), label: buttonLabel(b), custom_id: `event:${b.key}:${eventId}`, disabled: Boolean(b.disabled) })) }] : [];
-  const bodyData = { embeds: [embed], components };
+  // Панель публикует от имени бота: упоминания в заголовке/описании не должны пинговать никого.
+  const bodyData = { embeds: [embed], components, allowed_mentions: { parse: [] } };
   let body: BodyInit = JSON.stringify(bodyData);
   let headers: Record<string, string> = { "content-type": "application/json" };
   if (files.length) {
@@ -64,19 +65,13 @@ async function syncDiscord(current: EventRow, channelId: string, embed: EventEmb
   return { messageId: null, warning: "Не удалось восстановить сообщение события." };
 }
 
-export async function GET(_: Request, { params }: { params: Promise<{ guildId: string }> }) {
-  const { guildId } = await params;
-  const access = await withGuild(guildId);
-  if (access instanceof Response) return access;
+export const GET = guildRoute(async (_, { guildId }) => {
   const names = await guildMemberNames(guildId).catch(() => new Map<string, string>());
   return NextResponse.json<EventListGet>({ events: listEvents(guildId).map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
-}
+});
 
-export async function POST(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
-  const { guildId } = await params;
+export const POST = guildRoute(async (request, { guildId, user }) => {
   const lang = guildLang(guildId);
-  const access = await withGuild(guildId);
-  if (access instanceof Response) return access;
   const oversized = rejectOversized(request);
   if (oversized) return oversized;
   const form = request.headers.get("content-type")?.includes("multipart/form-data") ? await request.formData() : null;
@@ -85,15 +80,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ gui
     const serialized = form?.get("data");
     data = (form ? JSON.parse(typeof serialized === "string" ? serialized : "{}") : await request.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: "Не удалось прочитать данные события." }, { status: 400 });
+    return jsonError("Не удалось прочитать данные события.");
   }
   const input = clampEventInput(data);
-  if ("error" in input) return NextResponse.json({ error: input.error }, { status: 400 });
+  if ("error" in input) return jsonError(input.error);
   const id = typeof data.id === "string" && data.id.length ? data.id : null;
   const current = id ? getEventInGuild(guildId, id) : undefined;
-  if (id && !current) return NextResponse.json({ error: "Событие не найдено." }, { status: 404 });
+  if (id && !current) return jsonError("Событие не найдено.", 404);
   const token = process.env.DISCORD_TOKEN;
-  if (!token) return NextResponse.json({ error: BOT_TOKEN_ERROR }, { status: 503 });
+  if (!token) return jsonError(BOT_TOKEN_ERROR, 503);
 
   const embed = input.embed;
   const setAsset = (target: EventImageTarget, url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
@@ -115,7 +110,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ gui
     originals = stored.originals;
   } catch (error) {
     if (!(error instanceof AssetError)) throw error;
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return jsonError(error.message);
   }
   const persistAssets = async () => persistUploadedAssets(eventUploadsDir(guildId), eventUploadPrefix(guildId), assets, originals, setAsset);
 
@@ -131,7 +126,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ gui
     await persistAssets();
     // Параллельное удаление другим модератором → 409 вместо TypeError по пустой строке.
     const updated = updateEvent(guildId, current.id, { ...input, messageId: sync.messageId });
-    if (!updated) return NextResponse.json({ error: "Событие было удалено во время сохранения." }, { status: 409 });
+    if (!updated) return jsonError("Событие было удалено во время сохранения.", 409);
     saved = updated;
     await cleanupUnusedEventImages(guildId);
   } else {
@@ -139,30 +134,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ gui
     // id события; неудачная отправка откатывает событие целиком.
     saved = insertEvent(guildId, { ...input, id: randomUUID(), messageId: null });
     const sent = await sendOrEdit(input.channelId, null, rendered, buttons, saved.id, assets);
-    if (!("id" in sent)) { deleteEvent(guildId, saved.id); return NextResponse.json({ error: "Не удалось отправить сообщение в выбранный канал." }, { status: 502 }); }
+    if (!("id" in sent)) { deleteEvent(guildId, saved.id); return jsonError("Не удалось отправить сообщение в выбранный канал.", 502); }
     await persistAssets();
     const updated = updateEvent(guildId, saved.id, { ...input, messageId: sent.id });
-    if (!updated) return NextResponse.json({ error: "Событие было удалено во время сохранения." }, { status: 409 });
+    if (!updated) return jsonError("Событие было удалено во время сохранения.", 409);
     saved = updated;
     await cleanupUnusedEventImages(guildId);
   }
-  recordDashboardChange(guildId, access.user, "События", `Событие «${embed.title ?? "без названия"}» ${current ? "изменено" : "создано"}`);
+  recordDashboardChange(guildId, user, "События", `Событие «${embed.title ?? "без названия"}» ${current ? "изменено" : "создано"}`);
   return NextResponse.json({ ok: true, id: saved.id, messageId: saved.message_id, ...(warning ? { warning } : {}) });
-}
+});
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
-  const { guildId } = await params;
+export const DELETE = guildRoute(async (request, { guildId, user }) => {
   const lang = guildLang(guildId);
-  const access = await withGuild(guildId);
-  if (access instanceof Response) return access;
   const url = new URL(request.url);
   const id = url.searchParams.get("id") ?? "";
   const participant = url.searchParams.get("participant");
   const token = process.env.DISCORD_TOKEN;
   if (participant) {
-    if (!isSnowflake(participant)) return NextResponse.json({ error: "Некорректный ID участника." }, { status: 400 });
+    if (!isSnowflake(participant)) return jsonError("Некорректный ID участника.");
     const result = removeParticipant(id, participant, guildId);
-    if (!result) return NextResponse.json({ error: "Событие или участник не найдены." }, { status: 404 });
+    if (!result) return jsonError("Событие или участник не найдены.", 404);
     const event = getEventInGuild(guildId, id);
     if (event?.event_role_id) {
       await applyEventRole(guildId, participant, event.event_role_id, false);
@@ -174,13 +166,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ g
       const buttons = renderEventButtons(renderableOf(event), parseEventButtons(event.buttons_json), counts);
       await syncDiscord(event, event.channel_id, embed, buttons, []);
     }
-    recordDashboardChange(guildId, access.user, "События", `Участник <@${participant}> удалён из события${result.promotedUserId ? `, <@${result.promotedUserId}> переведён из очереди` : ""}`);
+    recordDashboardChange(guildId, user, "События", `Участник <@${participant}> удалён из события${result.promotedUserId ? `, <@${result.promotedUserId}> переведён из очереди` : ""}`);
     return NextResponse.json({ ok: true, promotedUserId: result.promotedUserId });
   }
   const removed = deleteEvent(guildId, id);
-  if (!removed) return NextResponse.json({ error: "Событие не найдено." }, { status: 404 });
+  if (!removed) return jsonError("Событие не найдено.", 404);
   if (token && removed.messageId) await discordFetch(`/channels/${removed.channelId}/messages/${removed.messageId}`, { method: "DELETE" }).catch(() => null);
   await cleanupUnusedEventImages(guildId);
-  recordDashboardChange(guildId, access.user, "События", `Событие «${removed.embed.title ?? "без названия"}» удалено`);
+  recordDashboardChange(guildId, user, "События", `Событие «${removed.embed.title ?? "без названия"}» удалено`);
   return NextResponse.json({ ok: true });
-}
+});

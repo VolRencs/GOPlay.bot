@@ -1,13 +1,12 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, Events, MessageFlags, ModalBuilder, PermissionsBitField, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Guild, type GuildChannelCreateOptions, type GuildMember, type Interaction, type ModalSubmitInteraction, type VoiceChannel, type VoiceState } from "discord.js";
 import { stmt } from "../db/statements.ts";
 import { logger } from "../utils/logger.ts";
-import { purgeGuild } from "../config-cache.ts";
 import { count } from "../perf.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { parseStringArray } from "../../lib/json.ts";
 import { DEFAULT_SETTINGS, type TempConfig } from "../../lib/tempchannels.ts";
 import { stopAndLeave } from "../../lib/player/session.ts";
-import { tempTr, guildLang } from "../../lib/i18n/bot.ts";
+import { tempTr, guildTr } from "../../lib/i18n/bot.ts";
 import { isMissingDiscordResource, replyInteractionError } from "../../lib/errors.ts";
 
 type TempRow = { id: number; guild_id: string; channel_id: string; owner_id: string; panel_message_id: string | null; source_channel_id: string | null; created_at: number };
@@ -47,16 +46,16 @@ export function registerTempChannels(client: Client) {
   // он пуст — удаляется. Иначе строка навсегда остаётся с мёртвым owner_id.
   client.on(Events.GuildMemberRemove, (member) => void handleOwnerLeave(member.guild, member.id));
   client.on(Events.GuildDelete, (guild) => {
-    stmt.tempDeleteByGuild.run(guild.id);
+    // Строки каскадом удалит wipe гильдии; здесь только собственный кэш.
     configCache.delete(guild.id);
-    purgeGuild(guild.id);
   });
 }
 
 async function handleOwnerLeave(guild: Guild, userId: string) {
   const row = stmt.tempByOwner.get(guild.id, userId) as TempRow | undefined;
   if (!row) return;
-  const channel = await guild.channels.fetch(row.channel_id).catch(() => null) as VoiceChannel | null;
+  const channel = await fetchTempChannel(guild, row.channel_id);
+  if (channel === undefined) return;
   if (!channel) { stmt.tempDelete.run(row.channel_id); return; }
   const nextOwner = channel.members.find(m => !m.user.bot)?.id;
   if (!nextOwner) {
@@ -97,7 +96,8 @@ async function handleTriggerJoin(guild: Guild, member: GuildMember, triggerChann
     }
     // Кэш может быть неполным после рестарта — проверяем REST-fetch'ем, прежде
     // чем считать строку протухшей и удалять её.
-    const fetched = await guild.channels.fetch(existing.channel_id).catch(() => null) as VoiceChannel | null;
+    const fetched = await fetchTempChannel(guild, existing.channel_id);
+    if (fetched === undefined) return;
     if (!fetched) stmt.tempDelete.run(existing.channel_id);
     else { if (member.voice.channelId !== existing.channel_id) await member.voice.setChannel(existing.channel_id).catch(() => null); return; }
   }
@@ -208,21 +208,21 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
 }
 
 async function sendPanel(guild: Guild, channel: VoiceChannel) {
-  const lang = guildLang(guild.id);
+  const t = guildTr(tempTr, guild.id);
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(tempTr(lang, "panelTitle"))
-    .setDescription(tempTr(lang, "panelDesc"));
+    .setTitle(t("panelTitle"))
+    .setDescription(t("panelDesc"));
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("temp:rename").setLabel(tempTr(lang, "btnRename")).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("temp:limit").setLabel(tempTr(lang, "btnLimit")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("temp:lock").setLabel(tempTr(lang, "btnLock")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("temp:allow").setLabel(tempTr(lang, "btnAllow")).setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("temp:rename").setLabel(t("btnRename")).setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId("temp:limit").setLabel(t("btnLimit")).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("temp:lock").setLabel(t("btnLock")).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("temp:allow").setLabel(t("btnAllow")).setStyle(ButtonStyle.Success),
   );
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("temp:deny").setLabel(tempTr(lang, "btnDeny")).setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId("temp:transfer").setLabel(tempTr(lang, "btnTransfer")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("temp:delete").setLabel(tempTr(lang, "btnDelete")).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("temp:deny").setLabel(t("btnDeny")).setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("temp:transfer").setLabel(t("btnTransfer")).setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("temp:delete").setLabel(t("btnDelete")).setStyle(ButtonStyle.Danger),
   );
   try {
     return await channel.send({ embeds: [embed], components: [row1, row2] });
@@ -233,7 +233,7 @@ async function sendPanel(guild: Guild, channel: VoiceChannel) {
 }
 
 async function handleInteraction(i: Interaction) {
-  const t = (k2: Parameters<typeof tempTr>[1]) => tempTr(guildLang(i.guildId ?? ""), k2);
+  const t = guildTr(tempTr, i.guildId ?? "");
   try {
     if (i.isButton() && i.customId.startsWith("temp:")) await handlePanelButton(i, i.customId.slice("temp:".length));
     else if (i.isModalSubmit() && i.customId.startsWith("temp:modal-")) await handleModalSubmit(i, i.customId.slice("temp:modal-".length));
@@ -250,7 +250,7 @@ function voiceChannel(i: ButtonInteraction | ModalSubmitInteraction): VoiceChann
 }
 
 async function handlePanelButton(i: ButtonInteraction, action: string) {
-  const t = (k: Parameters<typeof tempTr>[1], v?: Record<string,string|number>) => tempTr(guildLang(i.guildId ?? ""), k, v);
+  const t = guildTr(tempTr, i.guildId ?? "");
   const guild = i.guild;
   const channel = voiceChannel(i);
   if (!guild || !channel) return;
@@ -289,7 +289,7 @@ async function handlePanelButton(i: ButtonInteraction, action: string) {
 }
 
 async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
-  const t = (k: Parameters<typeof tempTr>[1], v?: Record<string,string|number>) => tempTr(guildLang(i.guildId ?? ""), k, v);
+  const t = guildTr(tempTr, i.guildId ?? "");
   const guild = i.guild;
   const channel = voiceChannel(i);
   if (!guild || !channel) return;

@@ -11,14 +11,16 @@ import { renderWelcomeTemplate } from "../lib/welcome.ts";
 import { stmt } from "./db/statements.ts";
 import { forgetMessage, flushMessageCache, messageContent, rememberMessage } from "./db/message-cache.ts";
 import { logger } from "./utils/logger.ts";
+import { unrefInterval } from "./utils/timers.ts";
 import { guard, replyInteractionError } from "../lib/errors.ts";
 import { addMessage, addMetric, flushMetrics } from "./metrics.ts";
 import { auditActor, auditFind, initLogging, isBotAction, logAction, markBotAction, resolveChannel } from "./logging/index.ts";
-import { cachedRules, invalidateReactionPanels, reactionPanel, seedRules, stopTimer, type CachedRule } from "./config-cache.ts";
+import { cachedRules, invalidateReactionPanels, purgeConfigCaches, reactionPanel, stopTimer, type CachedRule } from "./config-cache.ts";
 import { registerTempChannels, cleanupTempChannels } from "./tempchannels/index.ts";
 import { offerAppeal, registerAppeals } from "./appeals/index.ts";
 import { registerEvents } from "./events/index.ts";
 import { handleMusicCommand, registerMusic } from "./music/index.ts";
+import { flushLevels, handleLevelCommand, registerLevels } from "./levels/index.ts";
 import { destroyAllSessions, stopAndLeave } from "../lib/player/index.ts";
 import { count, time } from "./perf.ts";
 import { startHeartbeat } from "./heartbeat.ts";
@@ -44,6 +46,7 @@ const commandDescriptionsEn: Record<string, string> = {
   avatar: "Show user's avatar", ban: "Ban a user", kick: "Kick a user", timeout: "Timeout a user",
   untimeout: "Remove timeout", warn: "Warn a user", warnings: "Show warnings", clearwarn: "Clear warnings",
   purge: "Delete recent channel messages", slowmode: "Set channel slowmode", lock: "Lock channel", unlock: "Unlock channel",
+  lvl: "Show a member's level", top: "Show the XP leaderboard",
 };
 const commands = [
   { name: "play", description: "Включить музыку с YouTube в голосовом канале", options: [{ name: "link", description: "Ссылка YouTube (видео или плейлист)", type: 3, required: true }] },
@@ -52,6 +55,8 @@ const commands = [
   { name: "user", description: "Информация о пользователе", options: [{ name: "user", description: "Кого посмотреть (по умолчанию — вы)", type: 6 }] },
   { name: "server", description: "Информация о сервере" },
   { name: "avatar", description: "Показать аватар пользователя", options: [{ name: "user", description: "Чей аватар (по умолчанию — ваш)", type: 6 }] },
+  { name: "lvl", description: "Показать уровень участника", options: [{ name: "user", description: "Чей уровень (по умолчанию — ваш)", type: 6 }] },
+  { name: "top", description: "Топ участников сервера по уровню" },
   { name: "ban", description: "Забанить пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "reason", description: "Причина", type: 3 }] },
   { name: "kick", description: "Исключить пользователя с сервера", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "reason", description: "Причина", type: 3 }] },
   { name: "timeout", description: "Выдать тайм-аут (заглушить) пользователю", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "minutes", description: "Минуты (по умолчанию 10)", type: 4, min_value: 1, max_value: 40320 }, { name: "reason", description: "Причина", type: 3 }] },
@@ -81,7 +86,7 @@ function reportRoleHierarchy(guild: Guild) {
 function onboardGuild(guild: Guild): void {
   const isNew = stmt.guildInsert.run(guild.id, guild.name, guild.iconURL(), Date.now()).changes > 0;
   if (isNew) langUpdate.run(localeFromDiscord(guild.preferredLocale), guild.id);
-  seedRules(guild.id);
+  cachedRules(guild.id);
   reportRoleHierarchy(guild);
   void guild.members.fetch().catch((error) => logger.warn("[MEMBERS] Не удалось загрузить участников", guild.id, error));
 }
@@ -224,13 +229,13 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   const rule: Rule = { kind: row.kind, enabled: true, threshold, window: row.window_seconds };
   const burstKind = ["spam", "duplicate", "emoji"].includes(row.kind);
   let burst: { id: string; channelId: string }[] = [];
+  const applied: string[] = [];
   if (actions.includes("delete")) {
     burst = burstKind ? burstMessages(rule, data) : [];
-    if (burst.length) await deleteBurst(guild, burst);
-    else await message.delete().catch(() => null);
+    const deleted = burst.length ? (await deleteBurst(guild, burst), true) : await message.delete().then(() => true, () => false);
+    if (deleted) applied.push("delete");
   }
   const member = message.member;
-  const applied: string[] = [];
   if (actions.includes("timeout") && member?.moderatable) {
     markBotAction(guild.id, "member_timeout", author.id);
     const base = Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, Number(threshold.durationSeconds ?? DEFAULT_TIMEOUT_SECONDS)));
@@ -238,17 +243,25 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   }
   if (actions.includes("kick") && member?.kickable) { markBotAction(guild.id, "member_kick", author.id); if (await member.kick(reason).then(() => true, () => false)) applied.push("kick"); }
   if (actions.includes("ban") && member?.bannable) { markBotAction(guild.id, "member_ban", author.id); if (await member.ban({ reason }).then(() => true, () => false)) applied.push("ban"); }
+  // Предупреждение видно в /warnings: строка type='warn', как у ручного /warn.
+  if (actions.includes("warn")) {
+    try {
+      stmt.moderationInsert.run(guild.id, author.id, "automod", "warn", reason, Date.now());
+      addMetric(guild.id, "moderation");
+      applied.push("warn");
+    } catch (error) { logger.warn("Не удалось записать предупреждение автомодерации", guild.id, error); }
+  }
+  // Строка type='automod' — только для наказаний (timeout/kick/ban): апелляция
+  // предлагается при timeout/ban, kick — без апелляции, delete/warn — тоже.
   let punishmentId: number | null = null;
-  if (applied.length > 0) {
+  if (applied.some(action => action === "timeout" || action === "kick" || action === "ban")) {
     try {
       punishmentId = Number(stmt.moderationInsert.run(guild.id, author.id, null, "automod", row.kind, Date.now()).lastInsertRowid);
       addMetric(guild.id, "moderation");
     } catch (error) { logger.warn("Не удалось записать действие автомодерации", guild.id, error); }
-  } else {
+  } else if (!applied.length) {
     logger.warn("[AUTOMOD] Ни одна мера не применилась", guild.id, row.kind, author.id, actions.join(","));
   }
-  // applied содержит только timeout/kick/ban (delete в applied не пушится):
-  // апелляцию предлагаем при timeout/ban, kick-only — без апелляции.
   if (applied.some(action => action === "timeout" || action === "ban") && (!burstKind || shouldWarn(rule, data))) {
     if (punishmentId !== null) void offerAppeal(client, { punishmentId, guildId: guild.id, guildName: guild.name, userId: author.id, type: "automod", reason });
     if (burstKind) markWarned(rule, data);
@@ -340,13 +353,14 @@ client.on(Events.MessageCreate, async message => {
   if (cache.protectedChannelId === message.channel.id && !isAdmin && !isIgnoredMember) {
     await message.delete().catch(() => null);
     void purgeUserMessages(message.guild, message.author.id, 24);
+    let banned = false;
     if (member?.bannable) {
-      const banned = await member.ban({ reason: automodTr(guildLang(message.guild!.id), "protectedAdminOnly") }).then(() => true, () => false);
+      banned = await member.ban({ reason: automodTr(guildLang(message.guild!.id), "protectedAdminOnly") }).then(() => true, () => false);
       if (banned) markBotAction(message.guild.id, "member_ban", message.author.id);
       else logger.warn("[AUTOMOD] Бан в защищённом канале не применён", message.guild.id, message.author.id);
     }
     addMetric(message.guild.id, "moderation");
-    logAction({ guildId: message.guild.id, type: "automod", targetId: message.author.id, moderatorId: "automod", details: automodTr(cache.lang, "protectedWiped") });
+    logAction({ guildId: message.guild.id, type: "automod", targetId: message.author.id, moderatorId: "automod", details: automodTr(cache.lang, banned ? "protectedWiped" : "protectedWipedFailed") });
     return;
   }
   const data: MessageData = { id: message.id, guildId: message.guild.id, userId: message.author.id, channelId: message.channel.id, content: message.content, roleIds: member?.roles.cache.map(r => r.id) ?? [], mentionCount: message.mentions.users.size + message.mentions.roles.size, everyone: message.mentions.everyone, attachments: [...message.attachments.values()].map(a => ({ contentType: a.contentType })), at: Date.now() };
@@ -363,15 +377,16 @@ client.on(Events.MessageCreate, async message => {
 client.on(Events.InteractionCreate, i => void routeInteraction(i));
 async function routeInteraction(i: Interaction) {
   const cmdLang = guildLang(i.guildId ?? "");
-  const tC = (k: Parameters<typeof commandsTr>[1]) => commandsTr(cmdLang, k);
+  const tC = (k: Parameters<typeof commandsTr>[1], v?: Record<string, string | number>) => commandsTr(cmdLang, k, v);
   count("events.interaction");
   try {
     if (await handleMusicCommand(i)) return;
+    if (await handleLevelCommand(i)) return;
     if (i.isChatInputCommand()) {
       if (i.commandName === "ping") {
         await i.reply(`🏓 ${client.ws.ping}ms`);
       } else if (i.commandName === "help") {
-        await i.reply({ embeds: [new EmbedBuilder().setTitle(tC("helpTitle")).setDescription(commands.map(c => tC("helpCommand").replace("{name}", c.name).replace("{desc}", cmdLang === "en" ? commandDescriptionsEn[c.name] ?? c.description : c.description)).join("\n"))], flags: MessageFlags.Ephemeral });
+        await i.reply({ embeds: [new EmbedBuilder().setTitle(tC("helpTitle")).setDescription(commands.map(c => tC("helpCommand", { name: c.name, desc: cmdLang === "en" ? commandDescriptionsEn[c.name] ?? c.description : c.description })).join("\n"))], flags: MessageFlags.Ephemeral });
       } else if (i.commandName === "user") {
         const user = i.options.getUser("user") ?? i.user;
         const member = i.guild?.members.cache.get(user.id);
@@ -387,7 +402,7 @@ async function routeInteraction(i: Interaction) {
             { name: tC("serverOwner"), value: `<@${guild.ownerId}>`, inline: true },
             { name: tC("membersCount"), value: String(guild.memberCount), inline: true },
             { name: tC("createdAt"), value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:d>`, inline: true },
-            { name: tC("channelsCount"), value: tC("channelsFormat").replace("{t}", String(guild.channels.cache.filter(c => c.type === ChannelType.GuildText).size)).replace("{v}", String(guild.channels.cache.filter(c => c.type === ChannelType.GuildVoice).size)), inline: true },
+            { name: tC("channelsCount"), value: tC("channelsFormat", { t: String(guild.channels.cache.filter(c => c.type === ChannelType.GuildText).size), v: String(guild.channels.cache.filter(c => c.type === ChannelType.GuildVoice).size) }), inline: true },
             ...(guild.premiumSubscriptionCount ? [{ name: tC("boostsCount"), value: String(guild.premiumSubscriptionCount), inline: true }] : []),
           );
         await i.reply({ embeds: [embed] });
@@ -467,13 +482,13 @@ client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
   const logRoles = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_roles", targetId: newMember.id, moderatorId: actor, details: (() => { const l = guildLang(newMember.guild.id); return logTr(l, "rolesPrefix") + [...added.map(id => logTr(l, "roleGivenPart", { id })), ...removed.map(id => logTr(l, "roleRemovedPart", { id }))].join(", "); })() });
   if (added.length || removed.length) void auditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id, { retries: 0 }).then(logRoles).catch(() => logRoles());
   if (!isBotAction(newMember.guild.id, "member_timeout", newMember.id) && oldMember?.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {
-    const logTimeout = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_timeout", targetId: newMember.id, moderatorId: actor, details: newMember.communicationDisabledUntilTimestamp ? logTr(guildLang(newMember.guild.id), "timeoutSet") : logTr(guildLang(newMember.guild.id), "timeoutCleared") });
-    void auditActor(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id).then(logTimeout).catch(() => logTimeout());
-    if (newMember.communicationDisabledUntilTimestamp) {
-      void auditFind(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id, { priority: true, retries: 1, retryDelay: 800 }).then(entry => {
-        if (entry) recordPunishmentAndOffer(client, { guildId: newMember.guild.id, guildName: newMember.guild.name, userId: newMember.id, type: "timeout", reason: entry.reason ?? logTr(guildLang(newMember.guild.id), "noReason"), moderatorId: entry.executor?.id ?? null });
-      });
-    }
+    const isSet = Boolean(newMember.communicationDisabledUntilTimestamp);
+    const logTimeout = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_timeout", targetId: newMember.id, moderatorId: actor, details: isSet ? logTr(guildLang(newMember.guild.id), "timeoutSet") : logTr(guildLang(newMember.guild.id), "timeoutCleared") });
+    // Один REST-запрос на тайм-аут: тот же entry используется и для лога, и для апелляции.
+    void auditFind(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id, { priority: isSet, retries: 1, retryDelay: 800 }).then(entry => {
+      logTimeout(entry?.executor?.id);
+      if (isSet && entry) recordPunishmentAndOffer(client, { guildId: newMember.guild.id, guildName: newMember.guild.name, userId: newMember.id, type: "timeout", reason: entry.reason ?? logTr(guildLang(newMember.guild.id), "noReason"), moderatorId: entry.executor?.id ?? null });
+    }).catch(() => logTimeout());
   }
 });
 const editPending = new Map<string, { before: string; after: string; timer: ReturnType<typeof setTimeout> }>();
@@ -543,15 +558,17 @@ client.on(Events.ChannelDelete, async channel => {
   const actor = await auditActor(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
   logAction({ guildId: channel.guild.id, type: "channel_delete", targetId: channel.id, moderatorId: actor, details: logTr(guildLang(channel.guild.id), "channelDeleted", { name: channel.name }) });
 });
-setInterval(pruneDetectors, 10 * 60_000).unref();
-setInterval(sweepRecentBans, 60_000).unref();
+unrefInterval(pruneDetectors, 10 * 60_000);
+unrefInterval(sweepRecentBans, 60_000);
 registerTempChannels(client);
 registerMusic(client);
+registerLevels(client);
 registerAppeals(client);
 registerEvents(client);
 client.on(Events.GuildDelete, guild => {
   // бы «в пустоту» до 2 ч (при лупе — бесконечно), пока idle-таймер не сработает.
   stopAndLeave(guild.id);
+  purgeConfigCaches(guild.id);
   guard("GUILD_WIPE", () => wipeGuildData(guild.id));
   guard("GUILD_FILES", () => deleteGuildFiles(guild.id));
   logger.info("[GUILD] Бот удалён с сервера, данные стёрты:", guild.id);
@@ -559,6 +576,7 @@ client.on(Events.GuildDelete, guild => {
 function shutdown() {
   stopTimer();
   flushMetrics();
+  try { flushLevels(); } catch (error) { logger.warn("[LEVELS] Не удалось слить XP при остановке", error); }
   try { flushMessageCache(); } catch (error) { logger.warn("[CACHE] Не удалось слить буфер при остановке", error); }
   logger.info("Остановка бота...");
   destroyAllSessions();

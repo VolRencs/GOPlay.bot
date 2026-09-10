@@ -6,12 +6,18 @@ export const embedUploadPrefix = (guildId: string) => `/uploads/embeds/${guildId
 export const eventUploadsDir = (guildId: string) => join(process.cwd(), "data", "uploads", "events", guildId);
 export const eventUploadPrefix = (guildId: string) => `/uploads/events/${guildId}/`;
 
+// Имя файла из локального URL: null, если URL не из этого каталога или содержит
+// разделители путей. Единая проверка для uploads/assets/бот-переотправки.
+export function filenameFromUrl(prefix: string, url: string | null | undefined): string | null {
+  if (!url?.startsWith(prefix)) return null;
+  const filename = url.slice(prefix.length);
+  return !filename || filename.includes("/") || filename.includes("\\") ? null : filename;
+}
+
 export function extractFilenames(prefix: string, urls: (string | null | undefined)[]): string[] {
   return [...new Set(urls.flatMap(url => {
-    if (!url?.startsWith(prefix)) return [];
-    const filename = url.slice(prefix.length);
-    if (!filename || filename.includes("/") || filename.includes("\\")) return [];
-    return [filename];
+    const filename = filenameFromUrl(prefix, url);
+    return filename ? [filename] : [];
   }))];
 }
 
@@ -46,7 +52,13 @@ export async function deleteGuildFiles(guildId: string) {
  *  пользователь мог выкачать гигабайты в RAM процесса (параллельные запросы = OOM).
  *  nginx в проде режет на 8 MB — это защита прямого доступа к Next. */
 export function rejectOversized(request: Request, limitBytes = 32 * 1024 * 1024): Response | null {
-  const len = Number(request.headers.get("content-length") ?? 0);
+  const raw = request.headers.get("content-length");
+  // Chunked multipart без content-length буферизуется formData() безлимитно:
+  // заголовок не проверить, поэтому отказываем. Браузерный FormData его шлёт.
+  if (raw === null && request.headers.get("content-type")?.includes("multipart/form-data")) {
+    return new Response(JSON.stringify({ error: "Не удалось определить размер запроса." }), { status: 411, headers: { "content-type": "application/json" } });
+  }
+  const len = Number(raw ?? 0);
   if (Number.isFinite(len) && len > limitBytes) return new Response(JSON.stringify({ error: "Запрос слишком большой." }), { status: 413, headers: { "content-type": "application/json" } });
   return null;
 }

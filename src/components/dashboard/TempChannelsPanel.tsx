@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { defaultTempConfig, type Channel, type TempChannelConfig, type TempChannelsState, type TempPreset } from "./types.ts";
 import { clampUserLimit } from "../../../src/lib/tempchannels.ts";
-import { CardHeader, CheckList, confirmAction, Select, stableStringify, TemplateLibrary, useAsyncAction } from "./ui.tsx";
+import { CardHeader, CheckList, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, useAsyncAction } from "./ui.tsx";
 
 function TempChannelConfigForm({ categories, value, onChange }: { categories: Channel[]; value: TempChannelConfig; onChange: (value: TempChannelConfig) => void }) {
   return (
@@ -13,7 +13,7 @@ function TempChannelConfigForm({ categories, value, onChange }: { categories: Ch
         options={[{ value: "", label: "Без категории" }, ...categories.map(c => ({ value: c.id, label: c.name }))]}/></label>
       <label>Шаблон названия<input value={value.nameTemplate} maxLength={100} onChange={e => onChange({ ...value, nameTemplate: e.target.value })}/></label>
       <p className="hint">Переменные: <code>{"{username}"}</code>, <code>{"{displayName}"}</code>, <code>{"{user}"}</code>.</p>
-      <label>Лимит участников (0 — без лимита)<input type="number" min="0" max="99" value={value.userLimit} onChange={e => onChange({ ...value, userLimit: clampUserLimit(Number(e.target.value) || 0) })}/></label>
+      <NumberField label="Лимит участников" hint="(0 — без лимита)" min={0} max={99} value={value.userLimit} onChange={userLimit => onChange({ ...value, userLimit: clampUserLimit(userLimit || 0) })}/>
       <label className="check-row"><input type="checkbox" checked={value.canRename} onChange={e => onChange({ ...value, canRename: e.target.checked })}/> Владелец может переименовывать канал</label>
       <label className="check-row"><input type="checkbox" checked={value.canManageAccess} onChange={e => onChange({ ...value, canManageAccess: e.target.checked })}/> Владелец может управлять доступом и передавать владение</label>
       <label className="check-row"><input type="checkbox" checked={value.canClose} onChange={e => onChange({ ...value, canClose: e.target.checked })}/> Владелец может закрывать и открывать канал</label>
@@ -36,7 +36,7 @@ export function TemporaryChannelsSettings({ voiceChannels, categories, value, sa
     setEditingId(id);
   };
   const removePreset = async (preset: TempPreset) => {
-    if (!(await confirmAction(`Удалить шаблон «${preset.name || "без названия"}» из настроек? Действие применится после сохранения.`, "Убрать"))) return;
+    if (!(await confirmAction(`Удалить шаблон «${preset.name || "без названия"}» из настроек? Действие применится после сохранения.`, "Удалить"))) return;
     onChange({ ...value, presets: value.presets.filter(p => p.id !== preset.id) });
     if (editingId === preset.id) setEditingId(null);
   };
@@ -72,7 +72,7 @@ export function TemporaryChannelsSettings({ voiceChannels, categories, value, sa
           action={<div className="template-actions">
             <button type="button" className="btn secondary" onClick={newPreset}>Новый шаблон</button>
             {(editing || changed) && (
-              <button type="button" className="btn" disabled={saving} onClick={() => run(onSave)}>{saving ? "Сохраняем…" : "Сохранить настройки"}</button>
+              <SaveButton saving={saving} onClick={() => run(onSave)} label="Сохранить настройки"/>
             )}
           </div>}/>
         {editing ? (

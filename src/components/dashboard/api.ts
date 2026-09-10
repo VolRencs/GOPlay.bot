@@ -1,6 +1,6 @@
 "use client";
 
-export type ApiError = { error?: unknown };
+type ApiError = { error?: unknown };
 
 /** Достаёт человекочитаемую ошибку из ответа API (единый формат `{error}`). */
 async function apiErrorMessage(response: Response, fallback: string): Promise<string> {

@@ -12,6 +12,7 @@ const { isSnowflake } = await import("../src/lib/guild-access.ts");
 const { parseActions } = await import("../src/lib/json.ts");
 const { automodDefaultActions } = await import("../src/lib/automod.ts");
 const { extractFilenames, embedUploadPrefix } = await import("../src/lib/uploads.ts");
+const { clampNumber } = await import("../src/lib/constants.ts");
 
 // --- isMissingDiscordResource: единый предикат «ресурс удалён» --------------
 
@@ -46,4 +47,14 @@ test("parseActions возвращает общий дефолт для пуст�
 test("extractFilenames не выпускает пути за пределы каталога гильдии", () => {
   const prefix = embedUploadPrefix("123");
   assert.deepEqual(extractFilenames(prefix, [`${prefix}pic.png`, `${prefix}../secret.png`, "/etc/passwd", `${prefix}a/b.png`, null]), ["pic.png"]);
+});
+
+test("clampNumber: кламп, fallback и режимы округления/целочисленности", () => {
+  assert.equal(clampNumber(150, 0, 0, 100), 100);
+  assert.equal(clampNumber(-5, 0, 0, 100), 0);
+  assert.equal(clampNumber("abc", 7, 0, 100), 7);
+  assert.equal(clampNumber(undefined, 3, 0, 10), 3);
+  assert.equal(clampNumber(4.6, 0, 0, 10, "round"), 5);
+  assert.equal(clampNumber(4.6, 7, 0, 10, "integer"), 7);
+  assert.equal(clampNumber(4, 7, 0, 10, "integer"), 4);
 });

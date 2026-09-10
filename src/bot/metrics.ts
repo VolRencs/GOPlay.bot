@@ -1,5 +1,6 @@
 import { stmt } from "./db/statements.ts";
 import { logger } from "./utils/logger.ts";
+import { unrefInterval } from "./utils/timers.ts";
 import { db, withTransaction } from "../db/database.ts";
 import { time } from "./perf.ts";
 import { pruneOldEvents } from "../lib/server-cleanup.ts";
@@ -30,7 +31,7 @@ function countsFor(guildId: string, day: string): Counts {
 }
 
 function ensureTimer() {
-  if (!timer) { timer = setInterval(flushMetrics, FLUSH_INTERVAL); timer.unref?.(); }
+  if (!timer) { timer = unrefInterval(flushMetrics, FLUSH_INTERVAL); }
 }
 
 export function addMetric(guildId: string, metric: MetricKey) {
@@ -65,15 +66,16 @@ let flushFailures = 0;
 const MODERATION_RETENTION_DAYS = 90;
 const moderationPrune = db.prepare("DELETE FROM moderation_actions WHERE created_at < ? AND id NOT IN(SELECT punishment_id FROM appeals)");
 function noteFlushFailure(error: unknown, started: number): void {
-  flushFailures += 1;
-  if (flushFailures === 1 || flushFailures % 60 === 0)
-    logger.warn("Не удалось записать метрики — окно будет отправлено повторно", error, `повтор #${flushFailures}`);
+  flushFailures = logger.warnEvery(flushFailures, 60, "Не удалось записать метрики — окно будет отправлено повторно", error);
   time("db.metrics_flush", performance.now() - started);
 }
 
 type FlushRow = { guildId: string; day: string; key: string; counts: Counts; activeUsersDelta: number; peak: number };
 
 export function flushMetrics() {
+  // Пустой буфер: не открываем BEGIN IMMEDIATE каждые 5 c — соседний
+  // flushMessageCache делает так же. Все буферы наполняются только через countsFor.
+  if (!pending.size) return;
   const started = performance.now();
   const rows: FlushRow[] = [];
   const newActive: { key: string; ids: string[] }[] = [];
@@ -131,7 +133,7 @@ function evictDeadGuildKeys(): void {
 }
 
 // Ретеншн агрегатов: детальные таблицы не растут бесконечно. Дневные строки
-setInterval(() => {
+unrefInterval(() => {
   try {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
     for (const cleanup of [stmt.cleanupChannelStats, stmt.cleanupUserStats, stmt.cleanupHourlyStats, stmt.cleanupDailyStats]) cleanup.run(cutoff);
@@ -142,4 +144,4 @@ setInterval(() => {
   } catch (error) {
     logger.warn("Очистка статистики не удалась", error);
   }
-}, CLEANUP_INTERVAL).unref();
+}, CLEANUP_INTERVAL);

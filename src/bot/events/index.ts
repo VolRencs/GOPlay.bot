@@ -1,14 +1,14 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, type Client, type Interaction } from "discord.js";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, deleteEventsByGuild, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
+import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { logger } from "../utils/logger.ts";
-import { isMissingDiscordResource } from "../../lib/errors.ts";
+import { unrefInterval } from "../utils/timers.ts";
+import { guard, isMissingDiscordResource } from "../../lib/errors.ts";
 import { count } from "../perf.ts";
 import { buttonStyleId } from "../../lib/constants.ts";
 import { eventUploadPrefix, eventUploadsDir } from "../../lib/uploads.ts";
-import { eventsTr, guildLang } from "../../lib/i18n/bot.ts";
+import { reattachStoredAssets } from "../../lib/assets.ts";
+import { eventsTr, guildLang, guildTr } from "../../lib/i18n/bot.ts";
 
 // Events runtime: стабильные custom id кнопок (`event:join:<id>`), 30-секундный
 // src/lib/events.ts; перерисовки сообщений выстроены в per-event очередь.
@@ -18,25 +18,21 @@ const toDiscordButtonStyle = (name: EventButton["style"]): ButtonStyle => button
 // В БД хранятся локальные пути (/uploads/events/...): Discord отвергает
 // правка переотправляет файлы как attachment://. Нет файла — без картинки.
 async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
-  const prefix = eventUploadPrefix(guildId);
-  const files: { attachment: Buffer; name: string }[] = [];
-  for (const target of ["thumbnail", "image"] as const) {
-    const url = target === "thumbnail" ? embed.thumbnail?.url : embed.image?.url;
-    if (!url?.startsWith(prefix)) continue;
-    const filename = url.slice(prefix.length);
-    if (!filename || filename.includes("/") || filename.includes("\\")) continue;
-    try {
-      const bytes = await readFile(join(eventUploadsDir(guildId), filename));
-      if (target === "thumbnail") embed.thumbnail = { url: `attachment://${filename}` };
-      else embed.image = { url: `attachment://${filename}` };
-      files.push({ attachment: bytes, name: filename });
-    } catch { /* keep the stored URL; the image is just not shown */ }
-  }
-  return files;
+  const setAsset = (target: "thumbnail" | "image", url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
+  const { assets } = await reattachStoredAssets<"thumbnail" | "image">({
+    targets: ["thumbnail", "image"],
+    urlOf: target => target === "thumbnail" ? embed.thumbnail?.url : embed.image?.url,
+    skipTargets: [],
+    prefix: eventUploadPrefix(guildId),
+    dir: eventUploadsDir(guildId),
+    setAsset,
+    optional: true,
+  });
+  return assets.map(asset => ({ attachment: asset.bytes, name: asset.filename }));
 }
 
 export function registerEvents(client: Client) {
-  client.on(Events.InteractionCreate, (i) => void handleInteraction(i));
+  client.on(Events.InteractionCreate, (i) => guard("EVENTS", () => handleInteraction(i)));
   client.on(Events.MessageDelete, (message) => { if (message.guildId) detachEventMessage(message.id); });
   client.on(Events.GuildMemberRemove, (member) => {
     for (const result of removeParticipantFromGuild(member.guild.id, member.user.id)) {
@@ -48,10 +44,7 @@ export function registerEvents(client: Client) {
       void refreshMessage(member.guild.id, result.eventId);
     }
   });
-  client.on(Events.GuildDelete, (guild) => {
-    deleteEventsByGuild(guild.id); // файлы вложений удаляет общий GuildDelete-wipe в src/bot/index.ts
-  });
-  setInterval(() => void tick(), 30_000).unref();
+  unrefInterval(() => void tick(), 30_000);
 }
 
 async function handleInteraction(i: Interaction) {
@@ -60,7 +53,7 @@ async function handleInteraction(i: Interaction) {
   if ((key !== "join" && key !== "leave") || !eventId) return;
   count(`events.${key}`);
   const event = getEventInGuild(i.guildId ?? "", eventId);
-  const tr = (k: Parameters<typeof eventsTr>[1]) => eventsTr(guildLang(event?.guild_id ?? i.guildId ?? ""), k);
+  const tr = guildTr(eventsTr, event?.guild_id ?? i.guildId ?? "");
   if (!event) return i.reply({ content: tr("notFound"), flags: MessageFlags.Ephemeral }).catch(() => null);
   const result = key === "join" ? joinEvent(eventId, i.user.id, event.guild_id) : leaveEvent(eventId, i.user.id, event.guild_id);
   if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral }).catch(() => null);
@@ -127,6 +120,16 @@ async function refreshMessageNow(guildId: string, eventId: string) {
   }
 }
 
+const REMINDER_CONCURRENCY = 5;
+// Напоминания не держат глобальный ticking: DM-рассылка вынесена из цикла и
+// идёт ограниченными пачками (один зависший fetch не блокирует переходы событий).
+async function sendReminders(event: EventRow): Promise<void> {
+  const participants = eventParticipants(event.id);
+  for (let i = 0; i < participants.length; i += REMINDER_CONCURRENCY) {
+    await Promise.allSettled(participants.slice(i, i + REMINDER_CONCURRENCY).map(p => sendReminderDm(p.user_id, event)));
+  }
+}
+
 let ticking = false;
 async function tick() {
   if (ticking) return;
@@ -139,7 +142,7 @@ async function tick() {
       // Статус-гейт: после простоя напоминания по уже начавшемуся/завершённому
       // событию ушли бы как «начнётся через…» с датой в прошлом.
       if (!event || event.status !== "scheduled") continue;
-      for (const participant of eventParticipants(event.id)) await sendReminderDm(participant.user_id, event);
+      void sendReminders(event);
     }
     const { changed, created } = transitionDueEvents(now);
     // Повторяющаяся серия создаёт следующее событие без сообщения — публикуем

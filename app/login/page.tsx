@@ -3,18 +3,17 @@
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { authClient } from "../../src/lib/auth-client.ts";
+import { useAsyncAction } from "../../src/components/dashboard/ui.tsx";
 
 export default function Login() {
-  const [busy, setBusy] = useState(false);
+  const { busy, run } = useAsyncAction();
   const [error, setError] = useState("");
   async function signIn() {
-    setBusy(true);
     setError("");
-    const result = await authClient.signIn.social({ provider: "discord", callbackURL: "/dashboard", scopes: ["identify", "guilds"] });
-    if (result.error) {
-      setError("Не удалось начать вход через Discord.");
-      setBusy(false);
-    }
+    await run(async () => {
+      const result = await authClient.signIn.social({ provider: "discord", callbackURL: "/dashboard", scopes: ["identify", "guilds"] });
+      if (result.error) setError("Не удалось начать вход через Discord.");
+    });
   }
   return (
     <main className="auth-page">
@@ -24,7 +23,7 @@ export default function Login() {
         <h1>Вход в Dashboard</h1>
         <p className="muted">Авторизуйтесь через Discord, чтобы настроить серверы, которыми вы управляете.</p>
         {error && <p className="error-note" role="alert">⚠ {error}</p>}
-        <button className="btn" disabled={busy} onClick={signIn}>{busy ? "Открываем Discord…" : "Продолжить с Discord"}</button>
+        <button type="button" className="btn" disabled={busy} onClick={signIn}>{busy ? "Открываем Discord…" : "Продолжить с Discord"}</button>
       </section>
     </main>
   );

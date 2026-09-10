@@ -2,6 +2,7 @@
 // работает ли процесс (файл старее ~3 минут — оффлайн).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { unrefInterval } from "./utils/timers.ts";
 
 const FILE = join(process.cwd(), "data", "heartbeat");
 const startedAt = Date.now();
@@ -15,5 +16,5 @@ function write() {
 
 export function startHeartbeat() {
   write();
-  setInterval(write, 60_000).unref();
+  unrefInterval(write, 60_000);
 }

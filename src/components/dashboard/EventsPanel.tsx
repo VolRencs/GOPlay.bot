@@ -5,8 +5,8 @@ import { Image, Trash2 } from "lucide-react";
 import { eventStatusMeta } from "../../../src/lib/labels.ts";
 import { safeJson } from "../../../src/lib/json.ts";
 import type { EventListGet, EventListItem } from "../../../src/lib/events.ts";
-import { buttonColorOptions, DEFAULT_ACCENT, type Channel, type EmbedField, type Role, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, Select, TemplateLibrary, useAsyncAction, useObjectUrl } from "./ui.tsx";
+import { buttonColorOptions, DEFAULT_ACCENT, type Channel, type EmbedField, type PanelFail, type PanelNotify, type Role, type ServerEmoji } from "./types.ts";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, useAsyncAction, useObjectUrl } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 
 const EVENT_TONE: Record<string, string> = { scheduled: "pill-info", live: "pill-ok", completed: "pill-accent", cancelled: "pill-err" };
@@ -36,7 +36,7 @@ function ButtonEditor({ title, label, emoji, style, enabled, emojis, onChange }:
   );
 }
 
-export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError }: { guildId: string; channels: Channel[]; roles: Role[]; emojis: ServerEmoji[]; onDone: (message: string, tone?: "ok" | "warn") => void; onError: (message: string) => void }) {
+export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError }: { guildId: string; channels: Channel[]; roles: Role[]; emojis: ServerEmoji[]; onDone: PanelNotify; onError: PanelFail }) {
   const [events, setEvents] = useState<EventListItem[] | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventDraft>(defaultEventDraft);
@@ -54,7 +54,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
       } catch { /* storage full or unavailable */ }
     }, 400);
     return () => clearTimeout(timer);
-  });
+  }, [draftKey, guildId, editingId, draft]);
   useEffect(() => {
     if (!guildId) return;
     try {
@@ -96,7 +96,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
   }, [guildId]);
 
   const load = () => void apiGet<EventListGet>(`/api/guilds/${guildId}/events`, { events: [] }).then(data => setEvents(data.events));
-  useEffect(() => { load(); }, [guildId]);
+  useEffect(() => { if (!guildId) return; load(); }, [guildId]);
   const editing = events?.find(e => e.id === editingId) ?? null;
 
   function edit(e: EventListItem) {
@@ -121,7 +121,6 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
   };
 
   async function save(statusOverride?: string) {
-    if (busy) return;
     const scheduledMs = new Date(draft.scheduledAt).getTime();
     if (!Number.isFinite(scheduledMs)) return onError("Укажите дату и время события.");
     if (!draft.channelId) return onError("Выберите канал события.");
@@ -202,7 +201,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
         empty="Событий пока нет — создайте первое."
       >
         {events === null ? (
-          <p className="muted">Загружаем события…</p>
+          <p className="muted" role="status">Загружаем события…</p>
         ) : events.length > 0 ? (
           <div className="event-list">
             {events.map(e => {
@@ -230,7 +229,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
           <div className="compact-form-grid">
             <label>Канал<Select value={draft.channelId} onChange={channelId => set({ channelId })} ariaLabel="Канал события" options={channelOptions(channels, "Выберите канал")}/></label>
             <label>Дата и время<input type="datetime-local" value={draft.scheduledAt} onChange={e => set({ scheduledAt: e.target.value })}/></label>
-            <label>Лимит участников (0 — без лимита)<input type="number" min="0" max="100000" value={draft.maxParticipants} onChange={e => set({ maxParticipants: Math.max(0, Math.min(100000, Number(e.target.value) || 0)) })}/></label>
+            <NumberField label="Лимит участников" hint="(0 — без лимита)" min={0} max={100000} value={draft.maxParticipants} onChange={maxParticipants => set({ maxParticipants: Math.max(0, Math.min(100000, maxParticipants || 0)) })}/>
             <label>Роль события (необязательно)<Select value={draft.eventRoleId} onChange={eventRoleId => set({ eventRoleId })} ariaLabel="Роль события"
               options={[{ value: "", label: "Без роли" }, ...roles.map(r => ({ value: r.id, label: r.name }))]}/></label>
             <label>Напоминания, минуты через запятую<input value={draft.reminders} placeholder="60, 1440, 10080" onChange={e => set({ reminders: e.target.value })}/></label>
@@ -246,7 +245,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
                 { value: "custom", label: "Свой интервал" },
               ]}/></label>
             {draft.recurrenceFreq === "custom" && (
-              <label>Интервал, дней<input type="number" min="1" max="365" value={draft.recurrenceInterval} onChange={e => set({ recurrenceInterval: Math.max(1, Math.min(365, Number(e.target.value) || 1)) })}/></label>
+              <NumberField label="Интервал, дней" min={1} max={365} value={draft.recurrenceInterval} onChange={recurrenceInterval => set({ recurrenceInterval: Math.max(1, Math.min(365, recurrenceInterval || 1)) })}/>
             )}
           </div>
           <label className="check-row"><input type="checkbox" checked={draft.registrationEnabled} onChange={e => set({ registrationEnabled: e.target.checked })}/> Регистрация открыта</label>
@@ -268,7 +267,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
             <ButtonEditor title="Кнопка «Отказаться»" label={draft.leaveLabel} emoji={draft.leaveEmoji} style={draft.leaveStyle} enabled={draft.leaveEnabled} emojis={emojis} onChange={setButton("leave")}/>
           </div>
           <div className="template-actions">
-            <button type="button" className="btn" disabled={busy} onClick={() => void save()}>{busy ? "Сохраняем…" : editingId ? "Сохранить изменения" : "Создать событие"}</button>
+            <SaveButton saving={busy} onClick={() => void save()} label={editingId ? "Сохранить изменения" : "Создать событие"}/>
             {editingId && <button type="button" className="btn secondary" disabled={busy} onClick={() => void save("live")}>Начать сейчас</button>}
             {editingId && <button type="button" className="btn secondary" disabled={busy} onClick={() => void save("completed")}>Завершить</button>}
           </div>

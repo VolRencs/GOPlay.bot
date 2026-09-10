@@ -7,7 +7,7 @@ import { parseActions, safeJson } from "../../../src/lib/json.ts";
 import { automodDefaultActions, automodThresholdDefaults } from "../../../src/lib/automod.ts";
 import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../src/lib/constants.ts";
 import type { Channel, Role, Rule } from "./types.ts";
-import { CardHeader, CheckList, channelOptions, Select, useAsyncAction } from "./ui.tsx";
+import { CardHeader, CheckList, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
 
 const punishmentPresets = [
   { value: "delete", label: "Удалить сообщение", actions: ["delete"] },
@@ -24,15 +24,12 @@ const WINDOW_KINDS = ["spam", "duplicate", "emoji"];
 // Новые правила сидируются теми же дефолтами, что и детекторы в рантайме:
 // несохранённое правило ведёт себя как сохранённое.
 export function defaultRule(kind: string): Rule {
-  return { kind, enabled: 0, action_json: '["delete","warn"]', threshold_json: JSON.stringify({ ...(automodThresholdDefaults as Record<string, Record<string, unknown>>)[kind] ?? {}, durationSeconds: DEFAULT_TIMEOUT_SECONDS }), window_seconds: 10, escalation: 0 };
+  return { kind, enabled: 0, action_json: JSON.stringify([...automodDefaultActions]), threshold_json: JSON.stringify({ ...(automodThresholdDefaults as Record<string, Record<string, unknown>>)[kind] ?? {}, durationSeconds: DEFAULT_TIMEOUT_SECONDS }), window_seconds: 10, escalation: 0 };
 }
 
 function RuleThreshold({ kind, threshold, onChange }: { kind: string; threshold: Record<string, unknown>; onChange: (change: Record<string, unknown>) => void }) {
   const field = (label: string, key: string) => (
-    <label key={key}>
-      {label}
-      <input type="number" min="1" value={Number(threshold[key] ?? 1)} onChange={e => onChange({ [key]: Number(e.target.value) || 1 })}/>
-    </label>
+    <NumberField key={key} label={label} min={1} value={Number(threshold[key] ?? 1)} onChange={value => onChange({ [key]: value || 1 })}/>
   );
   if (kind === "spam") return field("Сообщений", "messages");
   if (kind === "duplicate") return field("Повторов", "repeatCount");
@@ -82,7 +79,7 @@ function DomainListEditor({ domains, onChange }: { domains: string[]; onChange: 
   return (
     <div className="domain-editor">
       <div className="domain-input-row">
-        <input value={value} placeholder="example.com" onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }}/>
+          <input value={value} aria-label="Новый домен" placeholder="example.com" onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }}/>
         <button type="button" className="btn secondary" onClick={add}>Добавить</button>
       </div>
       {list.length
@@ -143,7 +140,7 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Ru
               options={[{ value: "any", label: "Фото и видео" }, { value: "image", label: "Только фото" }, { value: "video", label: "Только видео" }]}/></label>
           )}
           {WINDOW_KINDS.includes(kind) && (
-            <label>Период проверки, сек<input type="number" min="1" max="3600" value={rule.window_seconds} onChange={e => onChange(kind, { window_seconds: Number(e.target.value) || 1 })}/></label>
+            <NumberField label="Период проверки, сек" min={1} max={3600} value={rule.window_seconds} onChange={window_seconds => onChange(kind, { window_seconds: window_seconds || 1 })}/>
           )}
         </div>
         <div className="punishment-box">
@@ -155,7 +152,7 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Ru
             options={punishmentPresets.map(p => ({ value: p.value, label: p.label }))}/></label>
           {actions.includes("timeout") && (
             <>
-              <label>Тайм-аут, минут<input type="number" min="1" max="40320" value={timeoutMinutes} onChange={e => setThreshold({ durationSeconds: Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, (Number(e.target.value) || 1) * 60)) })}/></label>
+              <NumberField label="Тайм-аут, минут" min={1} max={40320} value={timeoutMinutes} onChange={minutes => setThreshold({ durationSeconds: Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, (minutes || 1) * 60)) })}/>
               <label className="check-row">
                 <input type="checkbox" checked={Boolean(rule.escalation)} onChange={e => onChange(kind, { escalation: +e.target.checked })}/> Усиливать тайм-аут при повторах за 24 ч
               </label>
@@ -173,8 +170,8 @@ export function AutoModSettingsV2({ channels, roles, rules, ignoredRoleIds, prot
   return (
     <section className="panel-stack">
       <article className="card settings-card">
-        <CardHeader title={<>Правила автомодерации <span className="toolbar-note">включено {enabledCount} из {Object.keys(automodRules).length}</span></>} muted="Каждое правило работает независимо: включайте нужные и настраивайте условия с наказанием в карточках ниже."
-          action={<button type="button" className="btn" disabled={saving} onClick={() => run(onSaveAll)}>{saving ? "Сохраняем…" : "Сохранить автомодерацию"}</button>}/>
+        <CardHeader title="Правила автомодерации" note={`включено ${enabledCount} из ${Object.keys(automodRules).length}`} muted="Каждое правило работает независимо: включайте нужные и настраивайте условия с наказанием в карточках ниже."
+          action={<SaveButton saving={saving} onClick={() => run(onSaveAll)} label="Сохранить автомодерацию"/>}/>
       </article>
       <article className="card settings-card">
         <CardHeader title="Общие исключения" muted="Действуют сразу для всех правил ниже."/>

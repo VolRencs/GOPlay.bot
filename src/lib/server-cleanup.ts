@@ -1,6 +1,7 @@
 import { db, withTransaction } from "../db/database.ts";
 import { forgetGuildMessages } from "../bot/db/message-cache.ts";
 import { clearWarns } from "./warns.ts";
+import { deleteEventsByGuild } from "./events.ts";
 import type { CleanupTarget } from "./labels.ts";
 
 // Prepared once — паттерн проекта, даже для редких вызовов.
@@ -8,14 +9,16 @@ const auditDelete = db.prepare("DELETE FROM dashboard_audit WHERE guild_id=?");
 const appealsDelete = db.prepare("DELETE FROM appeals WHERE guild_id=?");
 const appealCounterReset = db.prepare("UPDATE guilds SET appeal_counter=0 WHERE id=?");
 const musicDelete = db.prepare("DELETE FROM music_settings WHERE guild_id=?");
-const eventsDelete = db.prepare("DELETE FROM events WHERE guild_id=?");
+const levelsDelete = db.prepare("DELETE FROM member_levels WHERE guild_id=?");
 const statsDeletes = ["guild_daily_metrics", "guild_daily_channel_stats", "guild_daily_user_stats", "guild_hourly_messages"]
   .map(table => db.prepare(`DELETE FROM ${table} WHERE guild_id=?`));
+const messageCacheDelete = db.prepare("DELETE FROM message_cache WHERE guild_id=?");
+const guildDelete = db.prepare("DELETE FROM guilds WHERE id=?");
 
 // Полный набор для стирания сервера. Шире пользовательского списка в
 // labels.ts: «Музыка» — настройки со страницы панели, а не накопленные
 // данные, поэтому в очистке её нет; но при выходе бота / админ-wipe удаляется.
-const WIPE_TARGETS: CleanupTarget[] = ["audit", "appeals", "warns", "stats", "events", "music"];
+const WIPE_TARGETS: CleanupTarget[] = ["audit", "appeals", "warns", "stats", "events", "music", "levels"];
 
 export function runCleanupTarget(guildId: string, target: CleanupTarget): number {
   // Каждая категория — одна транзакция: сбой посередине не оставит
@@ -28,7 +31,8 @@ export function runCleanupTarget(guildId: string, target: CleanupTarget): number
   });
   if (target === "warns") return clearWarns(guildId, null);
   if (target === "music") return Number(musicDelete.run(guildId).changes);
-  if (target === "events") return Number(eventsDelete.run(guildId).changes);
+  if (target === "levels") return Number(levelsDelete.run(guildId).changes);
+  if (target === "events") return deleteEventsByGuild(guildId);
   return withTransaction(() => {
     let removed = 0;
     for (const del of statsDeletes) removed += Number(del.run(guildId).changes);
@@ -40,7 +44,7 @@ export function runCleanupTarget(guildId: string, target: CleanupTarget): number
 // буфером (иначе следующий флеш вернул бы стёртые строки).
 function purgeMessageCache(guildId: string) {
   forgetGuildMessages(guildId);
-  db.prepare("DELETE FROM message_cache WHERE guild_id=?").run(guildId);
+  messageCacheDelete.run(guildId);
 }
 
 // Полное стирание всех данных сервера: все категории очистки, кэш текстов и
@@ -54,7 +58,7 @@ export function wipeGuildData(guildId: string) {
   withTransaction(() => {
     for (const target of WIPE_TARGETS) runCleanupTarget(guildId, target);
     purgeMessageCache(guildId);
-    db.prepare("DELETE FROM guilds WHERE id=?").run(guildId);
+    guildDelete.run(guildId);
   });
 }
 

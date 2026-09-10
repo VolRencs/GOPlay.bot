@@ -2,7 +2,7 @@
 
 import { logGroups, logKeys } from "../../../src/lib/labels.ts";
 import type { Channel, LoggingState } from "./types.ts";
-import { CardHeader, channelOptions, Select, useAsyncAction } from "./ui.tsx";
+import { CardHeader, SaveButton, channelOptions, Select, useAsyncAction } from "./ui.tsx";
 
 export function LoggingSettings({ channels, value, onChange, onSave }: { channels: Channel[]; value: LoggingState; onChange: (value: LoggingState) => void; onSave: () => unknown }) {
   const { busy: saving, run } = useAsyncAction();
@@ -12,8 +12,8 @@ export function LoggingSettings({ channels, value, onChange, onSave }: { channel
   return (
     <section className="panel-stack">
       <article className="card settings-card">
-        <CardHeader title={<>Журнал событий <span className="toolbar-note">включено {enabledCount} из {logKeys.length}</span></>} muted="Каждое событие отправляется отдельным читаемым embed-сообщением."
-          action={<button className="btn" disabled={saving} onClick={() => run(onSave)}>{saving ? "Сохраняем…" : "Сохранить логи"}</button>}/>
+        <CardHeader title="Журнал событий" note={`включено ${enabledCount} из ${logKeys.length}`} muted="Каждое событие отправляется отдельным читаемым embed-сообщением."
+          action={<SaveButton saving={saving} onClick={() => run(onSave)} label="Сохранить логи"/>}/>
         <label>
           Канал
           <Select value={channelId} onChange={v => onChange({ ...value, channelId: v })} ariaLabel="Канал журнала"

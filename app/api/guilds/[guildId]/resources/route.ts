@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, withGuild } from "../../../../../src/lib/guild-access.ts";
+import { discordFetch, guildRoute, jsonError } from "../../../../../src/lib/guild-access.ts";
 import { BOT_TOKEN_ERROR, SERVER_FALLBACK_NAME } from "../../../../../src/lib/constants.ts";
 import { ttlCacheAsync } from "../../../../../src/lib/cache.ts";
 import type { ResourcesGet } from "../../../../../src/components/dashboard/types.ts";
@@ -36,11 +36,9 @@ async function loadResources(guildId: string, botUserId: string): Promise<Resour
   return { channels, voiceChannels, categories, roles, emojis, server: { name: guild.name ?? SERVER_FALLBACK_NAME, icon: guild.icon ?? null }, stats: { members: guild.approximate_member_count ?? null, online: guild.approximate_presence_count ?? null } };
 }
 
-export async function GET(_: Request, { params }: { params: Promise<{ guildId: string }> }) {
-  const { guildId } = await params, access = await withGuild(guildId);
-  if (access instanceof Response) return access;
+export const GET = guildRoute(async (_, { guildId }) => {
   const token = process.env.DISCORD_TOKEN, botUserId = process.env.DISCORD_CLIENT_ID;
-  if (!token || !botUserId) return NextResponse.json({ error: BOT_TOKEN_ERROR }, { status: 503 });
+  if (!token || !botUserId) return jsonError(BOT_TOKEN_ERROR, 503);
   try { return NextResponse.json(await resourceCache.get(guildId)); }
-  catch { return NextResponse.json({ error: "Не удалось получить данные сервера. Убедитесь, что бот всё ещё на сервере." }, { status: 502 }); }
-}
+  catch { return jsonError("Не удалось получить данные сервера. Убедитесь, что бот всё ещё на сервере.", 502); }
+});

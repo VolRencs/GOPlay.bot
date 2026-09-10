@@ -1,4 +1,5 @@
 import { logger } from "./utils/logger.ts";
+import { unrefInterval } from "./utils/timers.ts";
 
 type DurationStats = { n: number; sum: number; max: number };
 const counts = new Map<string, number>();
@@ -14,7 +15,7 @@ export function time(name: string, ms: number) {
   if (ms > stats.max) stats.max = ms;
 }
 
-setInterval(() => {
+unrefInterval(() => {
   const parts: string[] = [];
   for (const [name, value] of counts) parts.push(`${name}: ${value}`);
   for (const [name, stats] of durations)
@@ -23,4 +24,4 @@ setInterval(() => {
   if (parts.length) logger.info("[PERF]", parts.join(" · "));
   counts.clear();
   durations.clear();
-}, 10 * 60_000).unref();
+}, 10 * 60_000);

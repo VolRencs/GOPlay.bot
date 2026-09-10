@@ -1,5 +1,3 @@
-CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL);
-
 CREATE TABLE guilds (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, updated_at INTEGER NOT NULL, appeal_counter INTEGER NOT NULL DEFAULT 0, lang TEXT NOT NULL DEFAULT 'ru');
 
 CREATE TABLE welcome_settings (guild_id TEXT PRIMARY KEY REFERENCES guilds(id) ON DELETE CASCADE, enabled INTEGER NOT NULL DEFAULT 0, channel_id TEXT, message TEXT NOT NULL DEFAULT 'Welcome {user}!', image_enabled INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, background_path TEXT, image_config_json TEXT NOT NULL DEFAULT '{}', goodbye_enabled INTEGER NOT NULL DEFAULT 0, goodbye_channel_id TEXT, goodbye_message TEXT NOT NULL DEFAULT 'До встречи, {username}!');

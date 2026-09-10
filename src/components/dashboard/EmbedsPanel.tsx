@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Image, Trash2, User } from "lucide-react";
 import { safeJson } from "../../../src/lib/json.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, Select, TemplateLibrary, useAsyncAction, useObjectUrl } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatDateTime, useAsyncAction, useObjectUrl } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
-import { DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type SavedEmbed } from "./types.ts";
+import { DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type SavedEmbed } from "./types.ts";
+
+const INHERIT_CHANNEL = "Использовать исходный канал";
 
 type EmbedForm = {
   id?: number;
@@ -25,7 +27,7 @@ type EmbedForm = {
 };
 const emptyEmbedForm = (): EmbedForm => ({ published: false, name: "", mode: "embed", title: "", description: "", footer: "", author: "", authorUrl: "", authorIcon: "", color: DEFAULT_ACCENT, fields: [], image: "", thumbnail: "" });
 
-export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: string; channels: Channel[]; onDone: (message: string, tone?: "ok" | "warn") => void; onError: (message: string) => void }) {
+export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: string; channels: Channel[]; onDone: PanelNotify; onError: PanelFail }) {
   const [items, setItems] = useState<SavedEmbed[]>([]);
   const [sendings, setSendings] = useState<EmbedSending[]>([]);
   const [channel, setChannel] = useState("");
@@ -93,17 +95,13 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
     setItems(data.embeds);
     setSendings(data.sendings);
   };
-  useEffect(() => { load(); }, [guildId]);
+  useEffect(() => { if (!guildId) return; load(); }, [guildId]);
 
   function verifySendings() {
     if (verifying) return;
     runVerify(async () => {
-      try {
-        await load(true);
-        onDone("Список отправлений проверен.");
-      } catch {
-        onError("Не удалось проверить список отправлений.");
-      }
+      await load(true);
+      onDone("Список отправлений проверен.");
     });
   }
 
@@ -146,7 +144,6 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
   const clearAuthor = () => { setForm({ authorIcon: "" }); setAuthorFile(null); if (authorInput.current) authorInput.current.value = ""; };
 
   async function submit(action: "save" | "update") {
-    if (busy) return;
     if (!form.name.trim()) return onError("Укажите название шаблона.");
     await run(async () => {
       const upload = new FormData();
@@ -165,7 +162,6 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
   }
 
   async function resend(item: SavedEmbed) {
-    if (busy) return;
     const targetChannel = channel || item.channel_id;
     if (!targetChannel) return onError("Выберите канал для первого отправления шаблона.");
     await run(async () => {
@@ -212,7 +208,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
           <label>
             Канал для отправки
             <Select value={channel} onChange={setChannel} ariaLabel="Канал для отправки"
-              placeholder="Использовать исходный канал" options={channelOptions(channels, "Использовать исходный канал")}/>
+              placeholder={INHERIT_CHANNEL} options={channelOptions(channels, INHERIT_CHANNEL)}/>
           </label>
         )}
         empty="Сохранённых сообщений пока нет."
@@ -231,9 +227,9 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
                         {itemSendings.map(s => {
                           const ch = channels.find(c => c.id === s.channel_id);
                           return (
-                            <span key={s.id} className="sending-item">#{ch?.name ?? s.channel_id} — {new Date(s.sent_at).toLocaleString("ru-RU")}
+                            <span key={s.id} className="sending-item">#{ch?.name ?? s.channel_id} — {formatDateTime(s.sent_at)}
                               {" "}
-                              <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${new Date(s.sent_at).toLocaleString("ru-RU")}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
+                              <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${formatDateTime(s.sent_at)}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
                             </span>
                           );
                         })}
@@ -288,8 +284,8 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
             <label>Текст<textarea rows={7} value={form.description} maxLength={2000} onChange={e => setForm({ description: e.target.value })}/></label>
           )}
           <div className="template-actions">
-            <button type="button" className="btn" disabled={busy} onClick={() => void submit("save")}>{busy ? "Сохраняем…" : "Сохранить шаблон"}</button>
-            {form.published && <button type="button" className="btn secondary" disabled={busy} onClick={() => void submit("update")}>{busy ? "Обновляем…" : "Обновить опубликованное"}</button>}
+            <SaveButton saving={busy} onClick={() => void submit("save")} label="Сохранить шаблон"/>
+            {form.published && <SaveButton saving={busy} variant="secondary" onClick={() => void submit("update")} label="Обновить опубликованное" savingLabel="Обновляем…"/>}
           </div>
           {form.id && !form.published && <p className="hint">Шаблон сохранён. Отправьте его из блока «Сохранённые сообщения».</p>}
         </section>

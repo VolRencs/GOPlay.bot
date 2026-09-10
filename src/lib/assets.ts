@@ -4,6 +4,7 @@
 // локальные /uploads пути — attachment:// там не живёт.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { filenameFromUrl } from "./uploads.ts";
 
 const imageMimeTypes: readonly string[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -58,6 +59,8 @@ export async function reattachStoredAssets<T extends string>(opts: {
   prefix: string;
   dir: string;
   setAsset: (target: T, url: string) => void;
+  /** Тихий режим для бота: пропавший файл оставляет исходный URL без картинки. */
+  optional?: boolean;
 }): Promise<{ assets: StoredAsset<T>[]; originals: OriginalAsset<T>[] }> {
   const assets: StoredAsset<T>[] = [];
   const originals: OriginalAsset<T>[] = [];
@@ -65,12 +68,13 @@ export async function reattachStoredAssets<T extends string>(opts: {
     if (opts.skipTargets.includes(target)) continue;
     const currentUrl = opts.urlOf(target);
     if (!currentUrl?.startsWith(opts.prefix)) continue;
-    const filename = currentUrl.slice(opts.prefix.length);
-    if (!filename || filename.includes("/") || filename.includes("\\")) throw new AssetError("Не удалось найти сохранённое изображение.");
+    const filename = filenameFromUrl(opts.prefix, currentUrl);
+    if (!filename) { if (opts.optional) continue; throw new AssetError("Не удалось найти сохранённое изображение."); }
     let bytes: Buffer;
     try {
       bytes = await readFile(join(opts.dir, filename));
     } catch {
+      if (opts.optional) continue;
       throw new AssetError("Не удалось прочитать сохранённое изображение.");
     }
     originals.push({ target, url: currentUrl });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, guildMemberNames, withGuild } from "../../../../../src/lib/guild-access.ts";
+import { discordFetch, guildMemberNames, guildRoute } from "../../../../../src/lib/guild-access.ts";
 import { db } from "../../../../../src/db/database.ts";
 import { ttlCacheAsync } from "../../../../../src/lib/cache.ts";
 import { moderationLabel } from "../../../../../src/lib/labels.ts";
@@ -28,11 +28,7 @@ const topChannelsStmt = db.prepare("SELECT channel_id AS id,SUM(messages) AS mes
 const topUsersStmt = db.prepare("SELECT user_id AS id,SUM(messages) AS messages FROM guild_daily_user_stats WHERE guild_id=? AND day>=? GROUP BY user_id ORDER BY messages DESC LIMIT 5");
 const peakHourStmt = db.prepare("SELECT day,hour,messages FROM guild_hourly_messages WHERE guild_id=? AND day>=? ORDER BY messages DESC LIMIT 1");
 
-export async function GET(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
-  const { guildId } = await params;
-
-  const access = await withGuild(guildId);
-  if (access instanceof Response) return access;
+export const GET = guildRoute(async (request, { guildId }) => {
   const lang = guildLang(guildId);
   const requested = new URL(request.url).searchParams.get("period");
   const period = requested === "24h" || requested === "30d" ? requested : "7d";
@@ -42,7 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ guil
 
   const dailyRows = dailyStmt.all(guildId, cutoff) as { day: string; joins: number; leaves: number; messages: number; moderation: number }[];
   const byDay = new Map(dailyRows.map(row => [row.day, row]));
-  const days = period === "24h" ? [iso(nowMs), iso(nowMs - DAY_MS)] : Array.from({ length: windowDays }, (_, i) => iso(nowMs - (windowDays - 1 - i) * DAY_MS));
+  const days = period === "24h" ? [iso(nowMs)] : Array.from({ length: windowDays }, (_, i) => iso(nowMs - (windowDays - 1 - i) * DAY_MS));
 
   const totals = days.reduce((sum, day) => {
     const row = byDay.get(day);
@@ -60,6 +56,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ guil
 
   const moderation = (moderationStmt.all(guildId, nowMs - windowDays * DAY_MS) as { type: string; count: number }[]).map(row => ({ type: row.type, label: moderationLabel(lang, row.type), count: row.count }));
 
+  if (period === "24h") {
+    // Скользящие 24 часа, а не сумма двух календарных дней (было до 48 ч):
+    // сообщения — из почасовых бакетов, модерация — по точному cutoff выше.
+    totals.messages = points.reduce((sum, point) => sum + point.messages, 0);
+    totals.moderation = moderation.reduce((sum, row) => sum + row.count, 0);
+  }
+
   const topChannels = await channelNames.get(guildId).catch(() => ({} as Record<string, string>)).then(names => (topChannelsStmt.all(guildId, cutoff) as { id: string; messages: number }[]).map(row => ({ ...row, name: names[row.id] ?? "Неизвестный канал" })));
   const memberNames = await guildMemberNames(guildId).catch(() => new Map<string, string>());
   const topUsers = (topUsersStmt.all(guildId, cutoff) as { id: string; messages: number }[]).map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" }));
@@ -67,4 +70,4 @@ export async function GET(request: Request, { params }: { params: Promise<{ guil
   const peakHour = (peakHourStmt.get(guildId, cutoff) as { day: string; hour: number; messages: number } | undefined) ?? null;
 
   return NextResponse.json<StatsGet>({ period, points, totals, moderation, topChannels, topUsers, peakHour });
-}
+});

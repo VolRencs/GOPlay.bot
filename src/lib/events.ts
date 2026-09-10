@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db, withTransaction } from "../db/database.ts";
-import { DAY_MS } from "./constants.ts";
+import { DAY_MS, clampNumber } from "./constants.ts";
 import { discordFetch, isSnowflake, sendDiscordDM } from "./guild-access.ts";
 import { stmt } from "../bot/db/statements.ts";
 import { safeJson } from "./json.ts";
@@ -45,7 +45,7 @@ export type EventRow = {
   completed_at: number | null; cancelled_at: number | null; stats_json: string | null;
 };
 type ParticipantRow = { event_id: string; user_id: string; joined_at: number; waitlist: number };
-export type EventCounts = { joined: number; waitlist: number };
+type EventCounts = { joined: number; waitlist: number };
 
 const MAX_REMINDER_MINUTES = 525_600;
 const MAX_PARTICIPANTS_LIMIT = 100_000;
@@ -68,8 +68,8 @@ const participantInsert = db.prepare("INSERT INTO event_participants(event_id,us
 const participantDelete = db.prepare("DELETE FROM event_participants WHERE event_id=? AND user_id=?");
 const participantPromote = db.prepare("UPDATE event_participants SET waitlist=0 WHERE event_id=? AND user_id=? AND waitlist=1");
 const participantsOf = db.prepare("SELECT * FROM event_participants WHERE event_id=? ORDER BY waitlist, joined_at");
-const joinedCountStmt = db.prepare("SELECT COUNT(*) AS count FROM event_participants WHERE event_id=? AND waitlist=0");
-const waitlistCountStmt = db.prepare("SELECT COUNT(*) AS count FROM event_participants WHERE event_id=? AND waitlist=1");
+// Один агрегат вместо двух COUNT: joined/waitlist считаются одним проходом по индексу.
+const eventCountsStmt = db.prepare("SELECT COALESCE(SUM(waitlist=0),0) AS joined, COALESCE(SUM(waitlist=1),0) AS waitlist FROM event_participants WHERE event_id=?");
 const nextWaitlistedStmt = db.prepare("SELECT user_id FROM event_participants WHERE event_id=? AND waitlist=1 ORDER BY joined_at LIMIT 1");
 
 const reminderDeleteUnsent = db.prepare("DELETE FROM event_reminders WHERE event_id=? AND sent_at IS NULL");
@@ -111,7 +111,8 @@ function parseEventRecurrence(raw: string | null | undefined): EventRecurrence {
 }
 
 export function eventCounts(eventId: string): EventCounts {
-  return { joined: (joinedCountStmt.get(eventId) as { count: number }).count, waitlist: (waitlistCountStmt.get(eventId) as { count: number }).count };
+  const row = eventCountsStmt.get(eventId) as { joined: number; waitlist: number };
+  return { joined: Number(row.joined), waitlist: Number(row.waitlist) };
 }
 
 export function getEvent(eventId: string): EventRow | undefined {
@@ -133,7 +134,7 @@ export function renderableOf(row: EventRow): RenderableEvent {
 }
 
 export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: EventEmbed, counts: EventCounts): EventEmbedPayload {
-  const tr = (k: Parameters<typeof eventsTr>[1]) => eventsTr(lang, k);
+  const tr = (k: Parameters<typeof eventsTr>[1], v?: Record<string, string | number>) => eventsTr(lang, k, v);
   const userFields: { name: string; value: string; inline: boolean }[] = (embed.fields ?? []).map(f => ({ name: f.name, value: f.value, inline: Boolean(f.inline) }));
   const added: typeof userFields = [];
   if (embed.timestamp) {
@@ -141,7 +142,7 @@ export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: Ev
     added.push({ name: tr("fldDate"), value: `<t:${unix}:d> (<t:${unix}:R>)`, inline: true });
   }
   if (event.status !== "scheduled") added.push({ name: tr("fldStatus"), value: eventStatusMetaM[event.status]?.label[lang] ?? event.status, inline: true });
-  if (event.registrationEnabled || counts.joined > 0) added.push({ name: tr("fldParticipants"), value: event.maxParticipants > 0 ? tr("joinedOf").replace("{a}",String(counts.joined)).replace("{b}",String(event.maxParticipants)) : String(counts.joined), inline: true });
+  if (event.registrationEnabled || counts.joined > 0) added.push({ name: tr("fldParticipants"), value: event.maxParticipants > 0 ? tr("joinedOf", { a: String(counts.joined), b: String(event.maxParticipants) }) : String(counts.joined), inline: true });
   if (counts.waitlist > 0) added.push({ name: tr("fldWaitlist"), value: String(counts.waitlist), inline: true });
   const fields = [...userFields.slice(0, Math.max(0, 25 - added.length)), ...added].slice(0, 25);
   return {
@@ -165,7 +166,7 @@ export function renderEventButtons(event: RenderableEvent, buttons: EventButton[
   return buttons
     .filter(b => b.key === "join" || b.key === "leave")
     .sort((a, b) => a.order - b.order)
-    .map(b => ({ ...b, disabled: b.key === "join" ? event.status !== "scheduled" || !event.registrationEnabled || (limitReached && !event.waitlistEnabled) : closed }));
+    .map(b => ({ ...b, disabled: !b.enabled || (b.key === "join" ? event.status !== "scheduled" || !event.registrationEnabled || (limitReached && !event.waitlistEnabled) : closed) }));
 }
 
 type JoinOutcome = "joined" | "waitlisted" | "already_joined";
@@ -208,7 +209,7 @@ export function leaveEvent(eventId: string, userId: string, guildId?: string): L
 // пересчитывает участников заново.
 function promoteFromWaitlist(event: EventRow): string | null {
   if (!event.waitlist_enabled || event.max_participants <= 0) return null;
-  const joined = (joinedCountStmt.get(event.id) as { count: number }).count;
+  const joined = eventCounts(event.id).joined;
   if (joined >= event.max_participants) return null;
   const next = nextWaitlistedStmt.get(event.id) as { user_id: string } | undefined;
   if (!next) return null;
@@ -379,8 +380,8 @@ export function deleteEvent(guildId: string, id: string): { channelId: string; m
   return { channelId: row.channel_id, messageId: row.message_id, embed: parseEventEmbed(row.embed_json) };
 }
 
-export function deleteEventsByGuild(guildId: string) {
-  eventDeleteByGuild.run(guildId);
+export function deleteEventsByGuild(guildId: string): number {
+  return Number(eventDeleteByGuild.run(guildId).changes);
 }
 
 export function updateEventMessage(eventId: string, messageId: string) {
@@ -393,7 +394,7 @@ export function detachEventMessage(messageId: string) {
   eventDetachByMessage.run(Date.now(), messageId);
 }
 
-export type EventView = {
+type EventView = {
   id: string; guildId: string; channelId: string; messageId: string | null;
   embed: EventEmbed; buttons: EventButton[];
   scheduledAt: number; maxParticipants: number;
@@ -438,7 +439,7 @@ export function listEvents(guildId: string): EventView[] {
   return rows.map(row => ({
     ...toEventViewBase(row),
     counts: counts.get(row.id) ?? { joined: 0, waitlist: 0 },
-    participants: (participants.get(row.id) ?? []).map(p => ({ userId: p.userId, joinedAt: p.joinedAt, waitlist: Boolean(p.waitlist) })),
+    participants: participants.get(row.id) ?? [],
   }));
 }
 
@@ -470,14 +471,13 @@ export async function sendReminderDm(userId: string, event: EventRow): Promise<b
 }
 
 export function clampEventInput(input: Record<string, unknown>): EventInput | { error: string } {
+  if (!input || typeof input !== "object") return { error: "Некорректные данные события." };
   const channelId = typeof input.channelId === "string" ? input.channelId : "";
   if (!isSnowflake(channelId)) return { error: "Выберите канал для события." };
   const scheduledAt = Number(input.scheduledAt);
   if (!Number.isInteger(scheduledAt) || scheduledAt <= 0) return { error: "Укажите дату и время события." };
   const status: EventStatus = eventStatuses.includes(input.status as EventStatus) ? input.status as EventStatus : "scheduled";
-  let maxParticipants = Number(input.maxParticipants ?? 0);
-  if (!Number.isInteger(maxParticipants)) maxParticipants = 0;
-  maxParticipants = Math.max(0, Math.min(MAX_PARTICIPANTS_LIMIT, maxParticipants));
+  const maxParticipants = clampNumber(input.maxParticipants ?? 0, 0, 0, MAX_PARTICIPANTS_LIMIT, "integer");
   const eventRoleId = typeof input.eventRoleId === "string" && isSnowflake(input.eventRoleId) ? input.eventRoleId : null;
   const reminders = Array.isArray(input.reminders) ? [...new Set(input.reminders.filter((v): v is number => Number.isInteger(v) && Number(v) > 0 && Number(v) <= MAX_REMINDER_MINUTES).map(Number))].slice(0, 10) : [];
   const recurrence: EventRecurrence = parseEventRecurrence(typeof input.recurrence === "object" && input.recurrence !== null ? JSON.stringify(input.recurrence) : null);

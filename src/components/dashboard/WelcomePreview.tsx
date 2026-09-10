@@ -10,7 +10,7 @@ const CENTER_Y = DESIGN_H / 2;
 const SNAP_DIST = 26;
 
 type DragTarget = "avatar" | "title" | "subtitle";
-type ResizeDir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+type ResizeDir = "ne" | "nw" | "se" | "sw";
 type Gesture =
   | { kind: "move"; target: DragTarget; offX: number; offY: number }
   | { kind: "resize"; dir: ResizeDir; startW: number; startH: number; ratio: number; cx: number; cy: number };
@@ -143,10 +143,6 @@ export function WelcomePreview({ message, config: committed, background, enabled
   const handleStyle = (dir: ResizeDir): React.CSSProperties => {
     const base: React.CSSProperties = { position: "absolute", width: 9, height: 9, background: "#fff", border: "1.5px solid var(--violet)", borderRadius: 2 };
     const map: Record<ResizeDir, React.CSSProperties> = {
-      n: { top: -5, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" },
-      s: { bottom: -5, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" },
-      e: { right: -5, top: "50%", transform: "translateY(-50%)", cursor: "ew-resize" },
-      w: { left: -5, top: "50%", transform: "translateY(-50%)", cursor: "ew-resize" },
       ne: { top: -5, right: -5, cursor: "nesw-resize" },
       nw: { top: -5, left: -5, cursor: "nwse-resize" },
       se: { bottom: -5, right: -5, cursor: "nwse-resize" },

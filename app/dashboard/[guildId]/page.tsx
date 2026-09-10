@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BarChart3, Bot, CalendarDays, Gavel, History, Image, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, X } from "lucide-react";
+import { BarChart3, Bot, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, X } from "lucide-react";
 import { buildWelcomePutBody, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../src/lib/welcome.ts";
 import { automodRules, buildLoggingPutBody, type LoggingGet, type LoggingPutBody } from "../../../src/lib/labels.ts";
 import { buildRulePutBody, type AutomodGet, type AutomodRulePutBody, type AutomodSecurityPutBody } from "../../../src/lib/automod.ts";
 import { buildTempPutBody, type TempchannelsGet, type TempPutBody } from "../../../src/lib/tempchannels.ts";
+import { buildLevelsPutBody, levelDefaults, type LevelsGet, type LevelsPutBody } from "../../../src/lib/levels.ts";
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
 import { SERVER_FALLBACK_NAME } from "../../../src/lib/constants.ts";
 import type { MusicSettings } from "../../../src/lib/music-settings.ts";
@@ -25,12 +26,14 @@ import { RoleSettings } from "../../../src/components/dashboard/RolesPanel.tsx";
 import { EmbedsPanel } from "../../../src/components/dashboard/EmbedsPanel.tsx";
 import { AppealsPanel } from "../../../src/components/dashboard/AppealsPanel.tsx";
 import { EventsPanel } from "../../../src/components/dashboard/EventsPanel.tsx";
+import { LevelsPanel } from "../../../src/components/dashboard/LevelsPanel.tsx";
 
-type TabKey = "welcome" | "automod" | "roles" | "embeds" | "music" | "logging" | "stats" | "tempchannels" | "appeals" | "events" | "audit" | "settings";
-const TAB_KEYS: readonly TabKey[] = ["stats", "welcome", "automod", "roles", "embeds", "music", "events", "logging", "tempchannels", "appeals", "audit", "settings"];
+type TabKey = "welcome" | "automod" | "roles" | "levels" | "embeds" | "music" | "logging" | "stats" | "tempchannels" | "appeals" | "events" | "audit" | "settings";
+const TAB_KEYS: readonly TabKey[] = ["stats", "welcome", "automod", "roles", "levels", "embeds", "music", "events", "logging", "tempchannels", "appeals", "audit", "settings"];
 const TAB_LABELS: Record<TabKey, { nav: string; title: string }> = {
   stats: { nav: "Статистика", title: "Статистика сервера" }, welcome: { nav: "Приветствие", title: "Приветствие" },
   automod: { nav: "Автомодерация", title: "Автомодерация" }, roles: { nav: "Роли", title: "Самовыдача ролей" },
+  levels: { nav: "Уровни", title: "Уровни и опыт" },
   embeds: { nav: "Embeds", title: "Конструктор embeds" }, music: { nav: "Музыка", title: "Музыка" }, events: { nav: "События", title: "События" },
   logging: { nav: "Логи", title: "Логирование" }, tempchannels: { nav: "Временные каналы", title: "Временные каналы" },
   appeals: { nav: "Апелляции", title: "Апелляции" }, audit: { nav: "Журнал изменений", title: "Журнал изменений" },
@@ -66,6 +69,8 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
   const [savedLogging, setSavedLogging] = useState<LoggingState | null>(null);
   const [temp, setTemp] = useState<TempChannelsState>(defaultTempChannels);
   const [savedTemp, setSavedTemp] = useState<TempChannelsState | null>(null);
+  const [levels, setLevels] = useState<LevelsGet>({ settings: { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] }, rewards: [] });
+  const [savedLevels, setSavedLevels] = useState<LevelsGet | null>(null);
   const [pendingNav, setPendingNav] = useState<{ tab: string } | { href: string } | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -110,7 +115,7 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       try {
       setGuildId(id);
       const loadFail = "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу.";
-      const [resourcesRes, welcomeRes, rulesRes, loggingRes, tempRes, langRes, musicRes] = await Promise.all([
+      const [resourcesRes, welcomeRes, rulesRes, loggingRes, tempRes, langRes, musicRes, levelsRes] = await Promise.all([
         apiSend<ResourcesGet>(`/api/guilds/${id}/resources`, {}, loadFail),
         apiSend<WelcomeGet>(`/api/guilds/${id}/welcome`, {}, loadFail),
         apiSend<AutomodGet>(`/api/guilds/${id}/automod`, {}, loadFail),
@@ -118,13 +123,14 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
         apiSend<TempchannelsGet>(`/api/guilds/${id}/tempchannels`, {}, loadFail),
         apiSend<LangGet>(`/api/guilds/${id}/lang`, {}, loadFail),
         apiSend<MusicSettings>(`/api/guilds/${id}/music`, {}, loadFail),
+        apiSend<LevelsGet>(`/api/guilds/${id}/levels`, {}, loadFail),
       ]);
-      if (!resourcesRes.ok || !welcomeRes.ok || !rulesRes.ok || !loggingRes.ok || !tempRes.ok || !langRes.ok || !musicRes.ok) {
-        const failed=[resourcesRes,welcomeRes,rulesRes,loggingRes,tempRes,langRes,musicRes].find(response=>!response.ok);
+      if (!resourcesRes.ok || !welcomeRes.ok || !rulesRes.ok || !loggingRes.ok || !tempRes.ok || !langRes.ok || !musicRes.ok || !levelsRes.ok) {
+        const failed=[resourcesRes,welcomeRes,rulesRes,loggingRes,tempRes,langRes,musicRes,levelsRes].find(response=>!response.ok);
         if(active) fail(!failed || failed.ok ? loadFail : failed.error);
         return;
       }
-      const resourceData = resourcesRes.data, welcomeData = welcomeRes.data, automodData = rulesRes.data, loggingData = loggingRes.data, tempData = tempRes.data, langData = langRes.data, musicData = musicRes.data;
+      const resourceData = resourcesRes.data, welcomeData = welcomeRes.data, automodData = rulesRes.data, loggingData = loggingRes.data, tempData = tempRes.data, langData = langRes.data, musicData = musicRes.data, levelsData = levelsRes.data;
       if(!active) return;
       setServerLang(langData.lang); setSavedServerLang(langData.lang);
       setMusic(musicData); setSavedMusic(musicData);
@@ -142,6 +148,7 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       const loggingValue={channelId:loggingData.channel_id??"",categories:loggingCategories};setLogging(loggingValue);setSavedLogging(loggingValue);
       const tempValue = { presets: tempData.presets.map(tempPresetFromApi) };
       setTemp(tempValue); setSavedTemp(tempValue);
+      setLevels(levelsData); setSavedLevels(levelsData);
       } catch {
         if(active) fail("Не удалось соединиться с сервером.");
       } finally {
@@ -175,6 +182,10 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
     const payload: MusicPutBody = buildMusicPutBody(music);
     return apiPut<MusicPutBody>(`/api/guilds/${guildId}/music`, payload, () => { setMusic(payload); setSavedMusic(payload); }, "Настройки музыки сохранены.", report);
   }
+  async function saveLevels(report=true): Promise<boolean> {
+    const payload: LevelsPutBody = buildLevelsPutBody(levels.settings, levels.rewards);
+    return apiPut<LevelsPutBody>(`/api/guilds/${guildId}/levels`, payload, () => { setLevels(payload); setSavedLevels(payload); }, "Настройки уровней сохранены.", report);
+  }
   async function saveAutoMod(): Promise<void>{let ok=await saveSecurity(false); for(const k of Object.keys(rules)) ok=(await saveRule(k,false))&&ok; if(ok) notify("Настройки автомодерации сохранены.");}
 
   function updateRule(kind: string, change: Partial<Rule>) {
@@ -191,23 +202,25 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
   const tempDirty=dirty(savedTemp,temp);
   const langDirty=dirty(savedServerLang,serverLang);
   const musicDirty=dirty(savedMusic,music);
-  const isDirty=Boolean(guildId)&&(welcomeDirty||rulesDirty||securityDirty||loggingDirty||tempDirty||langDirty||musicDirty);
-  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty) for(const k of Object.keys(rules)) if(dirty(savedRules?.[k] ?? null,rules[k])) ok=(await saveRule(k,false))&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDirty)ok=(await saveLogging(false))&&ok;if(tempDirty)ok=(await saveTemp(false))&&ok;if(langDirty)ok=(await saveLang(false))&&ok;if(musicDirty)ok=(await saveMusic(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
-  function discardChanges(){if(savedServerLang)setServerLang(savedServerLang);if(savedMusic)setMusic(savedMusic);if(savedWelcome)setWelcome(savedWelcome);if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}if(savedLogging)setLogging(savedLogging);if(savedTemp)setTemp(savedTemp);notify("Несохранённые изменения сброшены.");}
+  const levelsDirty=dirty(savedLevels,levels);
+  const isDirty=Boolean(guildId)&&(welcomeDirty||rulesDirty||securityDirty||loggingDirty||tempDirty||langDirty||musicDirty||levelsDirty);
+  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty) for(const k of Object.keys(rules)) if(dirty(savedRules?.[k] ?? null,rules[k])) ok=(await saveRule(k,false))&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDirty)ok=(await saveLogging(false))&&ok;if(tempDirty)ok=(await saveTemp(false))&&ok;if(langDirty)ok=(await saveLang(false))&&ok;if(musicDirty)ok=(await saveMusic(false))&&ok;if(levelsDirty)ok=(await saveLevels(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
+  function discardChanges(){if(savedServerLang)setServerLang(savedServerLang);if(savedMusic)setMusic(savedMusic);if(savedWelcome)setWelcome(savedWelcome);if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}if(savedLogging)setLogging(savedLogging);if(savedTemp)setTemp(savedTemp);if(savedLevels)setLevels(savedLevels);notify("Несохранённые изменения сброшены.");}
   function applyNav(nav:NonNullable<typeof pendingNav>){if("tab" in nav)switchTab(nav.tab as TabKey);else window.location.href=nav.href;setPendingNav(null);}
   async function saveAndGo(){if(!pendingNav)return;const ok=await saveAllDirty();if(ok)applyNav(pendingNav);else setPendingNav(null);}
   function discardAndGo(){if(!pendingNav)return;discardChanges();applyNav(pendingNav);}
   useEffect(()=>{if(!isDirty)return;const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};const blockLinks=(event:MouseEvent)=>{const target=event.target;if(!(target instanceof Element))return;const link=target.closest("a[href]");if(link&&!event.defaultPrevented&&!event.metaKey&&!event.ctrlKey){event.preventDefault();setPendingNav({href:link.getAttribute("href")??"/"});}};window.addEventListener("beforeunload",beforeUnload);document.addEventListener("click",blockLinks,true);return()=>{window.removeEventListener("beforeunload",beforeUnload);document.removeEventListener("click",blockLinks,true);};},[isDirty]);
   return <main className="settings-shell">
     <aside className="sidebar"><a href="/dashboard" className="brand"><Bot size={22} /> GOPlay</a><p className="sidebar-label">НАСТРОЙКИ СЕРВЕРА</p><nav aria-label="Разделы настроек">{([
-      ["stats", BarChart3], ["welcome", Sparkles], ["automod", ShieldCheck], ["roles", Tags], ["embeds", Image], ["music", Music], ["events", CalendarDays], ["logging", ScrollText], ["tempchannels", Mic2], ["appeals", Gavel], ["audit", History], ["settings", Settings],
-    ] as const).map(([key, Icon]) => <button key={key} className={tab === key ? "nav-item active" : "nav-item"} onClick={() => { if(key===tab)return; if(isDirty)setPendingNav({tab:key}); else switchTab(key); }}><Icon size={18} />{TAB_LABELS[key].nav}</button>)}</nav></aside>
+      ["stats", BarChart3], ["welcome", Sparkles], ["automod", ShieldCheck], ["roles", Tags], ["levels", Medal], ["embeds", Image], ["music", Music], ["events", CalendarDays], ["logging", ScrollText], ["tempchannels", Mic2], ["appeals", Gavel], ["audit", History], ["settings", Settings],
+    ] as const).map(([key, Icon]) => <button type="button" key={key} className={tab === key ? "nav-item active" : "nav-item"} onClick={() => { if(key===tab)return; if(isDirty)setPendingNav({tab:key}); else switchTab(key); }}><Icon size={18} />{TAB_LABELS[key].nav}</button>)}</nav></aside>
     <section className="settings-content"><div className="settings-top"><div><a className="back-link" href="/dashboard">← Все серверы</a><div className="server-heading"><div className="server-heading-icon">{server.icon?<img src={`https://cdn.discordapp.com/icons/${guildId}/${server.icon}.png?size=128`} alt=""/>:<Bot size={24}/>}</div><div><p className="eyebrow">{server.name}</p><h1>{TAB_LABELS[tab].title}</h1></div></div></div></div>
       {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
       <div className="toast-stack" role="region" aria-label="Уведомления">{toasts.map(toast => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><span className="toast-dot" aria-hidden="true"/><span className="toast-text">{toast.text}</span><button type="button" className="toast-close" aria-label="Закрыть уведомление" onClick={() => dismissToast(toast.id)}><X size={14}/></button></div>)}</div>
       {tab === "welcome" && <WelcomeSettings channels={channels} value={welcome} onChange={setWelcome} onSave={() => saveWelcome()} onUpload={(file) => uploadWelcomeBackground(file)} bgTimestamp={bgTimestamp} />}
       {tab === "automod" && <AutoModSettingsV2 channels={channels} roles={roles} rules={rules} ignoredRoleIds={ignoredRoleIds} protectedChannelId={protectedChannelId} onGlobalChange={(roles,channel)=>{setIgnoredRoleIds(roles);setProtectedChannelId(channel);}} onSaveAll={() => saveAutoMod()} onChange={updateRule} />}
       {tab === "roles" && <RoleSettings guildId={guildId} roles={roles} emojis={emojis} channels={channels} onDone={notify} onError={fail} />}
+      {tab === "levels" && <LevelsPanel channels={channels} roles={roles} value={levels.settings} rewards={levels.rewards} onChange={settings => setLevels(value => ({ ...value, settings }))} onRewardsChange={rewards => setLevels(value => ({ ...value, rewards }))} onSave={() => void saveLevels()} />}
       {tab === "embeds" && <EmbedsPanel guildId={guildId} channels={channels} onDone={notify} onError={fail} />}
       {tab === "music" && <MusicSettingsCard channels={channels} voiceChannels={voiceChannels} roles={roles} value={music} onChange={setMusic} onSave={() => void saveMusic()} />}
       {tab === "logging" && <LoggingSettings channels={channels} value={logging} onChange={setLogging} onSave={() => saveLogging()} />}
@@ -215,7 +228,7 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       {tab === "tempchannels" && <TemporaryChannelsSettings voiceChannels={voiceChannels} categories={categories} value={temp} saved={savedTemp} onChange={setTemp} onSave={() => saveTemp()} />}
       {tab === "appeals" && <AppealsPanel guildId={guildId} onDone={notify} onError={fail} />}
       {tab === "events" && <EventsPanel guildId={guildId} channels={channels} roles={roles} emojis={emojis} onDone={notify} onError={fail} />}
-      {tab === "audit" && <section className="panel-stack"><DashboardAuditLog guildId={guildId} /></section>}
+      {tab === "audit" && <DashboardAuditLog guildId={guildId} />}
       {tab === "settings" && <section className="panel-stack">
         <BotLanguageCard value={serverLang} onChange={setServerLang} onSave={() => void saveLang()} />
         <ServerDataCleanup guildId={guildId} onDone={notify} onError={fail} />

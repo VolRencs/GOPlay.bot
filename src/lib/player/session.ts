@@ -120,20 +120,23 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     failedStarts: 0, resumesLeft: 0, lastResumeSec: 0, restarted: false,
   };
   sessions.set(guildId, session);
+  // Замыкания проверяют, что в map всё ещё эта сессия: иначе поздний колбэк
+  // старого соединения уничтожил бы уже новую сессию пользователя.
+  const alive = () => sessions.get(guildId) === session;
 
   Promise.any([
     entersState(connection, VoiceConnectionStatus.Connecting, 10_000),
     entersState(connection, VoiceConnectionStatus.Signalling, 10_000),
   ]).catch((error: unknown) => {
     logger.warn("[MUSIC] Не удалось установить голосовое соединение", guildId, error);
-    destroySession(guildId);
+    if (alive()) destroySession(guildId);
   });
   // Официальный рецепт Disconnected (кик, 4014): 5 c на самовосстановление.
   void entersState(connection, VoiceConnectionStatus.Disconnected, 2 ** 31 - 1).then(() => {
     Promise.race([
       entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
       entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-    ]).catch(() => destroySession(guildId));
+    ]).catch(() => { if (alive()) destroySession(guildId); });
   }).catch(() => { /* соединение уничтожено до Disconnected */ });
 
   player.on(AudioPlayerStatus.Playing, () => {

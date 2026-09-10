@@ -73,7 +73,7 @@ const logTitlesByLang: Record<Locale, Record<string, string>> = {
 };
 export const logTitleFor = (lang: Locale, type: string): string => logTitlesByLang[lang][type] ?? type;
 
-export type CleanupTarget = "audit" | "appeals" | "warns" | "stats" | "events" | "music";
+export type CleanupTarget = "audit" | "appeals" | "warns" | "stats" | "events" | "music" | "levels";
 // «Музыка» намеренно отсутствует в списке пользовательской очистки: это
 // (см. WIPE_TARGETS в server-cleanup).
 export const cleanupTargetsM: { key: CleanupTarget; label: Bi; description: Bi; confirm: Bi; done: Bi }[] = [
@@ -81,6 +81,7 @@ export const cleanupTargetsM: { key: CleanupTarget; label: Bi; description: Bi; 
   { key: "appeals", label: { ru: "Апелляции", en: "Appeals" }, description: { ru: "Все поданные апелляции и их история. Счётчик апелляций сервера начнётся заново.", en: "All filed appeals and their history. The server appeal counter restarts." }, confirm: { ru: "Удалить все апелляции сервера? Это действие нельзя отменить.", en: "Delete all server appeals? This cannot be undone." }, done: { ru: "Все апелляции сервера удалены.", en: "All server appeals deleted." } },
   { key: "warns", label: { ru: "Предупреждения", en: "Warnings" }, description: { ru: "Все предупреждения (warn) и связанные с ними апелляции.", en: "All warnings and their related appeals." }, confirm: { ru: "Удалить все предупреждения сервера? Это действие нельзя отменить.", en: "Delete all server warnings? This cannot be undone." }, done: { ru: "Все предупреждения сервера удалены.", en: "All server warnings deleted." } },
   { key: "stats", label: { ru: "Статистика", en: "Statistics" }, description: { ru: "Данные статистики: сообщения, участники, модерация за все периоды.", en: "Statistics data: messages, members, moderation for all periods." }, confirm: { ru: "Удалить статистику сервера? Это действие нельзя отменить.", en: "Delete server statistics? This cannot be undone." }, done: { ru: "Статистика сервера удалена.", en: "Server statistics deleted." } },
+  { key: "levels", label: { ru: "Уровни и опыт", en: "Levels and XP" }, description: { ru: "Накопленный опыт и уровни всех участников. Настройки системы уровней и роли-награды сохранятся.", en: "Accumulated XP and levels of all members. Level settings and role rewards are kept." }, confirm: { ru: "Сбросить уровни и опыт всех участников? Это действие нельзя отменить.", en: "Reset all member levels and XP? This cannot be undone." }, done: { ru: "Уровни и опыт всех участников сброшены.", en: "All member levels and XP have been reset." } },
   { key: "events", label: { ru: "События", en: "Events" }, description: { ru: "Все события сервера, их участники и запланированные напоминания.", en: "All server events, participants and scheduled reminders." }, confirm: { ru: "Удалить все события сервера? Это действие нельзя отменить.", en: "Delete all server events? This cannot be undone." }, done: { ru: "Все события сервера удалены.", en: "All server events deleted." } },
 ];
 export const cleanupTargets: { key: CleanupTarget; label: string; description: string; confirm: string; done: string }[] = cleanupTargetsM.map(t => ({ key: t.key, label: t.label.ru, description: t.description.ru, confirm: t.confirm.ru, done: t.done.ru }));

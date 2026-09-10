@@ -1,16 +1,20 @@
 import { DEFAULT_SETTINGS } from "../../../src/lib/tempchannels.ts";
 import type { MusicSettings } from "../../lib/music-settings.ts";
-import { clampMusicSeconds } from "../../lib/labels.ts";
+import { clampMusicSeconds, type LoggingPutBody } from "../../lib/labels.ts";
+import type { AutomodRuleRow } from "../../lib/automod.ts";
 export type Channel = { id: string; name: string };
 export type Role = { id: string; name: string };
+// Единые сигнатуры уведомлений панелей: успех с тоном и ошибка.
+export type PanelNotify = (message: string, tone?: "ok" | "warn") => void;
+export type PanelFail = (message: string) => void;
 export type ServerEmoji = { id: string; name: string; animated: boolean; value: string };
 export type ServerStats = { members: number | null; online: number | null };
 export type ServerIdentity = { name: string; icon: string | null };
 // enabled/escalation: из GET приходят как number (0/1 из SQLite),
 // в PUT уходят как boolean. Тип допускает оба, конверсия — Boolean()/+ на границе.
-export type Rule = { kind: string; enabled: number | boolean; action_json: string; threshold_json: string; window_seconds: number; escalation: number | boolean };
+export type Rule = Omit<AutomodRuleRow, "enabled" | "escalation"> & { enabled: number | boolean; escalation: number | boolean };
 export type Welcome = { enabled: number | boolean; channel_id: string | null; message: string; image_enabled: number | boolean; background_path?: string | null; image_config_json: string; goodbye_enabled: number | boolean; goodbye_channel_id: string | null; goodbye_message: string };
-export type LoggingState = { channelId: string; categories: Record<string, boolean> };
+export type LoggingState = Omit<LoggingPutBody, "channelId"> & { channelId: string };
 export type TempChannelConfig = { categoryId: string | null; nameTemplate: string; userLimit: number; canRename: boolean; canManageAccess: boolean; canClose: boolean };
 export type TempPreset = { id: number; name: string; triggerChannelIds: string[]; config: TempChannelConfig };
 export type TempChannelsState = { presets: TempPreset[] };
@@ -66,12 +70,7 @@ export type EmbedPayload = {
 };
 export type EmbedField = { name: string; value: string; inline: boolean };
 
-export type MusicPutBody = {
-  command_channel_id: string | null;
-  voice_channel_ids: string[];
-  allowed_role_ids: string[];
-  leave_after_seconds: number;
-};
+export type MusicPutBody = MusicSettings;
 export type LangPutBody = { lang: "ru" | "en" };
 export type LangGet = { lang: "ru" | "en" };
 export type EmbedsGet = { embeds: SavedEmbed[]; sendings: EmbedSending[] };

@@ -1,5 +1,6 @@
 import { stmt } from "./db/statements.ts";
 import { logger } from "./utils/logger.ts";
+import { unrefInterval } from "./utils/timers.ts";
 import { safeJson, parseStringArray } from "../lib/json.ts";
 import { ttlCacheSync } from "../lib/cache.ts";
 import { guildLang } from "../lib/i18n/bot.ts";
@@ -52,7 +53,7 @@ export function stopTimer() {
 }
 
 function ensureTimer() {
-  if (!timer) { timer = setInterval(refreshLoop, REFRESH_INTERVAL); timer.unref?.(); }
+  if (!timer) { timer = unrefInterval(refreshLoop, REFRESH_INTERVAL); }
 }
 
 function refreshLoop() {
@@ -69,9 +70,7 @@ function refreshLoop() {
     version = (stmt.dataVersion.get() as { data_version: number }).data_version;
     dataVersionFailures = 0;
   } catch (error) {
-    dataVersionFailures += 1;
-    if (dataVersionFailures === 1 || dataVersionFailures % 60 === 0)
-      logger.warn("[CONFIG] Не удалось проверить версию данных", error, `повтор #${dataVersionFailures}`);
+    dataVersionFailures = logger.warnEvery(dataVersionFailures, 60, "[CONFIG] Не удалось проверить версию данных", error);
   }
   if (version === lastDataVersion) return;
   lastDataVersion = version;
@@ -94,15 +93,6 @@ export function cachedRules(guildId: string): CachedRules {
   return snapshot;
 }
 
-export function seedRules(guildId: string) {
-  if (snapshots.has(guildId)) return;
-  try {
-    snapshots.set(guildId, load(guildId));
-  } catch (error) {
-    logger.warn("[CONFIG] Не удалось загрузить конфигурацию автомода", guildId, error);
-  }
-}
-
 const PANEL_TTL = 10_000;
 type ReactionPanel = { id: number; role_mode: string; options: { role_id: string; emoji: string | null }[] };
 const reactionPanelCache = ttlCacheSync<string, Map<string, ReactionPanel>>((guildId) => {
@@ -119,7 +109,7 @@ export function reactionPanel(guildId: string, messageId: string): ReactionPanel
 
 export function invalidateReactionPanels(guildId: string) { reactionPanelCache.delete(guildId); }
 
-export function purgeGuild(guildId: string) {
+export function purgeConfigCaches(guildId: string) {
   snapshots.delete(guildId);
   activeGuilds.delete(guildId);
   reactionPanelCache.delete(guildId);

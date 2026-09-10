@@ -36,7 +36,9 @@ export function shouldWarn(rule: Rule, message: MessageData): boolean {
 export function markWarned(rule: Rule, message: MessageData) { warned.set(keyFor(rule, message), message.at); }
 export function resetDetectors() { memory.clear(); warned.clear(); }
 export function pruneDetectors() {
-  const cutoff = Date.now() - 10 * 60_000;
+  // Окно правила настраивается до 3600 c: запас +1 минута, иначе редкая серия
+  // внутри длинного окна теряла бы счёт (и warned сбрасывался бы слишком рано).
+  const cutoff = Date.now() - 61 * 60_000;
   for (const [key, values] of memory) {
     const last = values[values.length - 1];
     if (!values.length || !last || last.at < cutoff) memory.delete(key);

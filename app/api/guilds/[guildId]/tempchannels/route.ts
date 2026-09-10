@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server.js";
-import { isSnowflake, withGuild } from "../../../../../src/lib/guild-access.ts";
+import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { parseStringArray, stableJson } from "../../../../../src/lib/json.ts";
 import { DEFAULT_SETTINGS, clampUserLimit, type TempPutBody, type TempchannelsGet } from "../../../../../src/lib/tempchannels.ts";
-import type { TempPresetApi } from "../../../../../src/components/dashboard/types.ts";
+import type { TempChannelConfig, TempPresetApi } from "../../../../../src/components/dashboard/types.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 
@@ -12,7 +12,7 @@ type PresetRow = { id: number; name: string; trigger_channel_ids_json: string; c
 const presetsDelete = db.prepare("DELETE FROM temp_channel_presets WHERE guild_id=?");
 const presetsInsert = db.prepare("INSERT INTO temp_channel_presets(guild_id,name,trigger_channel_ids_json,category_id,name_template,user_limit,can_rename,can_manage_access,can_close,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)");
 
-type ConfigPayload = { categoryId: string | null; nameTemplate: string; userLimit: number; canRename: boolean; canManageAccess: boolean; canClose: boolean };
+type ConfigPayload = TempChannelConfig;
 function parseConfig(value: unknown): ConfigPayload {
   const v = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
   const nameTemplate = typeof v.nameTemplate === "string" && v.nameTemplate.trim().length ? v.nameTemplate.trim().slice(0, 100) : DEFAULT_SETTINGS.name_template;
@@ -28,29 +28,23 @@ function toJson(row: PresetRow): TempPresetApi {
   return { id: row.id, name: row.name, triggerChannelIds: parseStringArray(row.trigger_channel_ids_json), categoryId: row.category_id, nameTemplate: row.name_template, userLimit: row.user_limit, canRename: Boolean(row.can_rename), canManageAccess: Boolean(row.can_manage_access), canClose: Boolean(row.can_close) };
 }
 
-export async function GET(_: Request, { params }: { params: Promise<{ guildId: string }> }) {
-  const { guildId } = await params;
-  const access = await withGuild(guildId);
-  if (access instanceof Response) return access;
+export const GET = guildRoute(async (_, { guildId }) => {
   return NextResponse.json<TempchannelsGet>({ presets: (stmt.tempPresets.all(guildId) as PresetRow[]).map(toJson) });
-}
+});
 
-export async function PUT(request: Request, { params }: { params: Promise<{ guildId: string }> }) {
-  const { guildId } = await params;
-  const access = await withGuild(guildId);
-  if (access instanceof Response) return access;
-  const body = await request.json().catch(() => null) as TempPutBody | null;
-  if (!body) return NextResponse.json({ error: "Некорректные данные." }, { status: 400 });
+export const PUT = guildRoute(async (request, { guildId, user }) => {
+  const body = await readJson<TempPutBody>(request);
+  if (!body) return jsonError("Некорректные данные.");
   const rawPresets: unknown = body.presets;
-  if (!Array.isArray(rawPresets) || rawPresets.length > 50) return NextResponse.json({ error: "Некорректный список шаблонов." }, { status: 400 });
+  if (!Array.isArray(rawPresets) || rawPresets.length > 50) return jsonError("Некорректный список шаблонов.");
   const presets: { name: string; triggers: string[]; config: ConfigPayload }[] = [];
   for (const raw of rawPresets) {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return NextResponse.json({ error: "Некорректный шаблон." }, { status: 400 });
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return jsonError("Некорректный шаблон.");
     const v = raw as Record<string, unknown>;
     const name = typeof v.name === "string" ? v.name.trim().slice(0, 100) : "";
-    if (!name.length) return NextResponse.json({ error: "Укажите название шаблона." }, { status: 400 });
+    if (!name.length) return jsonError("Укажите название шаблона.");
     const triggers = Array.isArray(v.triggerChannelIds) ? v.triggerChannelIds.filter((id): id is string => typeof id === "string" && isSnowflake(id)).slice(0, 50) : [];
-    if (!triggers.length) return NextResponse.json({ error: "Выберите хотя бы один канал-триггер." }, { status: 400 });
+    if (!triggers.length) return jsonError("Выберите хотя бы один канал-триггер.");
     presets.push({ name, triggers, config: parseConfig(v.config) });
   }
   const existingRows = stmt.tempPresets.all(guildId) as PresetRow[];
@@ -64,6 +58,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ guil
     presetsDelete.run(guildId);
     for (const preset of presets) presetsInsert.run(guildId, preset.name, JSON.stringify(preset.triggers), preset.config.categoryId, preset.config.nameTemplate, preset.config.userLimit, preset.config.canRename ? 1 : 0, preset.config.canManageAccess ? 1 : 0, preset.config.canClose ? 1 : 0, timestamp);
   });
-  recordDashboardChange(guildId, access.user, "Временные каналы", `Сохранены шаблоны: ${presets.length ? presets.map(p => `«${p.name}»`).join(", ") : "список пуст"}`);
+  recordDashboardChange(guildId, user, "Временные каналы", `Сохранены шаблоны: ${presets.length ? presets.map(p => `«${p.name}»`).join(", ") : "список пуст"}`);
   return NextResponse.json({ ok: true, presets: (stmt.tempPresets.all(guildId) as PresetRow[]).map(toJson) });
-}
+});

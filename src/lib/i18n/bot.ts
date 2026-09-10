@@ -27,6 +27,12 @@ export function makeTr<M extends Record<string, Bi>>(messages: M) {
   };
 }
 
+// Готовый переводчик на guildId: заменяет копии `(k, v) => trX(guildLang(id), k, v)`
+// в обработчиках бота. guildLang кэширован (10 c), так что вызов дешёвый.
+export function guildTr<K extends string>(tr: (lang: Locale, key: K, vars?: Record<string, string | number>) => string, guildId: string) {
+  return (key: K, vars?: Record<string, string | number>): string => tr(guildLang(guildId), key, vars);
+}
+
 export const tempTr = makeTr({
   genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
   panelTitle: { ru: "Управление каналом", en: "Channel controls" },
@@ -74,6 +80,7 @@ export const automodTr = makeTr({
   reason: { ru: "Автомодерация: {rule}", en: "AutoMod: {rule}" },
   protectedAdminOnly: { ru: "Защищённый канал: сообщения разрешены только администраторам", en: "Protected channel: only administrators may send messages here" },
   protectedWiped: { ru: "Защищённый канал: сообщение удалено, сообщения за 24 часа стёрты, пользователь заблокирован", en: "Protected channel: message deleted, last 24h wiped, user banned" },
+  protectedWipedFailed: { ru: "Защищённый канал: сообщение удалено, сообщения за 24 часа стёрты, бан не применён (не хватило прав)", en: "Protected channel: message deleted, last 24h wiped, ban not applied (insufficient permissions)" },
   roleUnavailable: { ru: "❌ Эта роль недоступна.", en: "❌ This role is unavailable." },
   roleLimitReached: { ru: "❌ Достигнут лимит ролей: {n}.", en: "❌ Role limit reached: {n}." },
   roleGiven: { ru: "✅ Выдана роль **{role}**", en: "✅ Role **{role}** added" },

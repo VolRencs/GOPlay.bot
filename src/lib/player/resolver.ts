@@ -268,6 +268,7 @@ export function hydrateTrackMeta(track: Track, guildId: string): void {
     if (!meta || meta._type === "playlist") { track.metaPending = false; return; }
     const duration = typeof meta.duration === "number" ? meta.duration : 0;
     const mediaUrl = pickAudioUrl(meta);
+    evictOldest(singleMeta);
     singleMeta.set(key, { at: Date.now(), title: String(meta.title ?? track.query), duration, ...(mediaUrl ? { mediaUrl, mediaUrlExpiresAt: Date.now() + MEDIA_URL_TTL_MS } : {}) });
     applyHydration(track, guildId, String(meta.title ?? track.title), duration, mediaUrl ?? undefined, mediaUrl ? Date.now() + MEDIA_URL_TTL_MS : undefined);
   }).catch(() => { track.metaPending = false; });

@@ -48,8 +48,7 @@ test("data survives a restart (a second connection reads the same rows)", () => 
 });
 
 test("per-guild limit: only the newest 1000 rows are kept", () => {
-  // Prune троттлится (раз в 30 c на гильдию), поэтому после серии вставок
-  // вызываем обрезку явно — как это делает следующий тик rememberMessage.
+  // Флеш уже обрезает гильдию до капа; явный вызов ниже проверяет публичный API.
   for (let i = 0; i < MESSAGE_CACHE_PER_GUILD + 5; i++) rememberMessage(`g3-${i}`, "g3", "c3", `text ${i}`, i);
   flushMessageCache();
   enforceMessageCap("g3");

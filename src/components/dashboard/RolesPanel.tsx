@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { buttonColorOptions, type Channel, type EmbedSending, type EmbedsGet, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
-import { CardHeader, confirmAction, EmojiPicker, Select, TemplateLibrary, useAsyncAction } from "./ui.tsx";
+import { buttonColorOptions, type Channel, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
+import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatDateTime, useAsyncAction } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 
 type PanelOptionInput = { roleId: string; label: string; emoji: string; buttonColor: string };
@@ -45,7 +45,7 @@ function RoleOptionRow({ option, index, roles, emojis, style, onChange, onRemove
   );
 }
 
-export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError }: { guildId: string; roles: Role[]; emojis: ServerEmoji[]; channels: Channel[]; onDone: (message: string, tone?: "ok" | "warn") => void; onError: (message: string) => void }) {
+export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError }: { guildId: string; roles: Role[]; emojis: ServerEmoji[]; channels: Channel[]; onDone: PanelNotify; onError: PanelFail }) {
   const { busy, run } = useAsyncAction();
   const [embeds, setEmbeds] = useState<SavedEmbed[]>([]);
   const [sendings, setSendings] = useState<EmbedSending[]>([]);
@@ -78,14 +78,14 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
     }
     setPanels([...map.values()]);
   };
-  useEffect(() => { load(); }, [guildId]);
+  useEffect(() => { if (!guildId) return; load(); }, [guildId]);
 
   const updateOption = (index: number, change: Partial<PanelOptionInput>) => setOptions(options.map((o, n) => n === index ? { ...o, ...change } : o));
 
   function edit(panel: SavedRolePanel) {
     setPanelId(panel.id);
     const matched = sendings.find(s => s.channel_id === panel.channel_id && s.message_id === panel.message_id);
-    if (matched) setSendingId(String(matched.id));
+    setSendingId(matched ? String(matched.id) : "");
     setOptions(panel.options.length ? panel.options.map(o => ({ roleId: o.role_id, label: o.label ?? "", emoji: o.emoji ?? "", buttonColor: o.button_color ?? "primary" })) : [defaultPanelOption]);
     setStyle(panel.style);
     setLimit(panel.role_limit);
@@ -118,7 +118,6 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
   }
 
   async function publish() {
-    if (busy) return;
     const sending = sendings.find(x => x.id === Number(sendingId));
     if (!sending) return onError("Выберите отправленное сообщение.");
     if (!options.some(o => o.roleId)) return onError("Добавьте хотя бы одну роль.");
@@ -172,7 +171,7 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
           options={[{ value: "", label: "Выберите сообщение" }, ...sendings.map(s => {
             const embed = embeds.find(e => e.id === s.embed_id);
             const ch = channels.find(c => c.id === s.channel_id);
-            return { value: String(s.id), label: `${embed?.name ?? "Embed"} · #${ch?.name ?? s.channel_id} · ${new Date(s.sent_at).toLocaleString("ru-RU")}` };
+            return { value: String(s.id), label: `${embed?.name ?? "Embed"} · #${ch?.name ?? s.channel_id} · ${formatDateTime(s.sent_at)}` };
           })]}/></label>
         <label>Тип<Select
           value={style}
@@ -210,7 +209,7 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
           <label>Текст уведомления<input value={template} onChange={e => setTemplate(e.target.value)}/></label>
         )}
         <div className="template-actions">
-          <button type="button" className="btn" disabled={!roles.length || busy} onClick={() => void publish()}>{busy ? "Сохраняем…" : panelId ? "Сохранить изменения" : "Сохранить панель"}</button>
+          <SaveButton saving={busy} disabled={!roles.length} onClick={() => void publish()} label={panelId ? "Сохранить изменения" : "Сохранить панель"}/>
           {panelId && <button type="button" className="btn secondary" onClick={reset}>Новая панель</button>}
         </div>
       </section>

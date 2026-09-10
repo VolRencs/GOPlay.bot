@@ -12,6 +12,6 @@ export async function accountAccess(): Promise<AccountAccess> {
   const allowed = isAllowedAccount(discordAccount);
   const isAdmin = Boolean(discordAccount && allowedAdminIds().includes(discordAccount.accountId));
   let canManage = false;
-  if (discordAccount) try { canManage = (await discordGuilds(requestHeaders)).some(canManageGuild); } catch (e) { logger.warn("[WARN] Could not resolve Discord manage permission", e); }
+  if (discordAccount) try { canManage = (await discordGuilds(requestHeaders, discordAccount.id)).some(canManageGuild); } catch (e) { logger.warn("[WARN] Could not resolve Discord manage permission", e); }
   return { authenticated: true, name: user.name, discordId: discordAccount?.accountId ?? "", image: user.image ?? null, allowed, canManage, isAdmin };
 }

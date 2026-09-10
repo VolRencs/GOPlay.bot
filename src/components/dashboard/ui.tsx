@@ -56,6 +56,8 @@ export function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onCha
 }
 
 export const formatTime = (ts: number) => new Date(ts).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+export const formatDateTime = (ts: number) => new Date(ts).toLocaleString("ru-RU");
+export const formatNumber = (value: number) => value.toLocaleString("ru-RU");
 
 // Единая каноническая сериализация с сервером (src/lib/json.ts):
 // dirty-check клиента сходится с no-op детектом роутов.
@@ -73,6 +75,11 @@ export function useAsyncAction() {
   return { busy, run };
 }
 
+/** Кнопка сохранения карточки: единый вид «Сохраняем…» на время busy. */
+export function SaveButton({ saving, onClick, label = "Сохранить", disabled = false, savingLabel = "Сохраняем…", variant }: { saving: boolean; onClick: () => void; label?: string; disabled?: boolean; savingLabel?: string; variant?: "secondary" }) {
+  return <button type="button" className={variant === "secondary" ? "btn secondary" : "btn"} disabled={disabled || saving} onClick={onClick}>{saving ? savingLabel : label}</button>;
+}
+
 type CheckListProps = {
   items: { id: string; name: string }[];
   selected: string[];
@@ -80,6 +87,16 @@ type CheckListProps = {
   channel?: boolean;
   label?: string;
 };
+
+export function NumberField({ label, hint, value, min, max, onChange }: { label: ReactNode; hint?: string; value: number; min: number; max?: number; onChange: (value: number) => void }) {
+  return (
+    <label>
+      {label}
+      {hint && <span className="muted"> {hint}</span>}
+      <input type="number" min={min} {...(max !== undefined ? { max } : {})} value={value} onChange={e => onChange(Number(e.target.value))}/>
+    </label>
+  );
+}
 
 export function CheckList({ items, selected, onChange, channel = false, label }: CheckListProps) {
   const toggle = (id: string) => onChange(
@@ -153,7 +170,7 @@ function UnicodeEmojiPicker({ onSelect, serverEmojis }: { onSelect: (emoji: stri
       <FrimoussePicker.Viewport className="ep-viewport">
         <FrimoussePicker.Loading className="ep-note">Загружаем эмодзи…</FrimoussePicker.Loading>
         <FrimoussePicker.Empty className="ep-note">Ничего не найдено</FrimoussePicker.Empty>
-        <FrimoussePicker.List className="ep-list" components={{ Row: PickerRow, Emoji: PickerEmoji, CategoryHeader: PickerHeader }}/>
+        <FrimoussePicker.List components={{ Row: PickerRow, Emoji: PickerEmoji, CategoryHeader: PickerHeader }}/>
       </FrimoussePicker.Viewport>
     </FrimoussePicker.Root>
   );
@@ -221,7 +238,7 @@ export function CardHeader({ title, note, muted, action }: { title: ReactNode; n
 
 export function TemplateLibrary({ title, note, description, action, extra, empty, children }: { title: string; note?: string | undefined; description: string; action?: ReactNode; extra?: ReactNode; empty: string; children?: ReactNode }) {
   return (
-    <article className="card settings-card template-library">
+    <article className="card settings-card">
       <CardHeader title={title} note={note} muted={description} action={action}/>
       {extra}
       {children ?? <p className="muted">{empty}</p>}
@@ -242,7 +259,7 @@ export function MediaField({ icon, label, file, previewUrl, saved, onPick, onCle
   );
 }
 
-export function Select({ value, onChange, options, ariaLabel, placeholder, disabled }: { value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; ariaLabel?: string | undefined; placeholder?: string | undefined; disabled?: boolean | undefined }) {
+export function Select({ value, onChange, options, ariaLabel, placeholder, disabled }: { value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; ariaLabel: string; placeholder?: string | undefined; disabled?: boolean | undefined }) {
   const [open, setOpen] = useState(false);
   const [flip, setFlip] = useState(false);
   const [coords, setCoords] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);

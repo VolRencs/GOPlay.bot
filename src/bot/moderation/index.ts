@@ -6,7 +6,7 @@ import { logAction, markBotAction } from "../logging/index.ts";
 import { offerAppeal } from "../appeals/index.ts";
 import { clearWarns } from "../../lib/warns.ts";
 import { DAY_MS } from "../../lib/constants.ts";
-import { guildLang } from "../../lib/i18n/bot.ts";
+import { guildTr } from "../../lib/i18n/bot.ts";
 import { trModeration } from "../../lib/i18n/bot/moderation.ts";
 function canTarget(actor: GuildMember, target: GuildMember) { return actor.id !== target.id && actor.roles.highest.position > target.roles.highest.position && target.manageable; }
 function record(guildId: string, userId: string, moderatorId: string | null, type: string, reason: string): number {
@@ -26,7 +26,7 @@ export function recordPunishmentAndOffer(client: Client, input: { guildId: strin
 // чтобы соответствующее gateway-событие не задублировало запись.
 const logTypes: Record<string, string> = { ban: "member_ban", kick: "member_kick", timeout: "member_timeout", untimeout: "member_timeout" };
 export async function moderate(i: ChatInputCommandInteraction) {
-  const t = (k: Parameters<typeof trModeration>[1], v?: Record<string,string|number>) => trModeration(guildLang(i.guildId ?? ""), k, v);
+  const t = guildTr(trModeration, i.guildId ?? "");
   if (!i.guild || !i.member || !i.memberPermissions) return void i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
   const command = i.commandName;
   // Отвечаем сразу: ниже REST-вызовы (фетч участника, бан, purge), которые
@@ -68,7 +68,7 @@ export async function moderate(i: ChatInputCommandInteraction) {
   }
 }
 async function clearWarnsCommand(i: ChatInputCommandInteraction) {
-  const t = (k: Parameters<typeof trModeration>[1], v?: Record<string,string|number>) => trModeration(guildLang(i.guildId ?? ""), k, v);
+  const t = guildTr(trModeration, i.guildId ?? "");
   const user = i.options.getUser("user");
   const all = i.options.getBoolean("all") ?? false;
   if (!user && !all) return i.editReply({ content: t("clearwarnNeedTarget") });
@@ -83,7 +83,7 @@ async function clearWarnsCommand(i: ChatInputCommandInteraction) {
   return i.editReply({ content: t("clearwarnDone", { n: String(removed), target: user ? ` (${user.tag})` : t("targetAll") }) });
 }
 async function channelAction(i: ChatInputCommandInteraction) {
-  const t = (k: Parameters<typeof trModeration>[1], v?: Record<string,string|number>) => trModeration(guildLang(i.guildId ?? ""), k, v);
+  const t = guildTr(trModeration, i.guildId ?? "");
   const channel = i.channel;
   if (!channel || channel.type !== ChannelType.GuildText) return i.editReply({ content: t("needTextChannel") });
   const text = channel as TextChannel;

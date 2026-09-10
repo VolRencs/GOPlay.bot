@@ -111,7 +111,7 @@ export function isBotAction(guildId: string, type: string, targetId: string) {
 // удаления, смены ролей) не бьют по API — лишние приходят без исполнителя,
 // событие всё равно логируется. Kick/ban чувствительны ко времени (записи
 // выбывают из окна матчинга) и идут вне очереди.
-type AuditRequest = { guildId: string; type: number; targetId: string; resolve: (entry: GuildAuditLogsEntry<number> | undefined) => void };
+type AuditRequest = { guildId: string; type: number; targetId: string; priority: boolean; resolve: (entry: GuildAuditLogsEntry<number> | undefined) => void };
 const auditQueue: AuditRequest[] = [];
 let auditWorker: Promise<void> | null = null;
 const AUDIT_INTERVAL = 300;
@@ -119,12 +119,15 @@ const AUDIT_QUEUE_LIMIT = 250;
 
 function auditLookup(guildId: string, type: number, targetId: string, priority: boolean) {
   return new Promise<GuildAuditLogsEntry<number> | undefined>(resolve => {
-    const request = { guildId, type, targetId, resolve };
+    const request = { guildId, type, targetId, priority, resolve };
     if (priority) auditQueue.unshift(request);
     else auditQueue.push(request);
-    // При экстремальном всплеске роняем СТАРЕЙШИЙ запрос вместо бесконечного
-    // роста очереди; priority-запросы unshift'ятся вперёд — старейший всегда в хвосте.
-    if (auditQueue.length > AUDIT_QUEUE_LIMIT) auditQueue.shift()?.resolve(undefined);
+    // При экстремальном всплеске роняем самый старый НЕприоритетный запрос:
+    // priority-запросы (kick/ban/timeout) никогда не выкидывают себя сами.
+    if (auditQueue.length > AUDIT_QUEUE_LIMIT) {
+      const dropAt = auditQueue.findIndex(entry => !entry.priority);
+      auditQueue.splice(dropAt === -1 ? 0 : dropAt, 1)[0]!.resolve(undefined);
+    }
     void drainAuditQueue();
   });
 }

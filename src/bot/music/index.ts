@@ -3,7 +3,7 @@ import { count, time } from "../perf.ts";
 import { logger } from "../utils/logger.ts";
 import { stmt } from "../db/statements.ts";
 import { isMissingDiscordResource, replyInteractionError } from "../../lib/errors.ts";
-import { guildLang } from "../../lib/i18n/bot.ts";
+import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
 import { resolveChannel } from "../logging/index.ts";
@@ -26,8 +26,10 @@ const PANEL_DEBOUNCE_MS = 500;
 const PENDING_MOVE_TTL_MS = 5 * 60_000;
 
 /** Переводчик музыкальных сообщений для гильдии. */
-const musicTFor = (guildId: string) =>
-  (k: Parameters<typeof musicTr>[1], v?: Record<string, string | number>) => musicTr(guildLang(guildId), k, v);
+const musicTFor = (guildId: string) => guildTr(musicTr, guildId);
+
+/** Переводчик для функций, где язык уже известен (очередь и панель). */
+const musicT = (lang: Locale) => (k: Parameters<typeof musicTr>[1], v?: Record<string, string | number>) => musicTr(lang, k, v);
 
 function isAdminInteraction(i: ButtonInteraction | StringSelectMenuInteraction | ChatInputCommandInteraction): boolean {
   return Boolean((i.member as GuildMember | null)?.permissions?.has(PermissionFlagsBits.Administrator));
@@ -222,7 +224,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     return true;
   } catch (error) {
     logger.warn("[MUSIC] Команда не выполнена", i.guildId, error);
-    if (i.isRepliable()) replyInteractionError(i, musicTr(guildLang(i.guildId ?? ""), "genericError"));
+    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
     return true;
   }
 }
@@ -261,7 +263,7 @@ async function deletePanelMessage(ref: PanelRef): Promise<void> {
 }
 
 function queueView(guildId: string, lang: Locale): string {
-  const t = (k: Parameters<typeof musicTr>[1], v?: Record<string, string | number>) => musicTr(lang, k, v);
+  const t = musicT(lang);
   const { current, queue } = getQueueSnapshot(guildId);
   if (!current && queue.length === 0) return t("queueEmpty");
   const dur = (track: Track) => track.duration && track.duration > 0 ? ` · ${fmtTime(track.duration)}` : "";
@@ -273,7 +275,7 @@ function queueView(guildId: string, lang: Locale): string {
 }
 
 function renderPanel(state: { current: Track; queuePreview: Track[]; queueLength: number; paused: boolean; loopMode: LoopMode }, lang: Locale): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
-  const t = (k: Parameters<typeof musicTr>[1], v?: Record<string, string | number>) => musicTr(lang, k, v);
+  const t = musicT(lang);
   const loopLabel = state.loopMode === "track" ? t("panelLoopTrack") : state.loopMode === "queue" ? t("panelLoopQueue") : t("panelLoopOff");
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
@@ -398,7 +400,7 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
     await i.deferUpdate().catch(() => null);
   } catch (error) {
     logger.warn("[MUSIC] Кнопка панели не сработала", i.guildId, error);
-    if (i.isRepliable()) replyInteractionError(i, musicTr(guildLang(i.guildId ?? ""), "genericError"));
+    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
   }
 }
 
@@ -432,10 +434,10 @@ async function openQueueMenu(i: ButtonInteraction): Promise<void> {
 }
 
 async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> {
+  const t = musicTFor(i.guildId ?? "");
   try {
     if (!i.inGuild()) return;
     const guildId = i.guildId;
-    const t = musicTFor(guildId);
     const deny = (content: string) => i.update({ content, components: [] }).catch(() => null);
     if (!isAdminInteraction(i)) { await deny(t("notAdmin")); return; }
     const action = i.customId.slice("music:".length);
@@ -483,6 +485,6 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
     }
   } catch (error) {
     logger.warn("[MUSIC] Выбор в меню очереди не сработал", i.guildId, error);
-    if (i.isRepliable()) replyInteractionError(i, musicTr(guildLang(i.guildId ?? ""), "genericError"));
+    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
   }
 }

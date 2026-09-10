@@ -43,10 +43,10 @@
   --r-2: 9px;
   --r-3: 12px;
   --r-4: 16px;
+  --r-5: 20px;
   --r-full: 999px;
 
   --shadow-btn: 0 8px 20px rgba(133, 31, 230, .24);
-  --shadow-btn-hover: 0 10px 28px rgba(255, 44, 189, .3);
   --shadow-card: 0 14px 45px rgba(0, 0, 0, .18);
   --shadow-pop: 0 18px 44px rgba(4, 2, 16, .55);
 
@@ -147,7 +147,7 @@ button { font: inherit; color: inherit; }
   background: rgba(220, 60, 90, .16);
   border: 1px solid rgba(237, 66, 69, .45);
   box-shadow: none;
-  color: #ff9db0;
+  color: var(--tone-err-text);
 }
 
 .btn.danger:hover {
@@ -361,7 +361,7 @@ input[type="range"]::-moz-range-thumb {
 
 .section-title p { margin: 0; }
 
-.muted { color: var(--muted); }
+
 
 .hint {
   margin: -.35rem 0 0;
@@ -682,7 +682,7 @@ code {
   padding: 2rem;
   background: linear-gradient(145deg, rgba(35, 17, 63, .9), rgba(10, 6, 23, .94));
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--r-5);
   box-shadow: 0 25px 80px rgba(0, 0, 0, .4);
 }
 
@@ -772,10 +772,10 @@ code {
   padding: 1.35rem;
   background: linear-gradient(115deg, rgba(61, 20, 93, .42), rgba(12, 7, 27, .3));
   border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: var(--r-5);
 }
 
-.dashboard-heading h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.35rem); }
+
 
 .guild-grid {
   display: grid;
@@ -917,7 +917,7 @@ code {
   gap: .8rem;
 }
 
-.server-heading h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.35rem); }
+.dashboard-heading h1, .server-heading h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.35rem); }
 
 .server-heading-icon {
   display: flex;
@@ -977,10 +977,7 @@ code {
   from { opacity: 0; transform: translate(-50%, 10px); }
 }
 
-.template-list {
-  display: grid;
-  gap: .7rem;
-}
+
 
 .template-item {
   display: flex;
@@ -1068,7 +1065,7 @@ code {
 
 .compact-form-grid label:last-child:nth-child(3) { grid-column: span 2; }
 
-.choice-field { grid-column: 1 / -1; }
+
 
 .field-row {
   display: grid;
@@ -1118,17 +1115,7 @@ code {
   border-color: #ef98ff;
 }
 
-.media-upload input {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  opacity: 0;
-  cursor: pointer;
-}
+.media-upload input { z-index: 1; }
 
 .media-upload span {
   font-size: .84rem;
@@ -1182,6 +1169,10 @@ code {
   cursor: pointer;
 }
 
+.color-swatch input[type="color"] { border: 0; }
+
+/* Общий сброс для «невидимых» file/color-инпутов поверх кастомных кнопок. */
+.media-upload input,
 .color-swatch input[type="color"] {
   position: absolute;
   inset: 0;
@@ -1189,7 +1180,6 @@ code {
   height: 100%;
   margin: 0;
   padding: 0;
-  border: 0;
   opacity: 0;
   cursor: pointer;
 }
@@ -1243,17 +1233,11 @@ code {
   gap: .6rem;
 }
 
-.domain-input-row {
-  display: flex;
-  gap: .5rem;
-}
+
 
 .domain-input-row input { margin-top: 0; }
 
-.domain-list {
-  display: grid;
-  gap: .4rem;
-}
+
 
 .domain-item {
   display: flex;
@@ -1268,7 +1252,7 @@ code {
 
 .domain-item .btn { flex: none; }
 
-.role-options {
+.template-list, .role-options {
   display: grid;
   gap: .7rem;
 }
@@ -1291,11 +1275,7 @@ code {
   gap: .35rem;
 }
 
-.role-option > label:first-child,
-.role-option .role-emoji-field,
-.role-option > .btn.danger {
-  grid-column: 1 / -1;
-}
+
 
 .role-option > .btn.danger {
   justify-self: start;
@@ -1538,7 +1518,7 @@ code {
   font-size: .82rem;
 }
 
-.editor-group {
+.domain-list, .editor-group {
   display: grid;
   gap: .4rem;
 }
@@ -1599,12 +1579,7 @@ code {
   color: var(--code);
 }
 
-.log-groups {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  align-items: start;
-}
+
 
 .log-group {
   display: grid;
@@ -1730,7 +1705,7 @@ code {
   width: min(26px, 68%);
   min-height: 3px;
   background: linear-gradient(180deg, #e879ff, #7c2bff);
-  border-radius: 6px 6px 2px 2px;
+  border-radius: var(--r-1) var(--r-1) 2px 2px;
   opacity: .88;
   transform-origin: bottom;
   transition: filter var(--t), opacity var(--t), transform var(--t);
@@ -1806,11 +1781,7 @@ code {
   color: #fff;
 }
 
-.stats-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
+
 
 .top-list {
   display: grid;
@@ -1863,7 +1834,7 @@ code {
   font-weight: 400;
 }
 
-.automod-rules-grid {
+.log-groups, .automod-rules-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
@@ -1889,6 +1860,53 @@ code {
 .rule-card.is-off .rule-fields { opacity: .55; }
 .rule-card.is-off .rule-heading h2 { color: var(--label); }
 
+/* Система уровней: выключенная функция приглушает настройки, как правила автомода. */
+.level-card > :not(.section-title) { transition: opacity var(--t); }
+.level-card.is-off > :not(.section-title) { opacity: .55; }
+
+/* Компактная сетка настроек уровней: две колонки секций и полей. */
+.level-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.2rem 1.5rem;
+  align-items: start;
+}
+
+.level-section {
+  display: grid;
+  gap: .55rem;
+  align-content: start;
+  min-width: 0;
+}
+
+.choice-field, .role-option > label:first-child,
+.role-option .role-emoji-field,
+.role-option > .btn.danger, .level-section.level-wide { grid-column: 1 / -1; }
+
+.level-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem .8rem;
+}
+
+.level-preview { margin: .1rem 0 0; }
+
+.level-exclusions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+
+
+.reward-row {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr) auto;
+  gap: .6rem;
+  align-items: center;
+}
+
 .rule-heading {
   display: flex;
   align-items: center;
@@ -1911,10 +1929,7 @@ code {
   overflow-wrap: anywhere;
 }
 
-.rule-config label {
-  color: var(--label);
-  font-size: .82rem;
-}
+
 
 .rule-fields {
   display: grid;
@@ -1940,7 +1955,7 @@ code {
   border-radius: var(--r-3);
 }
 
-.punishment-box label {
+.rule-config label, .punishment-box label {
   color: var(--label);
   font-size: .82rem;
 }
@@ -2021,12 +2036,7 @@ code {
   align-items: end;
 }
 
-.appeals-filters label {
-  display: grid;
-  gap: .15rem;
-  color: var(--label);
-  font-size: .82rem;
-}
+
 
 .appeal-item { border-bottom: 1px solid var(--inset-line); }
 
@@ -2049,12 +2059,7 @@ code {
 
 .appeal-toggle:hover { background: rgba(157, 46, 255, .09); }
 
-.appeal-head {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  min-width: 0;
-}
+
 
 .appeal-head strong {
   color: #fff;
@@ -2089,7 +2094,7 @@ code {
   border-top: 1px solid var(--inset-line);
 }
 
-.appeal-grid {
+.stats-detail-grid, .appeal-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1rem;
@@ -2109,7 +2114,7 @@ code {
   gap: .8rem;
 }
 
-.appeal-comment {
+.appeals-filters label, .appeal-comment {
   display: grid;
   gap: .15rem;
   color: var(--label);
@@ -2141,7 +2146,7 @@ code {
 
 .event-item strong { overflow-wrap: anywhere; }
 
-.event-participants {
+.reward-rows, .event-participants {
   display: grid;
   gap: .5rem;
 }
@@ -2163,7 +2168,7 @@ code {
   min-width: 0;
 }
 
-.event-participant-head {
+.appeal-head, .event-participant-head {
   display: flex;
   align-items: center;
   gap: .5rem;
@@ -2243,7 +2248,7 @@ code {
   box-shadow: var(--focus-ring);
 }
 
-.select-trigger .placeholder { color: var(--muted); }
+.muted, .select-trigger .placeholder { color: var(--muted); }
 
 .select-trigger .chevron {
   flex: none;
@@ -2306,7 +2311,7 @@ code {
 
 .emoji-picker { position: relative; }
 
-.emoji-current {
+.domain-input-row, .emoji-current {
   display: flex;
   gap: .5rem;
 }
@@ -2443,7 +2448,7 @@ code {
 
 .ep-server-grid {
   display: grid;
-  grid-template-columns: repeat(var(--ep-columns, 8), 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 2px;
   margin-bottom: .3rem;
 }
@@ -2581,7 +2586,7 @@ code {
   background: transparent;
   border: 0;
   border-radius: 50%;
-  color: #ff9db0;
+  color: var(--tone-err-text);
   cursor: pointer;
   transition: background var(--t), color var(--t);
 }
@@ -2614,6 +2619,8 @@ code {
   }
   .automod-rules-grid { grid-template-columns: 1fr; }
   .event-buttons-grid { grid-template-columns: 1fr; }
+  .level-sections { grid-template-columns: 1fr; }
+  .level-section.level-wide { grid-column: auto; }
   .log-groups, .stat-cards { grid-template-columns: 1fr 1fr; }
   .stats-detail-grid { grid-template-columns: 1fr; }
 }
@@ -2640,6 +2647,7 @@ code {
   .settings-content { padding: 1.5rem; }
 
   .coordinate-grid, .rule-config { grid-template-columns: 1fr; }
+  .level-fields, .level-exclusions { grid-template-columns: 1fr; }
 
   .dashboard-heading {
     align-items: flex-start;

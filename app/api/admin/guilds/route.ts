@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server.js";
-import { requireAdmin } from "../../../../src/lib/guild-access.ts";
+import { adminRoute } from "../../../../src/lib/guild-access.ts";
 import { db } from "../../../../src/db/database.ts";
 
 const guildsStmt = db.prepare("SELECT id,name,icon FROM guilds ORDER BY name");
@@ -10,9 +10,7 @@ const eventsStmt = db.prepare("SELECT guild_id,COUNT(*) AS c FROM events GROUP B
 type SumRow = { guild_id: string; m: number };
 type CountRow = { guild_id: string; c: number };
 
-export async function GET() {
-  const gate = await requireAdmin();
-  if (gate instanceof Response) return gate;
+export const GET = adminRoute(async () => {
   const guilds = guildsStmt.all() as { id: string; name: string; icon: string | null }[];
   const messages = new Map((messagesStmt.all() as SumRow[]).map(r => [r.guild_id, Number(r.m)]));
   const panels = new Map((panelsStmt.all() as CountRow[]).map(r => [r.guild_id, Number(r.c)]));
@@ -20,4 +18,4 @@ export async function GET() {
   return NextResponse.json({
     guilds: guilds.map(g => ({ ...g, messages: messages.get(g.id) ?? 0, panels: panels.get(g.id) ?? 0, events: events.get(g.id) ?? 0 })),
   });
-}
+});

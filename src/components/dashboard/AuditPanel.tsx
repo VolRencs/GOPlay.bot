@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { cleanupTargets } from "../../../src/lib/labels.ts";
 import { apiGet, apiSend } from "./api.ts";
 import { CardHeader, confirmAction, formatTime, Select, useAsyncAction } from "./ui.tsx";
-import type { AuditEntry, AuditListGet } from "./types.ts";
+import type { AuditEntry, AuditListGet, PanelFail, PanelNotify } from "./types.ts";
 
-const auditSections = ["Апелляции", "Автомодерация", "Embeds", "События", "Логи", "Приветствие", "Роли", "Временные каналы", "Очистка", "Настройки", "Музыка"];
+const auditSections = ["Апелляции", "Автомодерация", "Embeds", "События", "Логи", "Приветствие", "Роли", "Временные каналы", "Очистка", "Настройки", "Музыка", "Уровни"];
 export function DashboardAuditLog({ guildId }: { guildId: string }) {
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -29,16 +29,16 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
     return () => controller.abort();
   }, [guildId, section]);
   return <section className="panel-stack"><article className="card settings-card">
-      <CardHeader title={<>История изменений панели <span className="toolbar-note">{total ? `${total} записей` : undefined}</span></>}
+      <CardHeader title="История изменений панели" note={total ? `${total} записей` : undefined}
         muted="Кто, что и когда менял в настройках этого сервера. Хранятся последние 1000 действий."
         action={<div className="audit-filter"><label>Раздел
           <Select value={section} onChange={setSection} ariaLabel="Раздел журнала"
             options={[{ value: "all", label: "Все разделы" }, ...auditSections.map(s => ({ value: s, label: s }))]}/>
         </label></div>}/>
-    </article><article className="card audit-list">{entries === null ? <p className="muted">Загружаем журнал…</p> : entries.length ? entries.map((entry, index) => <div className="audit-item" key={`${entry.id}-${index}`}><time dateTime={new Date(entry.created_at).toISOString()}>{formatTime(entry.created_at)}</time><span className="audit-user">{entry.user_name}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" onClick={() => load(entries.length, true)}>Показать ещё ({entries.length} из {total})</button>}</article></section>;
+    </article><article className="card audit-list">{entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.created_at).toISOString()}>{formatTime(entry.created_at)}</time><span className="audit-user">{entry.user_name}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" onClick={() => load(entries.length, true)}>Показать ещё ({entries.length} из {total})</button>}</article></section>;
 }
 
-export function ServerDataCleanup({ guildId, onDone, onError }: { guildId: string; onDone: (message: string, tone?: "ok" | "warn") => void; onError: (message: string) => void }) {
+export function ServerDataCleanup({ guildId, onDone, onError }: { guildId: string; onDone: PanelNotify; onError: PanelFail }) {
   const { busy, run } = useAsyncAction();
   const [active, setActive] = useState<string | null>(null);
   const runCleanup = (target: (typeof cleanupTargets)[number]) => run(async () => {

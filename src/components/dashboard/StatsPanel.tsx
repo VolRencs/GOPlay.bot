@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { ServerStats, StatsGet } from "./types.ts";
+import { apiGet } from "./api.ts";
+import { CardHeader, formatNumber } from "./ui.tsx";
 
-const num = (value: number) => value.toLocaleString("ru-RU");
 
 function StatCard({ label, value, hint }: { label: string; value: string; hint: string }) {
   return <article className="card stat-card"><span>{label}</span><strong>{value}</strong><small>{hint}</small></article>;
@@ -20,7 +21,7 @@ function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] |
             <div className="top-item" key={row.key}>
               {rank && <span className="top-rank">{index + 1}</span>}
               <span className="top-name">{row.name}</span>
-              <span className="top-value">{num(row.value)}</span>
+              <span className="top-value">{formatNumber(row.value)}</span>
             </div>
           ))}
         </div>
@@ -39,10 +40,8 @@ export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guild
     const controller = new AbortController();
     setLoaded(false);
     setData(null);
-    fetch(`/api/guilds/${guildId}/stats?period=${period}`, { signal: controller.signal })
-      .then(r => r.ok ? r.json() as Promise<StatsGet> : null)
+    void apiGet<StatsGet | null>(`/api/guilds/${guildId}/stats?period=${period}`, null, controller.signal)
       .then(value => { if (!controller.signal.aborted) setData(value); })
-      .catch(() => null)
       .finally(() => { if (!controller.signal.aborted) setLoaded(true); });
     return () => controller.abort();
   }, [guildId, period]);
@@ -62,24 +61,19 @@ export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guild
         ))}
       </div>
       <div className="stat-cards">
-        <StatCard label="Участники" value={stats.members != null ? num(stats.members) : "—"} hint="сейчас на сервере"/>
-        <StatCard label="Онлайн" value={stats.online != null ? num(stats.online) : "—"} hint="в сети сейчас"/>
-        <StatCard label="Сообщения" value={num(totals.messages)} hint={periodLabel}/>
-        <StatCard label="Приток участников" value={balance >= 0 ? `+${num(balance)}` : num(balance)} hint={`${num(totals.joins)} пришло · ${num(totals.leaves)} ушло`}/>
+        <StatCard label="Участники" value={stats.members != null ? formatNumber(stats.members) : "—"} hint="сейчас на сервере"/>
+        <StatCard label="Онлайн" value={stats.online != null ? formatNumber(stats.online) : "—"} hint="в сети сейчас"/>
+        <StatCard label="Сообщения" value={formatNumber(totals.messages)} hint={periodLabel}/>
+        <StatCard label="Приток участников" value={balance >= 0 ? `+${formatNumber(balance)}` : formatNumber(balance)} hint={`${formatNumber(totals.joins)} пришло · ${formatNumber(totals.leaves)} ушло`}/>
       </div>
       <article className="card chart-card">
-        <div className="section-title">
-          <div>
-            <h2>Активность сообщества</h2>
-            <p className="muted">{period === "24h" ? "Сообщения по часам." : "Сообщения по дням."}</p>
-          </div>
-          {!loaded || !points.length ? null : <span className="chart-average-label">среднее {num(avg)}</span>}
-        </div>
-        {!loaded ? <p className="hint">Загружаем статистику…</p> : !points.length ? <p className="hint">Пока нет данных {periodLabel}.</p> : (
-          <div className="activity-chart" role="img" aria-label={`Активность сообщества ${periodLabel}: пик ${num(max)} сообщений, среднее ${num(avg)}.`}>
+        <CardHeader title="Активность сообщества" muted={period === "24h" ? "Сообщения по часам." : "Сообщения по дням."}
+          action={!loaded || !points.length ? null : <span className="chart-average-label">среднее {formatNumber(avg)}</span>}/>
+        {!loaded ? <p className="hint" role="status">Загружаем статистику…</p> : !points.length ? <p className="hint">Пока нет данных {periodLabel}.</p> : (
+          <div className="activity-chart" role="img" aria-label={`Активность сообщества ${periodLabel}: пик ${formatNumber(max)} сообщений, среднее ${formatNumber(avg)}.`}>
             <i className="chart-average" style={{ bottom: `${Math.min(97, (avg / max) * 100)}%` }}/>
             {points.map((p, index) => (
-              <div className={`chart-day${p.messages === max ? " top" : ""}`} key={`${p.label}-${index}`} data-v={`${p.label} · ${num(p.messages)}`}>
+              <div className={`chart-day${p.messages === max ? " top" : ""}`} key={`${p.label}-${index}`} data-v={`${p.label} · ${formatNumber(p.messages)}`}>
                 <span className="bar-wrap"><i className="bar" style={{ height: `${Math.max(2, (p.messages / max) * 100)}%` }}/></span>
                 <time>{p.label}</time>
               </div>
@@ -93,7 +87,7 @@ export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guild
         <TopCard title="Модерация" rows={data?.moderation.map(row => ({ key: row.type, name: row.label, value: row.count }))} empty={`Нет действий модерации ${periodLabel}.`}/>
         <article className="card settings-card">
           <h2>Пик активности</h2>
-          {data?.peakHour ? <p className="peak-value">{num(data.peakHour.messages)} <small>сообщений в час</small></p> : <p className="hint">Нет данных.</p>}
+          {data?.peakHour ? <p className="peak-value">{formatNumber(data.peakHour.messages)} <small>сообщений в час</small></p> : <p className="hint">Нет данных.</p>}
           <p className="muted">{data?.peakHour ? `${new Date(`${data.peakHour.day}T00:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" })} ${String(data.peakHour.hour).padStart(2, "0")}:00 UTC` : "Час с наибольшим числом сообщений."}</p>
         </article>
       </div>

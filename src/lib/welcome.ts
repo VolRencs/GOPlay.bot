@@ -23,10 +23,9 @@ const defaultImageConfig: WelcomeImageConfig = {
   titleColor: "#f8fafc", subtitleColor: "#e2e8f0",
 };
 
-const number = (value: unknown, fallback: number, min: number, max: number) => {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.round(parsed))) : fallback;
-};
+import { clampNumber } from "./constants.ts";
+
+const number = (value: unknown, fallback: number, min: number, max: number) => clampNumber(value, fallback, min, max, "round");
 
 const color = (value: unknown, fallback: string) => {
   if (typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)) return value;
@@ -35,7 +34,11 @@ const color = (value: unknown, fallback: string) => {
 
 export function parseImageConfig(value: unknown): WelcomeImageConfig {
   let raw: Record<string, unknown> = {};
-  try { raw = typeof value === "string" ? JSON.parse(value) : (value ?? {}) as Record<string, unknown>; } catch { /* default configuration */ }
+  try {
+    // JSON.parse("null") не бросает: без проверки на объект raw.avatarWidth ниже падал бы 500.
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) raw = parsed as Record<string, unknown>;
+  } catch { /* default configuration */ }
   return {
     avatarWidth: number(raw.avatarWidth, defaultImageConfig.avatarWidth, 48, 420),
     avatarHeight: number(raw.avatarHeight, defaultImageConfig.avatarHeight, 48, 420),
