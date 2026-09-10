@@ -2,11 +2,6 @@ import { stmt } from "../bot/db/statements.ts";
 import { parseStringArray } from "./json.ts";
 import { clampMusicSeconds } from "./labels.ts";
 
-// Настройки музыки (/play): единственный парсер для бота и панели.
-// и Turbopack не тянет плеерный стек (spawn yt-dlp/ffmpeg) в трассировку.
-// leave_after_seconds: единый таймер автовыхода при любом бездействии —
-// нет слушателей в канале, тишина или пауза. 0 = автовыход выключен.
-
 export type MusicSettings = { command_channel_id: string | null; voice_channel_ids: string[]; allowed_role_ids: string[]; leave_after_seconds: number };
 
 export function musicSettingsFor(guildId: string): MusicSettings {

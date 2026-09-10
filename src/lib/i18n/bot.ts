@@ -3,8 +3,6 @@ import { ttlCacheSync } from "../cache.ts";
 import type { Bi } from "./core.ts";
 import type { Locale } from "./core.ts";
 
-// Язык сообщений бота на сервере (настройка в панели управления).
-// не дольше чем через 10 секунд (осознанный трейд-офф).
 const guildLangStmt = db.prepare("SELECT lang FROM guilds WHERE id=?");
 const langCache = ttlCacheSync<string, Locale>((guildId) => {
   const row = guildLangStmt.get(guildId) as { lang?: string } | undefined;

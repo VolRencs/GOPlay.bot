@@ -114,8 +114,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   const persistOptions = () => {
     withTransaction(() => {
-      // UPDATE … changes === 0 означает: панель удалена параллельным DELETE,
-      // как компоненты уже были привязаны к сообщению (ghost-панель).
       if (!created && panelUpdateStmt.run(embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now(), panelId, guildId).changes === 0)
         throw new Error("panel deleted concurrently");
       panelOptionsDeleteStmt.run(panelId);

@@ -1,5 +1,3 @@
-// Сигнал «я жив» для админ-панели: бот пишет файл data/heartbeat с моментом
-// работает ли процесс (файл старее ~3 минут — оффлайн).
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { unrefInterval } from "./utils/timers.ts";

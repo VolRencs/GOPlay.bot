@@ -1,6 +1,3 @@
-// Жизненный цикл ОДНОГО трека: спавн yt-dlp/ffmpeg (или прямого URL),
-// скипе/смене трека — норма и на политику не влияют. Ретраи решает сессия.
-
 import { spawn } from "node:child_process";
 import { pipeline } from "node:stream/promises";
 import { AudioPlayerStatus, StreamType, createAudioResource, type AudioPlayer } from "@discordjs/voice";
@@ -86,8 +83,6 @@ export function startAudioStream(opts: { track: Track; player: AudioPlayer; offs
     try { ffmpeg.kill("SIGKILL"); } catch { /* уже вышел */ }
   };
 
-  // Двухфазный watchdog: до первого пакета ловим молчащий источник, после —
-  // буферы полны, поэтому смотреть можно только на выход).
   let gotFirstPacket = false;
   let lastOutputAt = performance.now();
   const spawnAt = performance.now();

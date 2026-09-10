@@ -42,7 +42,6 @@ let onTrackStart: ((guildId: string, requestedBy: string) => void) | null = null
 /** Новый трек пошел (не резюм): бот-слой может перевести соединение к каналу автора. */
 export function setOnTrackStart(fn: (guildId: string, requestedBy: string) => void): void { onTrackStart = fn; }
 
-// считаем людей > 0 — консервативно, чтобы случайно не убивать сессии.
 let playerEnvironment: { humansInBotChannel: (guildId: string) => number } | null = null;
 export function setPlayerEnvironment(env: { humansInBotChannel: (guildId: string) => number }): void { playerEnvironment = env; }
 

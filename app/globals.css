@@ -2234,6 +2234,7 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: .6rem;
+  margin-top: 0; /* отступ даёт обёртка .select — без дубля .4rem */
   font-weight: 400;
   text-align: left;
   cursor: pointer;

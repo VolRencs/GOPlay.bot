@@ -59,8 +59,6 @@ export const automodRulesFor = (lang: Locale): Record<string, { title: string; d
 export const automodRules: Record<string, { title: string; description: string }> = automodRulesFor("ru");
 
 type LogGroup = { title: string; items: readonly (readonly [string, string, string, string])[] };
-// Кортеж пункта: ключ, подпись-галочка панели, заголовок журнала (ru), (en).
-// ключей не могут разъехаться.
 export const logGroups: LogGroup[] = [
   { title: "Участники", items: [["member_join", "Присоединился к серверу", "Участник присоединился", "Member joined"], ["member_leave", "Покинул сервер", "Участник покинул сервер", "Member left"], ["member_roles", "Изменение ролей", "Роли участника изменены", "Member roles changed"], ["member_ban", "Участник забанен", "Участник забанен", "Member banned"], ["member_unban", "Участник разбанен", "Участник разбанен", "Member unbanned"], ["member_kick", "Участник исключён", "Участник исключён", "Member kicked"], ["member_timeout", "Тайм-аут выдан или снят", "Тайм-аут изменён", "Timeout changed"], ["member_warn", "Выдано предупреждение", "Предупреждение выдано", "Warning issued"], ["member_warn_clear", "Предупреждения сняты", "Предупреждения сняты", "Warnings cleared"]] },
   { title: "Сообщения", items: [["message_delete", "Сообщение удалено", "Сообщение удалено", "Message deleted"], ["message_edit", "Сообщение изменено", "Сообщение изменено", "Message edited"], ["message_purge", "Очистка канала (purge)", "Сообщения очищены", "Messages purged"]] },
@@ -74,8 +72,6 @@ const logTitlesByLang: Record<Locale, Record<string, string>> = {
 export const logTitleFor = (lang: Locale, type: string): string => logTitlesByLang[lang][type] ?? type;
 
 export type CleanupTarget = "audit" | "appeals" | "warns" | "stats" | "events" | "music" | "levels";
-// «Музыка» намеренно отсутствует в списке пользовательской очистки: это
-// (см. WIPE_TARGETS в server-cleanup).
 export const cleanupTargetsM: { key: CleanupTarget; label: Bi; description: Bi; confirm: Bi; done: Bi }[] = [
   { key: "audit", label: { ru: "Журнал изменений", en: "Change log" }, description: { ru: "Все записи о том, кто и что менял в настройках.", en: "All records of who changed what in settings." }, confirm: { ru: "Очистить журнал изменений? Это действие нельзя отменить.", en: "Clear the change log? This cannot be undone." }, done: { ru: "Журнал изменений очищен.", en: "Change log cleared." } },
   { key: "appeals", label: { ru: "Апелляции", en: "Appeals" }, description: { ru: "Все поданные апелляции и их история. Счётчик апелляций сервера начнётся заново.", en: "All filed appeals and their history. The server appeal counter restarts." }, confirm: { ru: "Удалить все апелляции сервера? Это действие нельзя отменить.", en: "Delete all server appeals? This cannot be undone." }, done: { ru: "Все апелляции сервера удалены.", en: "All server appeals deleted." } },

@@ -566,7 +566,6 @@ registerLevels(client);
 registerAppeals(client);
 registerEvents(client);
 client.on(Events.GuildDelete, guild => {
-  // бы «в пустоту» до 2 ч (при лупе — бесконечно), пока idle-таймер не сработает.
   stopAndLeave(guild.id);
   purgeConfigCaches(guild.id);
   guard("GUILD_WIPE", () => wipeGuildData(guild.id));

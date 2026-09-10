@@ -25,8 +25,6 @@ export function ttlCacheSync<K, V>(loader: (key: K) => V, ttlMs: number) {
   };
 }
 
-// Single-flight: конкуренты по одному ключу ждут один loader. С `stale` фейл
-// get() снова попробует загрузить.
 export function ttlCacheAsync<K, V>(loader: (key: K) => Promise<V>, ttlMs: number, stale = false) {
   const entries = new Map<K, Entry<V>>();
   const pending = new Map<K, Promise<V>>();

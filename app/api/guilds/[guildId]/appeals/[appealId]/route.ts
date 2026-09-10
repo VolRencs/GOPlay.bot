@@ -15,8 +15,6 @@ export const POST = guildRoute<{ guildId: string; appealId: string }>(async (req
   const comment = typeof body?.comment === "string" ? body.comment.trim().slice(0, 500) || null : null;
   const discordAccount = discordAccountOf(user.id);
 
-  // Источник истины — переход в БД, он всегда первый. Discord-сайд-эффекты
-  // не может отменить решение.
   const result = reviewAppeal({ guildId, appealId, action, reviewerId: discordAccount?.accountId ?? user.id, comment });
   if (!result.ok) return jsonError(result.error, result.status);
   const { appeal, reversal } = result.value;

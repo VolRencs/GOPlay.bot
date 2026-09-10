@@ -10,13 +10,8 @@ import { eventUploadPrefix, eventUploadsDir } from "../../lib/uploads.ts";
 import { reattachStoredAssets } from "../../lib/assets.ts";
 import { eventsTr, guildLang, guildTr } from "../../lib/i18n/bot.ts";
 
-// Events runtime: стабильные custom id кнопок (`event:join:<id>`), 30-секундный
-// src/lib/events.ts; перерисовки сообщений выстроены в per-event очередь.
-
 const toDiscordButtonStyle = (name: EventButton["style"]): ButtonStyle => buttonStyleId(name) as ButtonStyle;
 
-// В БД хранятся локальные пути (/uploads/events/...): Discord отвергает
-// правка переотправляет файлы как attachment://. Нет файла — без картинки.
 async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
   const setAsset = (target: "thumbnail" | "image", url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
   const { assets } = await reattachStoredAssets<"thumbnail" | "image">({
@@ -71,8 +66,6 @@ async function handleInteraction(i: Interaction) {
   void refreshMessage(event.guild_id, event.id);
 }
 
-// Коалесинг вместо цепочки: пока идёт обновление, новые запросы лишь помечают
-// Серия из N join'ов даёт ≤2 edit вместо N (у панели музыки то же решение).
 const queues = new Map<string, Promise<void>>();
 const pendingRefresh = new Set<string>();
 function refreshMessage(guildId: string, eventId: string): Promise<void> {
@@ -114,8 +107,6 @@ async function refreshMessageNow(guildId: string, eventId: string) {
     // на каждое нажатие кнопки (MessageManager.edit принимает snowflake).
     await channel.messages.edit(event.message_id, { embeds: [embed], components, files });
   } catch (error) {
-    // Отвязка — только когда сообщение/канал реально исчезли; прочее (rate
-    // сохранение в панели опубликовало бы дубль вместо правки.
     if (isMissingDiscordResource(error)) detachEventMessage(event.message_id);
   }
 }
@@ -145,8 +136,6 @@ async function tick() {
       void sendReminders(event);
     }
     const { changed, created } = transitionDueEvents(now);
-    // Повторяющаяся серия создаёт следующее событие без сообщения — публикуем
-    // (строка хранит message_id NULL).
     for (const follower of created) await publishEventMessage(follower);
     for (const event of changed) void refreshMessage(event.guild_id, event.id);
   } catch (error) {

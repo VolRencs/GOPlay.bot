@@ -9,9 +9,6 @@ import { logger } from "../bot/utils/logger.ts";
 import type { Locale } from "./i18n/core.ts";
 import { eventsTr, guildLang } from "./i18n/bot.ts";
 
-// Домен событий: роут панели, бот (кнопки + планировщик) и тесты ходят через
-// напоминания ведут себя одинаково везде.
-
 const eventStatuses = ["scheduled", "live", "completed", "cancelled"] as const;
 type EventStatus = (typeof eventStatuses)[number];
 const eventButtonStyles = ["primary", "secondary", "success", "danger"] as const;
@@ -158,8 +155,6 @@ export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: Ev
 
 export type RenderedEventButton = EventButton & { disabled: boolean };
 
-// disabled. customIds стабильны (`event:join:<id>`) — переименование кнопки
-// не меняет её логику.
 export function renderEventButtons(event: RenderableEvent, buttons: EventButton[], counts: EventCounts): RenderedEventButton[] {
   const closed = event.status !== "scheduled" && event.status !== "live";
   const limitReached = event.maxParticipants > 0 && counts.joined >= event.maxParticipants;
@@ -205,8 +200,6 @@ export function leaveEvent(eventId: string, userId: string, guildId?: string): L
   });
 }
 
-// Освобождает слот, продвигая первого из вейтлиста. Внутри транзакции
-// пересчитывает участников заново.
 function promoteFromWaitlist(event: EventRow): string | null {
   if (!event.waitlist_enabled || event.max_participants <= 0) return null;
   const joined = eventCounts(event.id).joined;
@@ -230,8 +223,6 @@ export function removeParticipant(eventId: string, userId: string, guildId?: str
   });
 }
 
-// Вышедший с сервера удаляется из всех событий гильдии; освободившийся слот
-// чтобы вызывающий выдал роли и обновил сообщения.
 export function removeParticipantFromGuild(guildId: string, userId: string): { eventId: string; promotedUserId: string | null }[] {
   const rows = eventsOfUserInGuild.all(guildId, userId) as { event_id: string }[];
   const results: { eventId: string; promotedUserId: string | null }[] = [];
@@ -242,8 +233,6 @@ export function removeParticipantFromGuild(guildId: string, userId: string): { e
   return results;
 }
 
-// Пересобирает неотправленные напоминания по настроенным офсетам. Отправленные
-// просто не планируется; завершённым/отменённым событиям напоминаний нет.
 function recomputeReminders(event: EventRow) {
   reminderDeleteUnsent.run(event.id);
   if (event.status === "completed" || event.status === "cancelled") return;
@@ -266,8 +255,6 @@ export function dueReminders(at: number): { id: number; event_id: string }[] {
 
 const eventFlipLive = db.prepare("UPDATE events SET status='live',started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='scheduled'");
 
-// Переводит просроченные scheduled в live и для повторяющихся серий без
-// ещё нужно опубликовать).
 export function transitionDueEvents(now: number): { changed: EventRow[]; created: EventRow[] } {
   const changed: EventRow[] = [];
   const created: EventRow[] = [];
@@ -281,8 +268,6 @@ export function transitionDueEvents(now: number): { changed: EventRow[]; created
       if (recurrence.freq === "none") continue;
       const seriesId = event.series_id ?? event.id;
       if (nextInSeries.get(seriesId)) continue;
-      // Кап догоняющего каскада: после долгого простоя бота follower может
-      // создаём один следующий экземпляр строго в будущем.
       const step = intervalDays(recurrence) * DAY_MS;
       let nextScheduledAt = event.scheduled_at + step;
       while (nextScheduledAt <= now) nextScheduledAt += step;

@@ -113,8 +113,6 @@ export function parseYtDlpMeta(raw: string, capped: boolean): Record<string, unk
   return null;
 }
 
-// Параллельные -J спавны ограничены: спам /play не должен плодить процессы
-// гарантирует терминацию — взаимоблокировки нет.
 const RESOLVE_CONCURRENCY = 3;
 let activeResolves = 0;
 const resolveQueue: (() => void)[] = [];

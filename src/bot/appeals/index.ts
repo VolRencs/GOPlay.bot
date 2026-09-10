@@ -7,8 +7,6 @@ import { logger } from "../utils/logger.ts";
 import { guildLang } from "../../lib/i18n/bot.ts";
 import { trAppeals } from "../../lib/i18n/bot/appeals.ts";
 
-// Апелляции живут целиком в DM: сразу после записи наказания бот присылает
-// DM-интеракции не несут контекста гильдии.
 export function registerAppeals(client: Client) {
   client.on(Events.InteractionCreate, (i) => void handleInteraction(i));
 }

@@ -14,8 +14,6 @@ function record(guildId: string, userId: string, moderatorId: string | null, typ
   addMetric(guildId, "moderation");
   return Number(result.lastInsertRowid);
 }
-// Единая точка «произошло наказание»: строка moderation_actions + DM-оффер
-// обработчики ручных банов/тайм-аутов, поэтому оффер везде одинаковый.
 export function recordPunishmentAndOffer(client: Client, input: { guildId: string; guildName: string; userId: string; type: string; reason: string; moderatorId: string | null }) {
   const punishmentId = record(input.guildId, input.userId, input.moderatorId, input.type, input.reason);
   // untimeout — коррекция, kick необратим: оффер апелляции не нужен обоим.

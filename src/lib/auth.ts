@@ -8,7 +8,6 @@ export const auth = betterAuth({
   database: db, // нативная поддержка node:sqlite; таблицы auth живут в этой же БД
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL,
-  // кука может хранить старый OAuth-токен после перевыпуска.
   account: { storeAccountCookie: false },
   plugins: [nextCookies()],
   socialProviders: {

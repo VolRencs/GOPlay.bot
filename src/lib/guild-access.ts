@@ -175,7 +175,7 @@ export async function requireUser() {
 
 // Гейт всех админ-API: сессия должна принадлежать Discord-аккаунту из списка
 // владельца бота.
-export async function requireAdmin(): Promise<{ ok: true } | NextResponse> {
+async function requireAdmin(): Promise<{ ok: true } | NextResponse> {
   const resolved = await resolveSession();
   if (!resolved) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const accountId = resolved.discordAccount?.accountId;

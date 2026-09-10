@@ -20,8 +20,6 @@ function eventImageNames(embedJson: string, guildId: string) {
 
 async function cleanupUnusedEventImages(guildId: string) {
   const referenced = new Set(db.prepare("SELECT embed_json FROM events WHERE guild_id=?").all(guildId).flatMap(row => eventImageNames(String((row as { embed_json: string }).embed_json), guildId)));
-  // Гонка с параллельным сохранением: другой запрос мог уже записать файл на
-  // за это время любой сохраняющийся запрос уже завершится.
   await cleanupOrphanedFiles(eventUploadsDir(guildId), referenced, 60 * 60_000);
 }
 
@@ -48,8 +46,6 @@ async function sendOrEdit(channelId: string, messageId: string | null, embed: Ev
   }
 }
 
-// Стабильная ссылка на сообщение: правим существующее; пересоздаём только при
-// правки. Никогда не бросает.
 async function syncDiscord(current: EventRow, channelId: string, embed: EventEmbedPayload, buttons: RenderedEventButton[], files: readonly StoredAsset<EventImageTarget>[]): Promise<{ messageId: string | null; warning: string | null }> {
   if (!current.message_id || current.channel_id !== channelId) {
     if (current.message_id) await discordFetch(`/channels/${current.channel_id}/messages/${current.message_id}`, { method: "DELETE" }).catch(() => null);

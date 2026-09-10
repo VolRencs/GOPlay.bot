@@ -69,8 +69,6 @@ export function registerMusic(client: Client): void {
   // решает сама сессия). Свои переходы бота событиями не считаем — иначе первый
   // же rejoin из пустеющего канала убил бы живую сессию.
   client.on("voiceStateUpdate", (oldState, newState) => {
-    // Свой мьют/деаф состав канала не меняет; свой ПЕРЕХОД — меняет: без
-    // до конца трека (при loop=track — бесконечно).
     if (oldState.id === client.user!.id) {
       if (oldState.channelId !== newState.channelId) refreshSessionActivity(newState.guild.id);
       return;
@@ -148,8 +146,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       await i.editReply({ content: t("voiceNotAllowed", { channels: settings.voice_channel_ids.map(id => `<#${id}>`).join(", ") }) });
       return true;
     }
-    // Права бота проверяем заранее: без «Подключаться» упадёт сам вход, а без
-    // поломка, которую иначе никак не увидеть.
     const botPerms = voiceChannel.permissionsFor(i.guild!.members.me ?? i.guild!.roles.everyone);
     if (!botPerms?.has(PermissionFlagsBits.Connect)) {
       await i.editReply({ content: t("noConnectAccess", { channel: voiceChannel.id }) });
@@ -171,8 +167,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     if (!ffmpegOk) { await i.editReply(t("missingFfmpeg")); return true; }
     if (!opusOk) { await i.editReply(t("missingOpus")); return true; }
 
-    // Fast-path: прямая YouTube-ссылка без list= идёт в очередь немедленно —
-    // параллельной гидрацией и обновляют панель/очередь на лету.
     let tracks: Track[];
     let fastPath = false;
     if (isSingleYouTubeVideoUrl(query)) {
@@ -202,8 +196,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     }
     if (added === 0) { await i.editReply(t("queueFull", { max: String(MAX_QUEUE) })); return true; }
 
-    // Автостарт: если сейчас ничего не играет — сразу запускаем голову очереди.
-    // не срабатывала и первый трек не начинал играть вовсе.
     if (!hasCurrent(i.guildId!)) {
       const started = playNext(i.guildId!);
       if (started) {
@@ -228,9 +220,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     return true;
   }
 }
-
-// Сообщение с кнопками (пауза, скип, шаффл, луп, очередь, выход) в канале,
-// обновление создаёт заново. Управление — автор текущего трека или админ.
 
 type PanelRef = { channelId: string; messageId: string; message?: Message };
 const panels = new Map<string, PanelRef>();

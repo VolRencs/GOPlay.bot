@@ -4,7 +4,6 @@ import { wipeGuildData } from "../../../../../../src/lib/server-cleanup.ts";
 import { deleteGuildFiles } from "../../../../../../src/lib/uploads.ts";
 
 export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) => {
-  // не-snowflake вида ".." превратил бы стирание в обход каталога загрузок.
   if (!isSnowflake(guildId)) return jsonError("Некорректный идентификатор сервера.");
   const body = await readJson<{ wipe?: unknown }>(request);
   const wipe = Boolean(body?.wipe);
@@ -19,7 +18,6 @@ export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) 
   }
 
   if (wipe) {
-    // стирания намеренно не остаётся.
     wipeGuildData(guildId);
     // Ждём удаления файлов до ответа, иначе {wiped:true} врёт.
     try {
