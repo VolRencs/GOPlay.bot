@@ -85,8 +85,8 @@ async function handleVoiceState(oldState: VoiceState, newState: VoiceState) {
 
 async function handleTriggerJoin(guild: Guild, member: GuildMember, triggerChannelId: string) {
   // Второй канал владельцу не создаём. Проверка не атомарна — два быстрых
-  // voice-event оба могут её пройти — но UNIQUE (guild_id, owner_id) из
-  // миграции 021 отвергнет проигравший insert, а дубликат канала удалится.
+  // voice-event оба могут её пройти — но UNIQUE (guild_id, owner_id) отвергнет
+  // проигравший insert, а дубликат канала удалится.
   const existing = stmt.tempByOwner.get(guild.id, member.id) as TempRow | undefined;
   if (existing) {
     const channel = guild.channels.cache.get(existing.channel_id) as VoiceChannel | undefined;

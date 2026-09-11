@@ -57,7 +57,7 @@ export const GET = guildRoute(async (request, { guildId }) => {
   const moderation = (moderationStmt.all(guildId, nowMs - windowDays * DAY_MS) as { type: string; count: number }[]).map(row => ({ type: row.type, label: moderationLabel(lang, row.type), count: row.count }));
 
   if (period === "24h") {
-    // Скользящие 24 часа, а не сумма двух календарных дней (было до 48 ч):
+    // Скользящие 24 часа, а не сумма двух календарных дней:
     // сообщения — из почасовых бакетов, модерация — по точному cutoff выше.
     totals.messages = points.reduce((sum, point) => sum + point.messages, 0);
     totals.moderation = moderation.reduce((sum, row) => sum + row.count, 0);

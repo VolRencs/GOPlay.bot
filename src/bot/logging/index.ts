@@ -126,7 +126,7 @@ function auditLookup(guildId: string, type: number, targetId: string, priority: 
     // priority-запросы (kick/ban/timeout) никогда не выкидывают себя сами.
     if (auditQueue.length > AUDIT_QUEUE_LIMIT) {
       const dropAt = auditQueue.findIndex(entry => !entry.priority);
-      auditQueue.splice(dropAt === -1 ? 0 : dropAt, 1)[0]!.resolve(undefined);
+      if (dropAt !== -1) auditQueue.splice(dropAt, 1)[0]!.resolve(undefined);
     }
     void drainAuditQueue();
   });

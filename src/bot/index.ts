@@ -1,11 +1,11 @@
-import { AuditLogEvent, ChannelType, Client, EmbedBuilder, Events, GatewayIntentBits, Partials, REST, Routes, MessageFlags, PermissionFlagsBits, type Guild, type GuildMember, type Interaction, type Message, type MessageReaction, type NewsChannel, type PartialMessageReaction, type PartialUser, type TextChannel, type ThreadChannel, type User } from "discord.js";
+import { AuditLogEvent, ChannelType, Client, EmbedBuilder, Events, GatewayIntentBits, Partials, REST, Routes, MessageFlags, PermissionFlagsBits, type Guild, type GuildMember, type Interaction, type Message, type MessageReaction, type PartialMessageReaction, type PartialUser, type User } from "discord.js";
 import { closeDatabase, db } from "../db/database.ts";
 import { safeJson } from "../lib/json.ts";
 import { automodActions, automodDefaultActions } from "../lib/automod.ts";
 import { automodRulesFor } from "../lib/labels.ts";
 import { DAY_MS, MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../lib/constants.ts";
 import { detect, isIgnored, pruneDetectors, burstMessages, shouldWarn, markWarned, type Rule, type MessageData } from "./automod/detectors.ts";
-import { moderate, recordPunishmentAndOffer } from "./moderation/index.ts";
+import { moderate, purgeUserMessages, recordPunishmentAndOffer } from "./moderation/index.ts";
 import { welcomeImage } from "./utils/welcome-image.ts";
 import { renderWelcomeTemplate } from "../lib/welcome.ts";
 import { stmt } from "./db/statements.ts";
@@ -88,7 +88,6 @@ function onboardGuild(guild: Guild): void {
   if (isNew) langUpdate.run(localeFromDiscord(guild.preferredLocale), guild.id);
   cachedRules(guild.id);
   reportRoleHierarchy(guild);
-  void guild.members.fetch().catch((error) => logger.warn("[MEMBERS] Не удалось загрузить участников", guild.id, error));
 }
 client.once(Events.ClientReady, async c => {
   startHeartbeat();
@@ -179,8 +178,15 @@ client.on(Events.GuildMemberRemove, member => {
 });
 const roleLocks = new Map<string, Promise<void>>();
 const ROLE_LOCK_TIMEOUT_MS = 10_000;
-function lockTimeout(ms: number): Promise<never> {
-  return new Promise<never>((_, reject) => setTimeout(() => reject(new Error("role lock timeout")), ms));
+/** Таймаут с возможностью отмены: завершённый запрос не должен держать
+ *  event loop и оставлять висящий таймер до 10 секунд. */
+function lockTimeout(ms: number): { promise: Promise<never>; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("role lock timeout")), ms);
+    timer.unref();
+  });
+  return { promise, cancel: () => { if (timer) clearTimeout(timer); } };
 }
 async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = roleLocks.get(key) ?? Promise.resolve();
@@ -188,10 +194,14 @@ async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const cur = new Promise<void>((res) => (release = res));
   roleLocks.set(key, cur);
   // Зависший предшественник не должен держать очередь вечно.
-  await Promise.race([prev, lockTimeout(ROLE_LOCK_TIMEOUT_MS)]).catch(() => null);
+  const wait = lockTimeout(ROLE_LOCK_TIMEOUT_MS);
+  await Promise.race([prev, wait.promise]).catch(() => null);
+  wait.cancel();
+  const own = lockTimeout(ROLE_LOCK_TIMEOUT_MS);
   try {
-    return await Promise.race([fn(), lockTimeout(ROLE_LOCK_TIMEOUT_MS)]);
+    return await Promise.race([fn(), own.promise]);
   } finally {
+    own.cancel();
     release!();
     if (roleLocks.get(key) === cur) roleLocks.delete(key);
   }
@@ -204,7 +214,7 @@ async function applyPanelRole(guildId: string, panelId: number, roleId: string, 
     const has = member.roles.cache.has(roleId);
     const action = panel.role_mode === "add" ? "add" : panel.role_mode === "remove" ? "remove" : has ? "remove" : "add";
     if (action === "add" && !has && panel.role_limit > 0) {
-      const ids = (stmt.panelOptionIds.all(panelId) as { role_id: string }[]).map(x => x.role_id);
+      const ids = (stmt.panelOptionEmoji.all(panelId) as { role_id: string }[]).map(x => x.role_id);
       if (ids.filter(id => member.roles.cache.has(id)).length >= panel.role_limit) return { text: automodTr(guildLang(guildId), "roleLimitReached", { n: String(panel.role_limit) }), notify: true };
     }
     await member.roles[action](role);
@@ -226,14 +236,15 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   if (!actions.length) actions = [...automodDefaultActions];
   const lang = cachedRules(guild.id).lang;
   const ruleName = automodRuleTitles[lang][row.kind]?.title ?? row.kind, reason = trAutomodReason(lang, ruleName);
-  const rule: Rule = { kind: row.kind, enabled: true, threshold, window: row.window_seconds };
+  const rule: Rule = { kind: row.kind, threshold, window: row.window_seconds };
   const burstKind = ["spam", "duplicate", "emoji"].includes(row.kind);
   let burst: { id: string; channelId: string }[] = [];
+  let deletedCount = 0;
   const applied: string[] = [];
   if (actions.includes("delete")) {
     burst = burstKind ? burstMessages(rule, data) : [];
-    const deleted = burst.length ? (await deleteBurst(guild, burst), true) : await message.delete().then(() => true, () => false);
-    if (deleted) applied.push("delete");
+    deletedCount = burst.length ? await deleteBurst(guild, burst) : await message.delete().then(() => 1, () => 0);
+    if (deletedCount > 0) applied.push("delete");
   }
   const member = message.member;
   if (actions.includes("timeout") && member?.moderatable) {
@@ -266,79 +277,23 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
     if (punishmentId !== null) void offerAppeal(client, { punishmentId, guildId: guild.id, guildName: guild.name, userId: author.id, type: "automod", reason });
     if (burstKind) markWarned(rule, data);
   }
-  logAction({ guildId: guild.id, type: "automod", targetId: author.id, moderatorId: "automod", details: `${logTr(lang, "reason", { reason: ruleName })}\n${applied.length ? logTr(lang, "actionsLine", { list: applied.join(", ") }) : logTr(lang, "actionsFailedLine")}${burst.length ? logTr(lang, "deletedFromBurst", { n: String(burst.length) }) : ""}` });
+  logAction({ guildId: guild.id, type: "automod", targetId: author.id, moderatorId: "automod", details: `${logTr(lang, "reason", { reason: ruleName })}\n${applied.length ? logTr(lang, "actionsLine", { list: applied.join(", ") }) : logTr(lang, "actionsFailedLine")}${deletedCount > 0 ? logTr(lang, "deletedFromBurst", { n: String(deletedCount) }) : ""}` });
   time("automod.enforce", performance.now() - started);
 }
-async function deleteBurst(guild: Guild, burst: { id: string; channelId: string }[]) {
+async function deleteBurst(guild: Guild, burst: { id: string; channelId: string }[]): Promise<number> {
   const byChannel = new Map<string, string[]>();
   for (const entry of burst) {
     const ids = byChannel.get(entry.channelId) ?? [];
     ids.push(entry.id);
     byChannel.set(entry.channelId, ids);
   }
+  let deleted = 0;
   for (const [channelId, ids] of byChannel) {
     const channel = guild.channels.cache.get(channelId);
     if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement && !channel.isThread())) continue;
-    await channel.bulkDelete(ids, true).catch(() => null);
+    const removed = await channel.bulkDelete(ids, true).catch(() => null);
+    deleted += removed?.size ?? 0;
   }
-}
-const userPurges = new Map<string, { cutoff: number; requeue: boolean; promise: Promise<number> }>();
-function purgeUserMessages(guild: Guild, userId: string, hours: number): Promise<number> {
-  const key = `${guild.id}:${userId}`;
-  const cutoff = Date.now() - Math.min(hours * 3_600_000, 14 * 86_400_000);
-  const active = userPurges.get(key);
-  if (active) { active.cutoff = Math.min(active.cutoff, cutoff); active.requeue = true; return active.promise; }
-  const state: { cutoff: number; requeue: boolean; promise: Promise<number> } = { cutoff, requeue: false, promise: Promise.resolve(0) };
-  state.promise = (async () => {
-    let deleted = 0;
-    try {
-      do {
-        state.requeue = false;
-        deleted += await purgeMessages(guild, userId, state.cutoff);
-      } while (state.requeue);
-    } catch (error) {
-      // Purge — best-effort чистка: ошибку логируем, уже удалённое не теряем.
-      logger.warn("[PURGE] Чистка сообщений прервана", guild.id, userId, error);
-    } finally {
-      userPurges.delete(key);
-    }
-    return deleted;
-  })();
-  userPurges.set(key, state);
-  return state.promise;
-}
-async function purgeMessages(guild: Guild, userId: string, cutoff: number): Promise<number> {
-  const started = performance.now();
-  let deleted = 0;
-  const channels = [...guild.channels.cache.values()].filter(
-    channel => channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement || channel.isThread(),
-  ) as (TextChannel | NewsChannel | ThreadChannel)[];
-  const CONCURRENCY = 5;
-  for (let i = 0; i < channels.length; i += CONCURRENCY) {
-    const chunk = channels.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(
-      chunk.map(async channel => {
-        let deletedInChannel = 0;
-        let before: string | undefined;
-        for (let page = 0; page < 5; page++) {
-          const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
-          if (!batch || batch.size === 0) break;
-          const oldest = batch.last()!;
-          before = oldest.id;
-          const targets = batch.filter(message => message.author.id === userId && message.createdTimestamp >= cutoff);
-          if (targets.size > 0) {
-            const removed = await channel.bulkDelete(targets, true).catch(() => null);
-            deletedInChannel += removed?.size ?? 0;
-          }
-          if (oldest.createdTimestamp < cutoff) break;
-        }
-        return deletedInChannel;
-      }),
-    );
-    for (const r of results) if (r.status === "fulfilled") deleted += r.value;
-    if (i + CONCURRENCY < channels.length) await new Promise((res) => setTimeout(res, 100));
-  }
-  time("purge.messages", performance.now() - started);
   return deleted;
 }
 client.on(Events.MessageCreate, async message => {
@@ -364,11 +319,11 @@ client.on(Events.MessageCreate, async message => {
     return;
   }
   const data: MessageData = { id: message.id, guildId: message.guild.id, userId: message.author.id, channelId: message.channel.id, content: message.content, roleIds: member?.roles.cache.map(r => r.id) ?? [], mentionCount: message.mentions.users.size + message.mentions.roles.size, everyone: message.mentions.everyone, attachments: [...message.attachments.values()].map(a => ({ contentType: a.contentType })), at: Date.now() };
-  const ignored = isIgnored(data, { roles: cache.ignoredRoles, users: [] });
+  const ignored = isIgnored(data, cache.ignoredRoles);
   for (const row of cache.rules) {
     const threshold = row.threshold;
     if (threshold === null) continue;
-    if (!ignored && detect({ kind: row.kind, enabled: Boolean(row.enabled), threshold, window: row.window_seconds }, data)) {
+    if (!ignored && detect({ kind: row.kind, threshold, window: row.window_seconds }, data)) {
       await enforceAutoMod(message, row, threshold, data);
       break;
     }
@@ -544,6 +499,7 @@ client.on(Events.GuildBanAdd, ban => {
   });
 });
 client.on(Events.GuildBanRemove, ban => {
+  recentBans.delete(`${ban.guild.id}:${ban.user.id}`);
   void auditFind(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id, { priority: true, retries: 1, retryDelay: 800 }).then(entry => {
     logAction({ guildId: ban.guild.id, type: "member_unban", targetId: ban.user.id, moderatorId: entry?.executor?.id, details: logTr(guildLang(ban.guild.id), "reason", { reason: entry?.reason ?? logTr(guildLang(ban.guild.id), "notSpecified") }) });
   });

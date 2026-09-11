@@ -1,6 +1,6 @@
 import { automodThresholdDefaults, type RuleKind } from "../../lib/automod.ts";
 export type MessageData = { id: string; guildId: string; userId: string; channelId: string; content: string; roleIds: string[]; mentionCount: number; everyone: boolean; attachments: { contentType: string | null }[]; at: number };
-export type Rule = { kind: RuleKind; enabled: boolean; threshold: Record<string, unknown>; window: number };
+export type Rule = { kind: RuleKind; threshold: Record<string, unknown>; window: number };
 type Timed = { at: number; text: string; amount: number; id: string; channelId: string };
 const memory = new Map<string, Timed[]>();
 const warned = new Map<string, number>();
@@ -12,7 +12,7 @@ const EMOJI_RE = /<a?:\w+:\d+>|\p{Extended_Pictographic}/gu;
 function urls(text: string) { return text.match(URL_RE) ?? []; }
 function bareDomains(text: string) { const out: string[] = []; for (const match of text.matchAll(DOMAIN_RE)) { try { out.push(new URL(`https://${match[1]}`).hostname.toLowerCase()); } catch { /* ignore malformed token */ } } return out; }
 export function detect(rule: Rule, message: MessageData): boolean {
-  if (!rule.enabled) return false; const t = rule.threshold; const key = keyFor(rule, message);
+  const t = rule.threshold; const key = keyFor(rule, message);
   if (rule.kind === "spam") { const a = bucket(key,message.at,rule.window); a.push({at:message.at,text:"",amount:1,id:message.id,channelId:message.channelId}); return a.length >= Number(t.messages ?? automodThresholdDefaults.spam?.messages); }
   if (rule.kind === "duplicate") { const a=bucket(key,message.at,rule.window); const text=message.content.trim().toLowerCase(); a.push({at:message.at,text,amount:1,id:message.id,channelId:message.channelId}); return a.filter(x=>x.text===text).length >= Number(t.repeatCount ?? automodThresholdDefaults.duplicate?.repeatCount); }
   if (rule.kind === "caps") { const letters=[...message.content].filter(c=>/\p{L}/u.test(c)); const upper=letters.filter(c=>c===c.toUpperCase()).length; return letters.length >= Number(t.minimumCharacters ?? automodThresholdDefaults.caps?.minimumCharacters) && upper / letters.length * 100 >= Number(t.uppercasePercentage ?? automodThresholdDefaults.caps?.uppercasePercentage); }
@@ -23,7 +23,7 @@ export function detect(rule: Rule, message: MessageData): boolean {
   if (rule.kind === "media_only") { const channels=Array.isArray(t.channels)?t.channels.map(String):[]; const media=String(t.media??"any"); const allowed=message.attachments.some(a=>media==="any"?/^(image|video)\//.test(a.contentType??""):a.contentType?.startsWith(`${media}/`)); return (!channels.length||channels.includes(message.channelId))&&!allowed; }
   const invite=/discord(?:\.gg|(?:app)?\.com\/invite)\/[a-z0-9-]+/i.test(message.content); return invite && t.mode !== "allow";
 }
-export function isIgnored(message: MessageData, exceptions: {roles:string[];users:string[]}) { return exceptions.users.includes(message.userId)||message.roleIds.some(x=>exceptions.roles.includes(x)); }
+export function isIgnored(message: MessageData, ignoredRoleIds: string[]): boolean { return message.roleIds.some(id => ignoredRoleIds.includes(id)); }
 export function burstMessages(rule: Rule, message: MessageData): { id: string; channelId: string }[] {
   const values = bucket(keyFor(rule, message), message.at, rule.window);
   const filtered = rule.kind === "duplicate" ? values.filter(x => x.text === message.content.trim().toLowerCase()) : values;

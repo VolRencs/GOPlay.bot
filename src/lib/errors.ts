@@ -25,8 +25,7 @@ export function replyInteractionError(i: RepliableInteraction, content: string):
 }
 
 /** «Ресурс реально удалён»: сообщение (10008), канал (10003) или HTTP 404.
- *  Единый предикат вместо четырёх расходившихся реализаций по модулям;
- *  понимает и DiscordAPIError, и сырые REST-ошибки (код в rawError). */
+ *  Понимает и DiscordAPIError, и сырые REST-ошибки (код в rawError). */
 export function isMissingDiscordResource(error: unknown, kind: "message" | "channel" | "any" = "any"): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as RestLike;

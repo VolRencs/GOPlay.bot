@@ -57,6 +57,19 @@ test("peak tracks the busiest single hour", () => {
   assert.equal(daily.peak_messages, 2);
 });
 
+test("a deleted guild is evicted without blocking live metrics", () => {
+  const day = "2026-07-15";
+  db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)").run("g9", "g9", null, Date.now());
+  addMessage("g1", "c1", "u1", at(day, 8));
+  addMessage("g9", "c1", "u1", at(day, 8));
+  db.prepare("DELETE FROM guilds WHERE id='g9'").run();
+  flushMetrics();
+  const live = db.prepare("SELECT messages FROM guild_daily_metrics WHERE guild_id='g1' AND day=?").get(day) as { messages: number } | undefined;
+  assert.equal(live?.messages, 1);
+  const dead = db.prepare("SELECT COUNT(*) AS n FROM guild_daily_metrics WHERE guild_id='g9'").get() as { n: number };
+  assert.equal(dead.n, 0);
+});
+
 test("temp trigger parsing and name template rendering", () => {
   assert.deepEqual(parseTriggers('["a","b"]'), ["a", "b"]);
   assert.deepEqual(parseTriggers("garbage"), []);

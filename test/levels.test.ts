@@ -71,3 +71,26 @@ test("уровень хранится как максимум: рост поро
   assert.equal(row.level, 5);
   assert.equal(row.xp, 510);
 });
+
+test("XP удалённой гильдии выбрасывается из буфера, а не зацикливает флаш", async () => {
+  const { EventEmitter } = await import("node:events");
+  const { registerLevels, flushLevels } = await import("../src/bot/levels/index.ts");
+  const emitter = new EventEmitter();
+  registerLevels(emitter as never);
+  const guildId = "g9";
+  db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES(?,?,NULL,?)").run(guildId, "G", Date.now());
+  stmt.levelSettingsUpsert.run(guildId, 1, 10, 60, 0, 5, 100, 15, "[]", "[]", "off", null, Date.now());
+  emitter.emit("messageCreate", {
+    guild: { id: guildId },
+    author: { id: "u1", bot: false },
+    channelId: "c1",
+    content: "hello world",
+    member: { roles: { cache: { some: () => false } } },
+  });
+  db.prepare("DELETE FROM guilds WHERE id=?").run(guildId);
+  flushLevels();
+  // Если запись не выброшена, после воссоздания гильдии повторный флаш её запишет.
+  db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES(?,?,NULL,?)").run(guildId, "G", Date.now());
+  flushLevels();
+  assert.equal(stmt.levelRow.get(guildId, "u1"), undefined);
+});

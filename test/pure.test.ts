@@ -49,6 +49,21 @@ test("extractFilenames не выпускает пути за пределы ка
   assert.deepEqual(extractFilenames(prefix, [`${prefix}pic.png`, `${prefix}../secret.png`, "/etc/passwd", `${prefix}a/b.png`, null]), ["pic.png"]);
 });
 
+test("i18n: у каждой строки словарей есть непустые ru и en", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const dir = new URL("../src/lib/i18n/", import.meta.url);
+  const files = ["bot.ts", ...(await readdir(new URL("bot/", dir))).filter(f => f.endsWith(".ts")).map(f => `bot/${f}`)];
+  const entryRe = /^\s{2}(\w+):\s*\{/gm;
+  const fullRe = /(\w+):\s*\{\s*ru:\s*"((?:[^"\\]|\\.)*)"\s*,\s*en:\s*"((?:[^"\\]|\\.)*)"\s*\}/gs;
+  for (const file of files) {
+    const src = await readFile(new URL(file, dir), "utf8");
+    const complete = new Set([...src.matchAll(fullRe)].map(m => m[1]));
+    for (const [, key] of src.matchAll(entryRe)) {
+      assert.ok(key !== undefined && complete.has(key), `${file}: ключ ${key} без пары ru/en`);
+    }
+  }
+});
+
 test("clampNumber: кламп, fallback и режимы округления/целочисленности", () => {
   assert.equal(clampNumber(150, 0, 0, 100), 100);
   assert.equal(clampNumber(-5, 0, 0, 100), 0);

@@ -149,7 +149,10 @@ function runYtDlpJsonOnce(query: string): Promise<{ meta: Record<string, unknown
     proc.once("error", () => { clearTimeout(watchdog); resolve({ meta: null, error: "yt-dlp failed to spawn" }); });
     proc.once("close", code => {
       clearTimeout(watchdog);
-      if (code !== 0) {
+      // Процесс, срезанный собственным капом, закрывается с code === null:
+      // это не ошибка — обрезанный вывод чинится в parseYtDlpMeta(out, capped).
+      const cappedExit = capped && code === null;
+      if (code !== 0 && !cappedExit) {
         logger.warn("[MUSIC] yt-dlp завершился с ошибкой", code, errTail.trim());
         return resolve({ meta: null, error: errTail.trim().slice(-300) || `код ${code}` });
       }
@@ -166,8 +169,7 @@ function runYtDlpJsonOnce(query: string): Promise<{ meta: Record<string, unknown
 const BOTCHECK_RE = /confirm|sign in|cookies/i;
 export const isBotcheckError = (text: string): boolean => BOTCHECK_RE.test(text);
 
-// Хосты одиночного видео: как в ALLOWED_MEDIA_HOSTS, но без music.youtube.com —
-// он не подходил и прежнему fast-path-регэкспу.
+// Хосты одиночного видео: как в ALLOWED_MEDIA_HOSTS, но без music.youtube.com.
 const SINGLE_VIDEO_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"]);
 
 /** Одиночное YouTube-видео (watch/shorts/youtu.be) без list=: достаточно одной

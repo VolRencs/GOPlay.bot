@@ -56,7 +56,6 @@ export function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onCha
 }
 
 export const formatTime = (ts: number) => new Date(ts).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-export const formatDateTime = (ts: number) => new Date(ts).toLocaleString("ru-RU");
 export const formatNumber = (value: number) => value.toLocaleString("ru-RU");
 
 // Единая каноническая сериализация с сервером (src/lib/json.ts):

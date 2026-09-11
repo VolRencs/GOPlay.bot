@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { buttonColorOptions, type Channel, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
-import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatDateTime, useAsyncAction } from "./ui.tsx";
+import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatTime, useAsyncAction } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 
 type PanelOptionInput = { roleId: string; label: string; emoji: string; buttonColor: string };
@@ -171,7 +171,7 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
           options={[{ value: "", label: "Выберите сообщение" }, ...sendings.map(s => {
             const embed = embeds.find(e => e.id === s.embed_id);
             const ch = channels.find(c => c.id === s.channel_id);
-            return { value: String(s.id), label: `${embed?.name ?? "Embed"} · #${ch?.name ?? s.channel_id} · ${formatDateTime(s.sent_at)}` };
+            return { value: String(s.id), label: `${embed?.name ?? "Embed"} · #${ch?.name ?? s.channel_id} · ${formatTime(s.sent_at)}` };
           })]}/></label>
         <label>Тип<Select
           value={style}

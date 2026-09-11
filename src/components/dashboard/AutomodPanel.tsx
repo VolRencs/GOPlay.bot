@@ -164,7 +164,7 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Ru
   );
 }
 
-export function AutoModSettingsV2({ channels, roles, rules, ignoredRoleIds, protectedChannelId, onGlobalChange, onSaveAll, onChange }: { channels: Channel[]; roles: Role[]; rules: Record<string, Rule>; ignoredRoleIds: string[]; protectedChannelId: string | null; onGlobalChange: (roles: string[], channel: string | null) => void; onSaveAll: () => unknown; onChange: (kind: string, change: Partial<Rule>) => void }) {
+export function AutoModSettings({ channels, roles, rules, ignoredRoleIds, protectedChannelId, onGlobalChange, onSaveAll, onChange }: { channels: Channel[]; roles: Role[]; rules: Record<string, Rule>; ignoredRoleIds: string[]; protectedChannelId: string | null; onGlobalChange: (roles: string[], channel: string | null) => void; onSaveAll: () => unknown; onChange: (kind: string, change: Partial<Rule>) => void }) {
   const { busy: saving, run } = useAsyncAction();
   const enabledCount = Object.keys(automodRules).filter(kind => Boolean(rules[kind]?.enabled)).length;
   return (

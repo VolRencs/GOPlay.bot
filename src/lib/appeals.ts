@@ -44,7 +44,7 @@ function nextAppealNumber(guildId: string): number {
 }
 
 // Любая строка апелляции — включая отклонённую — навсегда блокирует новую
-// for the same punishment: "Отказаться" in the offer DM closes the chance.
+// по тому же наказанию: «Отказаться» в оффере в ЛС закрывает возможность.
 function existingError(guildId: string, existing: { id: number; number: number; status: AppealStatus } | undefined) {
   const lang = guildLang(guildId);
   if (!existing) return trAppeals(lang, "createFail");
@@ -73,7 +73,7 @@ export function createAppeal(input: { guildId: string; userId: string; punishmen
   try {
     return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, punishment.type, reason, "pending") };
   } catch {
-    // Частичный unique-индекс: вторая открытая апелляция обогнала проверку выше.
+    // UNIQUE(punishment_id): вторая апелляция обогнала проверку выше.
     const raced = existingStmt.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
     return { ok: false, error: existingError(input.guildId, raced) };
   }

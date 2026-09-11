@@ -1,7 +1,8 @@
-import { ChannelType, MessageFlags, type ChatInputCommandInteraction, type Client, type GuildMember, type TextChannel } from "discord.js";
+import { ChannelType, MessageFlags, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type NewsChannel, type TextChannel, type ThreadChannel } from "discord.js";
 import { stmt } from "../db/statements.ts";
 import { logger } from "../utils/logger.ts";
 import { addMetric } from "../metrics.ts";
+import { time } from "../perf.ts";
 import { logAction, markBotAction } from "../logging/index.ts";
 import { offerAppeal } from "../appeals/index.ts";
 import { clearWarns } from "../../lib/warns.ts";
@@ -98,4 +99,68 @@ async function channelAction(i: ChatInputCommandInteraction) {
   if (i.commandName === "lock") await text.permissionOverwrites.edit(i.guild!.roles.everyone, { SendMessages: false });
   if (i.commandName === "unlock") await text.permissionOverwrites.edit(i.guild!.roles.everyone, { SendMessages: null });
   return i.editReply(t("channelUpdated"));
+}
+
+// Массовая чистка сообщений автора (защищённый канал автомодерации): best-effort,
+// ошибки не роняют вызывающий путь. Повторный вызов во время активной чистки
+// расширяет дедлайн и не запускает второй проход.
+const userPurges = new Map<string, { cutoff: number; requeue: boolean; promise: Promise<number> }>();
+
+export function purgeUserMessages(guild: Guild, userId: string, hours: number): Promise<number> {
+  const key = `${guild.id}:${userId}`;
+  const cutoff = Date.now() - Math.min(hours * 3_600_000, 14 * DAY_MS);
+  const active = userPurges.get(key);
+  if (active) { active.cutoff = Math.min(active.cutoff, cutoff); active.requeue = true; return active.promise; }
+  const state: { cutoff: number; requeue: boolean; promise: Promise<number> } = { cutoff, requeue: false, promise: Promise.resolve(0) };
+  state.promise = (async () => {
+    let deleted = 0;
+    try {
+      do {
+        state.requeue = false;
+        deleted += await purgeMessages(guild, userId, state.cutoff);
+      } while (state.requeue);
+    } catch (error) {
+      logger.warn("[PURGE] Чистка сообщений прервана", guild.id, userId, error);
+    } finally {
+      userPurges.delete(key);
+    }
+    return deleted;
+  })();
+  userPurges.set(key, state);
+  return state.promise;
+}
+
+async function purgeMessages(guild: Guild, userId: string, cutoff: number): Promise<number> {
+  const started = performance.now();
+  let deleted = 0;
+  const channels = [...guild.channels.cache.values()].filter(
+    channel => channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement || channel.isThread(),
+  ) as (TextChannel | NewsChannel | ThreadChannel)[];
+  const CONCURRENCY = 5;
+  for (let i = 0; i < channels.length; i += CONCURRENCY) {
+    const chunk = channels.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(
+      chunk.map(async channel => {
+        let deletedInChannel = 0;
+        let before: string | undefined;
+        for (let page = 0; page < 5; page++) {
+          const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+          if (!batch || batch.size === 0) break;
+          const oldest = batch.last()!;
+          before = oldest.id;
+          const targets = batch.filter(message => message.author.id === userId && message.createdTimestamp >= cutoff);
+          if (targets.size > 0) {
+            const removed = await channel.bulkDelete(targets, true).catch(() => null);
+            deletedInChannel += removed?.size ?? 0;
+          }
+          if (oldest.createdTimestamp < cutoff) break;
+        }
+        return deletedInChannel;
+      }),
+    );
+    for (const r of results) if (r.status === "fulfilled") deleted += r.value;
+    if (i + CONCURRENCY < channels.length) await new Promise((res) => setTimeout(res, 100));
+  }
+  time("purge.messages", performance.now() - started);
+  return deleted;
 }

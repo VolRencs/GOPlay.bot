@@ -55,11 +55,28 @@ export function flushLevels(): LevelUp[] {
       }
     });
   } catch (error) {
-    for (const entry of entries) addPending(entry.guildId, entry.userId, entry.xp, entry.messages, entry.voiceSeconds);
+    // FK-ошибка означает гильдию, которой уже нет в guilds: такие строки
+    // выбрасываем, иначе флеш зациклится на них каждые 5 секунд.
+    const missing = isForeignKeyError(error) ? missingGuilds(entries) : null;
+    for (const entry of entries) if (!missing?.has(entry.guildId)) addPending(entry.guildId, entry.userId, entry.xp, entry.messages, entry.voiceSeconds);
     logger.warn("[LEVELS] Не удалось слить XP — повторю позже", error);
     return [];
   }
   return levelUps;
+}
+
+function isForeignKeyError(error: unknown): boolean {
+  return error instanceof Error && /FOREIGN KEY/i.test(error.message);
+}
+
+/** Гильдии из буфера, отсутствующие в guilds; null — проверить не удалось. */
+function missingGuilds(entries: PendingXp[]): Set<string> | null {
+  let alive: Set<string>;
+  try { alive = new Set((stmt.guildIds.all() as { id: string }[]).map(row => row.id)); }
+  catch { return null; }
+  const missing = new Set<string>();
+  for (const entry of entries) if (!alive.has(entry.guildId)) missing.add(entry.guildId);
+  return missing;
 }
 
 function handleMessage(message: Message): void {

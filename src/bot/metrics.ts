@@ -91,7 +91,12 @@ export function flushMetrics() {
   } catch (error) {
     if (!isForeignKeyError(error)) { noteFlushFailure(error, started); return; }
     logger.warn("Метрики содержали данные стёртой гильдии — ключи выкинуты, повторяю флеш");
-    evictDeadGuildKeys();
+    const alive = evictDeadGuildKeys();
+    if (!alive) { noteFlushFailure(error, started); return; }
+    // Буферы уже очищены evict'ом, но посчитанные rows/newActive ещё содержат
+    // мёртвую гильдию — без фильтра повторный commit упал бы тем же FK.
+    for (let i = rows.length - 1; i >= 0; i--) if (!alive.has(rows[i]!.guildId)) rows.splice(i, 1);
+    for (let i = newActive.length - 1; i >= 0; i--) if (!alive.has(guildIdOfKey(newActive[i]!.key))) newActive.splice(i, 1);
     try { commitWindow(rows); } catch (retryError) { noteFlushFailure(retryError, started); return; }
   }
   flushFailures = 0;
@@ -121,15 +126,19 @@ function isForeignKeyError(error: unknown): boolean {
   return error instanceof Error && /FOREIGN KEY/i.test(error.message);
 }
 
-/** Выкидывает из буферов дельты гильдий, которых уже нет в БД. */
-function evictDeadGuildKeys(): void {
+const guildIdOfKey = (key: string): string => key.slice(0, key.indexOf(":"));
+
+/** Выкидывает из буферов дельты гильдий, которых уже нет в БД.
+ *  Возвращает множество живых гильдий (null — БД недоступна). */
+function evictDeadGuildKeys(): Set<string> | null {
   let alive: Set<string>;
   try { alive = new Set((stmt.guildIds.all() as { id: string }[]).map(r => r.id)); }
-  catch { return; }
+  catch { return null; }
   for (const guildId of [...pending.keys()]) if (!alive.has(guildId)) pending.delete(guildId);
   for (const map of [channelCounts, userCounts, hourlyCounts, messageUsers, flushedUsers]) {
-    for (const key of [...map.keys()]) if (!alive.has(key.slice(0, key.indexOf(":")))) map.delete(key);
+    for (const key of [...map.keys()]) if (!alive.has(guildIdOfKey(key))) map.delete(key);
   }
+  return alive;
 }
 
 // Ретеншн агрегатов: детальные таблицы не растут бесконечно. Дневные строки

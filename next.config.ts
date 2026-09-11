@@ -5,10 +5,6 @@ const config: NextConfig = {
   // которых нет — они не нужны, Opus кодирует системный ffmpeg.
   serverExternalPackages: ["@resvg/resvg-js", "@discordjs/voice", "prism-media"],
 
-  async redirects() {
-    return [{ source: "/dashboard/:guildId/welcome", destination: "/dashboard/:guildId", permanent: false }];
-  },
-
   async headers() {
     return [{ source: "/(.*)", headers: [
       { key: "X-Content-Type-Options", value: "nosniff" },

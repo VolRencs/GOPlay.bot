@@ -21,7 +21,7 @@ import { DashboardAuditLog, ServerDataCleanup } from "../../../src/components/da
 import { BotLanguageCard } from "../../../src/components/dashboard/BotLanguageCard.tsx";
 import { MusicSettingsCard } from "../../../src/components/dashboard/MusicSettingsCard.tsx";
 import { WelcomeSettings } from "../../../src/components/dashboard/WelcomePanel.tsx";
-import { AutoModSettingsV2, defaultRule } from "../../../src/components/dashboard/AutomodPanel.tsx";
+import { AutoModSettings, defaultRule } from "../../../src/components/dashboard/AutomodPanel.tsx";
 import { RoleSettings } from "../../../src/components/dashboard/RolesPanel.tsx";
 import { EmbedsPanel } from "../../../src/components/dashboard/EmbedsPanel.tsx";
 import { AppealsPanel } from "../../../src/components/dashboard/AppealsPanel.tsx";
@@ -218,7 +218,7 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
       <div className="toast-stack" role="region" aria-label="Уведомления">{toasts.map(toast => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><span className="toast-dot" aria-hidden="true"/><span className="toast-text">{toast.text}</span><button type="button" className="toast-close" aria-label="Закрыть уведомление" onClick={() => dismissToast(toast.id)}><X size={14}/></button></div>)}</div>
       {tab === "welcome" && <WelcomeSettings channels={channels} value={welcome} onChange={setWelcome} onSave={() => saveWelcome()} onUpload={(file) => uploadWelcomeBackground(file)} bgTimestamp={bgTimestamp} />}
-      {tab === "automod" && <AutoModSettingsV2 channels={channels} roles={roles} rules={rules} ignoredRoleIds={ignoredRoleIds} protectedChannelId={protectedChannelId} onGlobalChange={(roles,channel)=>{setIgnoredRoleIds(roles);setProtectedChannelId(channel);}} onSaveAll={() => saveAutoMod()} onChange={updateRule} />}
+      {tab === "automod" && <AutoModSettings channels={channels} roles={roles} rules={rules} ignoredRoleIds={ignoredRoleIds} protectedChannelId={protectedChannelId} onGlobalChange={(roles,channel)=>{setIgnoredRoleIds(roles);setProtectedChannelId(channel);}} onSaveAll={() => saveAutoMod()} onChange={updateRule} />}
       {tab === "roles" && <RoleSettings guildId={guildId} roles={roles} emojis={emojis} channels={channels} onDone={notify} onError={fail} />}
       {tab === "levels" && <LevelsPanel channels={channels} roles={roles} value={levels.settings} rewards={levels.rewards} onChange={settings => setLevels(value => ({ ...value, settings }))} onRewardsChange={rewards => setLevels(value => ({ ...value, rewards }))} onSave={() => void saveLevels()} />}
       {tab === "embeds" && <EmbedsPanel guildId={guildId} channels={channels} onDone={notify} onError={fail} />}

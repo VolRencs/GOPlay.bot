@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Image, Trash2, User } from "lucide-react";
 import { safeJson } from "../../../src/lib/json.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatDateTime, useAsyncAction, useObjectUrl } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, useAsyncAction, useObjectUrl } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type SavedEmbed } from "./types.ts";
 
@@ -227,9 +227,9 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
                         {itemSendings.map(s => {
                           const ch = channels.find(c => c.id === s.channel_id);
                           return (
-                            <span key={s.id} className="sending-item">#{ch?.name ?? s.channel_id} — {formatDateTime(s.sent_at)}
+                            <span key={s.id} className="sending-item">#{ch?.name ?? s.channel_id} — {formatTime(s.sent_at)}
                               {" "}
-                              <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${formatDateTime(s.sent_at)}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
+                              <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${formatTime(s.sent_at)}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
                             </span>
                           );
                         })}

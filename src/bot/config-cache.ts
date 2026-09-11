@@ -8,11 +8,8 @@ import type { Rule } from "./automod/detectors.ts";
 
 export type CachedRule = {
   kind: Rule["kind"];
-  enabled: number;
   action_json: string;
-  threshold_json: string;
-  /** Пороги, распарсенные ОДИН раз при загрузке снапшота: на каждое сообщение
-   *  сервера раньше приходился JSON.parse на каждое правило (горячий путь). */
+  /** Пороги, распарсенные ОДИН раз при загрузке снапшота (горячий путь). */
   threshold: Record<string, unknown> | null;
   window_seconds: number;
   escalation: number;
@@ -35,7 +32,7 @@ let lastDataVersion = -1;
 let dataVersionFailures = 0;
 
 function load(guildId: string): CachedRules {
-  const rules = (stmt.rules.all(guildId) as CachedRule[]).map(row => ({ ...row, threshold: safeJson<Record<string, unknown> | null>(row.threshold_json, null) }));
+  const rules = (stmt.rules.all(guildId) as (CachedRule & { threshold_json: string })[]).map(({ threshold_json, ...row }) => ({ ...row, threshold: safeJson<Record<string, unknown> | null>(threshold_json, null) }));
   const security = stmt.security.get(guildId) as { ignored_role_ids_json: string; protected_channel_id: string | null } | undefined;
   return { rules, ignoredRoles: parseStringArray(security?.ignored_role_ids_json), protectedChannelId: security?.protected_channel_id ?? null, lang: guildLang(guildId) };
 }

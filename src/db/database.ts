@@ -33,10 +33,19 @@ export function closeDatabase() { db.close(); }
 
 export function withTransaction<T>(fn: () => T): T {
   if (txDepth > 0) {
+    // Уникальное имя на каждый уровень вложенности: одноимённые savepoint
+    // работают лишь на LIFO-семантике SQLite и хрупки к изменениям.
+    txDepth++;
     const savepoint = `sp_${txDepth}`;
-    db.exec(`SAVEPOINT ${savepoint}`);
-    try { const result = fn(); db.exec(`RELEASE ${savepoint}`); return result; }
-    catch (error) { try { db.exec(`ROLLBACK TO ${savepoint}`); db.exec(`RELEASE ${savepoint}`); } catch { /* already aborted */ } throw error; }
+    try {
+      db.exec(`SAVEPOINT ${savepoint}`);
+      const result = fn();
+      db.exec(`RELEASE ${savepoint}`);
+      return result;
+    } catch (error) {
+      try { db.exec(`ROLLBACK TO ${savepoint}`); db.exec(`RELEASE ${savepoint}`); } catch { /* already aborted */ }
+      throw error;
+    } finally { txDepth--; }
   }
   db.exec("BEGIN IMMEDIATE");
   txDepth++;

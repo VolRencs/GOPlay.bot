@@ -4,7 +4,6 @@ import { clearWarns } from "./warns.ts";
 import { deleteEventsByGuild } from "./events.ts";
 import type { CleanupTarget } from "./labels.ts";
 
-// Prepared once — паттерн проекта, даже для редких вызовов.
 const auditDelete = db.prepare("DELETE FROM dashboard_audit WHERE guild_id=?");
 const appealsDelete = db.prepare("DELETE FROM appeals WHERE guild_id=?");
 const appealCounterReset = db.prepare("UPDATE guilds SET appeal_counter=0 WHERE id=?");
@@ -62,8 +61,8 @@ export function wipeGuildData(guildId: string) {
   });
 }
 
-// Ретеншн завершённых событий (участники и напоминания каскадом): миграция 023
-// чистила один раз при апгрейде — без рантайм-аналога таблицы росли вечно.
+// Ретеншн завершённых событий (участники и напоминания каскадом): разовая
+// чистка при апгрейде — без рантайм-аналога таблицы росли бы вечно.
 const eventsPrune = db.prepare("DELETE FROM events WHERE status IN ('completed','cancelled') AND scheduled_at < ?");
 export function pruneOldEvents(): number {
   return Number(eventsPrune.run(Date.now() - 90 * 86_400_000).changes);
