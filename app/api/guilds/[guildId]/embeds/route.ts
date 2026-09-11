@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server.js";
+import { after, NextResponse } from "next/server.js";
 import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
-import { db, withTransaction } from "../../../../../src/db/database.ts";
-import { safeJson } from "../../../../../src/lib/json.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { db, sleep, withTransaction } from "../../../../../src/db/database.ts";
+import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
+import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { cleanupOrphanedFiles, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "../../../../../src/lib/uploads.ts";
 import { logger } from "../../../../../src/bot/utils/logger.ts";
 import { BOT_TOKEN_ERROR } from "../../../../../src/lib/constants.ts";
@@ -17,7 +17,7 @@ const sendingListStmt = db.prepare("SELECT s.id,s.embed_id,s.channel_id,s.messag
 const embedPayloadsStmt = db.prepare("SELECT payload_json FROM embeds WHERE guild_id=?");
 const embedSaveUpdateStmt = db.prepare("UPDATE embeds SET name=?,payload_json=?,mode=?,channel_id=COALESCE(NULLIF(?,''),channel_id),updated_at=? WHERE id=? AND guild_id=?");
 const embedSaveInsertStmt = db.prepare("INSERT INTO embeds(guild_id,name,payload_json,channel_id,mode,updated_at) VALUES(?,?,?,?,?,?)");
-const embedByIdStmt = db.prepare("SELECT channel_id,message_id,payload_json,name FROM embeds WHERE id=? AND guild_id=?");
+const embedByIdStmt = db.prepare("SELECT channel_id,message_id,payload_json,name,mode FROM embeds WHERE id=? AND guild_id=?");
 const embedPublishUpdateStmt = db.prepare("UPDATE embeds SET name=?,payload_json=?,channel_id=?,message_id=?,mode=?,updated_at=? WHERE id=? AND guild_id=?");
 const embedPublishInsertStmt = db.prepare("INSERT INTO embeds(guild_id,name,payload_json,channel_id,message_id,mode,updated_at) VALUES(?,?,?,?,?,?,?)");
 const sendingInsertStmt = db.prepare("INSERT INTO embed_sendings(guild_id,embed_id,channel_id,message_id,sent_at) VALUES(?,?,?,?,?)");
@@ -38,6 +38,25 @@ async function cleanupUnusedDraftImages(guildId:string) {
   await cleanupOrphanedFiles(embedUploadsDir(guildId), referenced, 60 * 60_000);
 }
 
+function payloadDisplay(payloadJson: string): Record<string, unknown> {
+  const p = safeJson<Record<string, unknown>>(payloadJson, {});
+  const fields = Array.isArray(p.fields) ? p.fields : [];
+  const footer = p.footer as { text?: unknown } | undefined;
+  const author = p.author as { name?: unknown } | undefined;
+  const image = p.image as { url?: unknown } | undefined;
+  const thumbnail = p.thumbnail as { url?: unknown } | undefined;
+  return {
+    "Заголовок": typeof p.title === "string" ? p.title : null,
+    "Описание": typeof p.description === "string" ? p.description : null,
+    "Цвет": typeof p.color === "number" ? `#${p.color.toString(16).padStart(6, "0")}` : null,
+    "Футер": typeof footer?.text === "string" ? footer.text : null,
+    "Автор": typeof author?.name === "string" ? author.name : null,
+    "Изображение": typeof image?.url === "string" ? image.url : null,
+    "Миниатюра": typeof thumbnail?.url === "string" ? thumbnail.url : null,
+    "Поля": stableJson(fields),
+  };
+}
+
 export const GET = guildRoute(async (request, { guildId }) => {
   const embeds=embedListStmt.all(guildId) as SavedEmbed[];
   let sendings=sendingListStmt.all(guildId) as EmbedSending[];
@@ -49,7 +68,7 @@ export const GET = guildRoute(async (request, { guildId }) => {
       const chunk=sendings.slice(i,i+CONCURRENCY);
       const results=await Promise.allSettled(chunk.map(async (s)=>{
         try{
-          const res=await discordFetch(`/channels/${s.channel_id}/messages/${s.message_id}`, { signal: AbortSignal.timeout(5000) } as RequestInit);
+          const res=await discordFetch(`/channels/${s.channel_id}/messages/${s.message_id}`, { signal: AbortSignal.timeout(5000) });
           if(res.status===404) return {id:s.id,stale:true};
           return {id:s.id,stale:false};
         }catch(e){
@@ -58,7 +77,7 @@ export const GET = guildRoute(async (request, { guildId }) => {
         }
       }));
       for(const r of results) if(r.status==="fulfilled" && r.value.stale) staleIds.push(r.value.id);
-      if(i+CONCURRENCY < sendings.length) await new Promise(r=>setTimeout(r,210));
+      if(i+CONCURRENCY < sendings.length) await sleep(210);
     }
     if(staleIds.length>0){ db.prepare(`DELETE FROM embed_sendings WHERE id IN (${staleIds.map(()=>"?").join(",")})`).run(...staleIds); sendings=sendings.filter(s=>!staleIds.includes(s.id)); }
   }
@@ -74,11 +93,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     data=(form?JSON.parse(typeof serialized==="string"?serialized:"{}"):await request.json()) as RequestData;
   } catch {
     return jsonError("Не удалось прочитать данные сообщения. Попробуйте выбрать изображение заново.");
-  }
-  if(form) {
-    const formName=form.get("name"), formChannelId=form.get("channelId");
-    if(typeof formName==="string")data.name=formName;
-    if(typeof formChannelId==="string")data.channelId=formChannelId;
   }
   if(!data||typeof data!=="object")return jsonError("Некорректные данные сообщения.");
   if(!data.payload||typeof data.payload!=="object")return jsonError("Некорректные данные сообщения.");
@@ -123,16 +137,21 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if(mode==="text"&&(payload.description?.length??0)>2000)return jsonError("Текст сообщения не должен превышать 2000 символов.");
   if(data.saveOnly) {
     await persistAssets();
+    const before=data.id?embedByIdStmt.get(data.id,guildId) as {name:string;mode:string;payload_json:string}|undefined:undefined;
     const saved=JSON.stringify(payload), result=data.id
       ? embedSaveUpdateStmt.run(data.name.trim(),saved,mode,data.channelId??"",Date.now(),data.id,guildId)
       : embedSaveInsertStmt.run(guildId,data.name.trim(),saved,data.channelId||null,mode,Date.now());
     // Шаблон мог быть удалён в другой вкладке: не рапортуем успех и не пишем аудит впустую.
     if (data.id && result.changes === 0) return jsonError("Шаблон не найден.", 404);
-    await cleanupUnusedDraftImages(guildId);
-    recordDashboardChange(guildId,user,"Embeds",`Шаблон «${data.name.trim()}» ${data.id ? "изменён" : "создан"} (${mode === "text" ? "текст" : "embed"})`);
+    after(() => cleanupUnusedDraftImages(guildId));
+    if(before) recordDashboardDiff(guildId,user,"Embeds",`Шаблон «${data.name.trim()}»: `,
+      {"Название":before.name,"Режим":before.mode==="text"?"текст":"embed",...payloadDisplay(before.payload_json)},
+      {"Название":data.name.trim(),"Режим":mode==="text"?"текст":"embed",...payloadDisplay(saved)},
+      {"Поля":"изменены"});
+    else recordDashboardChange(guildId,user,"Embeds",`Создан шаблон «${data.name.trim()}» (${mode === "text" ? "текст" : "embed"})`);
     return NextResponse.json({ok:true,id:data.id??Number(result.lastInsertRowid)});
   }
-  const current=data.id?embedByIdStmt.get(data.id,guildId) as {channel_id:string|null;message_id:string|null}|undefined:undefined;
+  const current=data.id?embedByIdStmt.get(data.id,guildId) as {channel_id:string|null;message_id:string|null;name:string;mode:string;payload_json:string}|undefined:undefined;
   if(data.updateMessage&&(!current?.channel_id||!current.message_id))return jsonError("Сначала отправьте шаблон в канал — обновлять пока нечего.");
   const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return jsonError(BOT_TOKEN_ERROR, 503);
   // allowed_mentions: панель публикует от имени бота — упоминания в тексте
@@ -152,8 +171,12 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       : embedPublishInsertStmt.run(guildId,data.name.trim(),persisted,channelId,message.id,mode,Date.now());
     if(!data.updateMessage){const embedId=data.id??Number(result.lastInsertRowid);sendingInsertStmt.run(guildId,embedId,channelId,message.id,Date.now());}
   });
-  await cleanupUnusedDraftImages(guildId);
-  recordDashboardChange(guildId,user,"Embeds",`Шаблон «${data.name.trim()}» ${data.updateMessage ? "обновлён" : data.id ? "отправлен заново" : "опубликован"} в канале <#${channelId}>`);
+  after(() => cleanupUnusedDraftImages(guildId));
+  if(current) recordDashboardDiff(guildId,user,"Embeds",`Шаблон «${data.name.trim()}» ${data.updateMessage ? "обновлён" : "отправлен заново"}: `,
+    {"Название":current.name,"Режим":current.mode==="text"?"текст":"embed","Канал":current.channel_id?`<#${current.channel_id}>`:null,...payloadDisplay(current.payload_json)},
+    {"Название":data.name.trim(),"Режим":mode==="text"?"текст":"embed","Канал":`<#${channelId}>`,...payloadDisplay(persisted)},
+    {"Поля":"изменены"});
+  else recordDashboardChange(guildId,user,"Embeds",`Опубликован шаблон «${data.name.trim()}» в канале <#${channelId}>`);
   return NextResponse.json({ok:true,messageId:message.id});
 });
 
@@ -166,7 +189,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   if(item.channel_id&&item.message_id){const token=process.env.DISCORD_TOKEN;if(!token)return jsonError(BOT_TOKEN_ERROR, 503);let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
   sendingsByEmbedDeleteStmt.run(id,guildId);
   embedDeleteStmt.run(id,guildId);
-  await cleanupUnusedDraftImages(guildId);
+  after(() => cleanupUnusedDraftImages(guildId));
   recordDashboardChange(guildId, user, "Embeds", `Удалён шаблон «${item.name}»`);
   return NextResponse.json({ok:true});
 });

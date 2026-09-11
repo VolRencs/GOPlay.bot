@@ -78,7 +78,7 @@ export function playbackStateOf(guildId: string) {
 function refreshActivityTimer(s: Session): void {
   disarmActivityTimer(s);
   const seconds = musicSettingsFor(s.guildId).leave_after_seconds;
-  const ms = seconds > 0 ? Math.max(30, seconds) * 1000 : 0;
+  const ms = seconds > 0 ? seconds * 1000 : 0;
   if (!ms) { s.idleSince = null; return; }
   const humans = playerEnvironment?.humansInBotChannel(s.guildId) ?? 1;
   const paused = s.player.state.status === AudioPlayerStatus.Paused;

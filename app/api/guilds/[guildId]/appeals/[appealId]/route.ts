@@ -17,11 +17,12 @@ export const POST = guildRoute<{ guildId: string; appealId: string }>(async (req
 
   const result = reviewAppeal({ guildId, appealId, action, reviewerId: discordAccount?.accountId ?? user.id, comment });
   if (!result.ok) return jsonError(result.error, result.status);
-  const { appeal, reversal } = result.value;
+  const { appeal, reversal, previousStatus } = result.value;
 
   const reversalResult = reversal ? await applyAppealReversal(guildLang(guildId), guildId, appeal.user_id, reversal) : null;
   const notified = await notifyAppealStatus(appeal, reversalResult);
-  recordDashboardChange(guildId, user, "Апелляции", `Апелляция #${appeal.number}: статус «${appealStatusMeta[appeal.status]?.label ?? appeal.status}»${comment ? ` · комментарий: ${comment}` : ""}`);
+  const statusLabel = (status: string) => appealStatusMeta[status]?.label ?? status;
+  recordDashboardChange(guildId, user, "Апелляции", `Апелляция #${appeal.number}: «${statusLabel(previousStatus)}» → «${statusLabel(appeal.status)}»${comment ? ` · комментарий: ${comment}` : ""}`);
 
   return NextResponse.json({ ok: true, appeal, reversal: reversalResult ? { ...reversalResult, failed: !reversalResult.ok } : null, notified });
 });

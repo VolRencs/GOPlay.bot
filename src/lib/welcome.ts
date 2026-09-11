@@ -71,7 +71,7 @@ export const welcomePreviewValues: Record<string, string> = {
   userId: "000000000000000000",
 };
 
-export const welcomeDefaults = { enabled: 0, channel_id: null, message: "Добро пожаловать, {user}!", image_enabled: 0, image_config_json: "{}", goodbye_enabled: 0, goodbye_channel_id: null, goodbye_message: "До встречи, {username}!" };
+export const welcomeDefaults: WelcomeGet = { enabled: 0, channel_id: null, message: "Добро пожаловать, {user}!", image_enabled: 0, background_path: null, image_config_json: "{}", goodbye_enabled: 0, goodbye_channel_id: null, goodbye_message: "До встречи, {username}!" };
 
 export type WelcomeGet = {
   enabled: number; channel_id: string | null; message: string; image_enabled: number;

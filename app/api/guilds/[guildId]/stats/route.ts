@@ -69,5 +69,5 @@ export const GET = guildRoute(async (request, { guildId }) => {
 
   const peakHour = (peakHourStmt.get(guildId, cutoff) as { day: string; hour: number; messages: number } | undefined) ?? null;
 
-  return NextResponse.json<StatsGet>({ period, points, totals, moderation, topChannels, topUsers, peakHour });
+  return NextResponse.json<StatsGet>({ points, totals, moderation, topChannels, topUsers, peakHour });
 });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server.js";
 import { discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { db, withTransaction } from "../../../../../src/db/database.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { logger } from "../../../../../src/bot/utils/logger.ts";
 import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId } from "../../../../../src/lib/constants.ts";
 import type { RolePanelRow } from "../../../../../src/components/dashboard/types.ts";
@@ -9,16 +9,18 @@ import type { RolePanelRow } from "../../../../../src/components/dashboard/types
 type PanelPayload = {
   panelId?: number; embedId: number; style: "buttons" | "select" | "reaction";
   roleLimit?: number; roleMode?: "toggle" | "add" | "remove"; notifyEnabled?: boolean; notifyTemplate?: string;
-  roleId?: string; label?: string; emoji?: string;
   options?: { roleId: string; label: string; emoji: string; buttonColor: string }[];
   channelId?: string; messageId?: string;
 };
 type DiscordRole = { id: string; managed: boolean; position: number };
 type DiscordMember = { roles: string[] };
+const styleLabels: Record<string, string> = { buttons: "кнопки", select: "список", reaction: "реакции" };
+const roleModeLabels: Record<string, string> = { toggle: "переключение", add: "только выдача", remove: "только снятие" };
 // Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
 const panelListStmt = db.prepare("SELECT p.*,o.role_id,o.label,o.emoji,o.button_color FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? ORDER BY p.updated_at DESC");
-const embedTemplateStmt = db.prepare("SELECT channel_id,message_id,name FROM embeds WHERE id=? AND guild_id=?");
-const panelExistsStmt = db.prepare("SELECT id FROM self_role_panels WHERE id=? AND guild_id=?");
+const embedTemplateStmt = db.prepare("SELECT name FROM embeds WHERE id=? AND guild_id=?");
+const panelGetStmt = db.prepare("SELECT title,style,role_limit,role_mode,notify_enabled,notify_template FROM self_role_panels WHERE id=? AND guild_id=?");
+const panelOptionsStmt = db.prepare("SELECT role_id FROM self_role_options WHERE panel_id=?");
 const panelInsertStmt = db.prepare("INSERT INTO self_role_panels(guild_id,channel_id,message_id,title,style,role_limit,role_mode,notify_enabled,notify_template,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)");
 const panelUpdateStmt = db.prepare("UPDATE self_role_panels SET channel_id=?,message_id=?,title=?,style=?,role_limit=?,role_mode=?,notify_enabled=?,notify_template=?,updated_at=? WHERE id=? AND guild_id=?");
 const panelRollbackDeleteStmt = db.prepare("DELETE FROM self_role_panels WHERE id=?");
@@ -42,10 +44,9 @@ function readOptions(value: PanelPayload) {
       roleId: o.roleId,
       label: String(o.label ?? ""),
       emoji: typeof o.emoji === "string" ? o.emoji.slice(0, 96) : "",
-      buttonColor: typeof o.buttonColor === "string" && o.buttonColor in BUTTON_STYLE_IDS ? o.buttonColor : "primary",
+      buttonColor: typeof o.buttonColor === "string" && Object.hasOwn(BUTTON_STYLE_IDS, o.buttonColor) ? o.buttonColor : "primary",
     }));
   if (Array.isArray(value.options)) return valid(value.options);
-  if (typeof value.roleId === "string" && value.roleId) return [{ roleId: value.roleId, label: typeof value.label === "string" ? value.label : String(value.label ?? ""), emoji: typeof value.emoji === "string" ? value.emoji.slice(0, 96) : "", buttonColor: "primary" }];
   return [];
 }
 async function assignableRoleIds(guildId: string, roleIds: string[]): Promise<Set<string> | null> {
@@ -76,20 +77,10 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   // возвращается из custom_id кнопок в roles.add) — только snowflake.
   if ((value.channelId && !isSnowflake(value.channelId)) || (value.messageId && !isSnowflake(value.messageId)) || options.some(o => !isSnowflake(o.roleId)))
     return jsonError("Некорректный канал или роль.");
-  const explicitMessage = Boolean(value.channelId && value.messageId);
-  const tpl = embedTemplateStmt.get(value.embedId, guildId) as {channel_id:string;message_id:string;name:string}|undefined;
-  const reqChannelId = value.channelId, reqMessageId = value.messageId;
-  function resolveEmbed() {
-    if (!tpl) return undefined;
-    if (explicitMessage) {
-      if (!tpl.name || !reqChannelId || !reqMessageId) return undefined;
-      return { channel_id: reqChannelId, message_id: reqMessageId, name: tpl.name };
-    }
-    if (!tpl.channel_id || !tpl.message_id) return undefined;
-    return { channel_id: tpl.channel_id, message_id: tpl.message_id, name: tpl.name };
-  }
-  const embed = resolveEmbed();
-  if(!embed)return jsonError(explicitMessage?"Шаблон не найден":"Выберите уже отправленное сообщение", explicitMessage?404:400);
+  const tpl = embedTemplateStmt.get(value.embedId, guildId) as {name:string}|undefined;
+  if (!tpl?.name) return jsonError("Шаблон не найден", 404);
+  if (!value.channelId || !value.messageId) return jsonError("Выберите уже отправленное сообщение.");
+  const embed = { channel_id: value.channelId, message_id: value.messageId, name: tpl.name };
   const token = process.env.DISCORD_TOKEN;
   if (!token) return jsonError(BOT_TOKEN_ERROR, 503);
   const assignable = await assignableRoleIds(guildId, options.map(o => o.roleId));
@@ -105,9 +96,13 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   // (`role:<panelId>:<roleId>`); при сбое Discord строка удаляется обратно.
   let panelId: number;
   let created = false;
+  let beforePanel: { title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null } | undefined;
+  let beforeRoleIds: string[] = [];
   if (value.panelId) {
-    if (!panelExistsStmt.get(value.panelId, guildId)) return jsonError("Панель не найдена", 404);
+    beforePanel = panelGetStmt.get(value.panelId, guildId) as typeof beforePanel;
+    if (!beforePanel) return jsonError("Панель не найдена", 404);
     panelId = value.panelId;
+    beforeRoleIds = (panelOptionsStmt.all(panelId) as { role_id: string }[]).map(row => row.role_id);
   } else {
     panelId = Number(panelInsertStmt.run(guildId, embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now()).lastInsertRowid);
     created = true;
@@ -151,8 +146,30 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     void discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [] }) }).catch(() => null);
     return jsonError("Панель была удалена другим модератором во время сохранения.", 409);
   }
-  const styleLabel = style === "reaction" ? "реакции" : style === "select" ? "список" : "кнопки";
-  recordDashboardChange(guildId, user, "Роли", `${value.panelId ? "Изменена" : "Создана"} панель «${embed.name}» · ${options.length} ${styleLabel}`);
+  const styleLabel = styleLabels[style] ?? style;
+  if (beforePanel) {
+    recordDashboardDiff(guildId, user, "Роли", `Панель «${embed.name}»: `,
+      {
+        "Название": beforePanel.title,
+        "Роли": beforeRoleIds.map(id => `<@&${id}>`),
+        "Стиль": styleLabels[beforePanel.style] ?? beforePanel.style,
+        "Лимит ролей": beforePanel.role_limit > 0 ? beforePanel.role_limit : "без лимита",
+        "Режим": roleModeLabels[beforePanel.role_mode] ?? beforePanel.role_mode,
+        "Уведомления": Boolean(beforePanel.notify_enabled),
+        "Шаблон уведомления": beforePanel.notify_template,
+      },
+      {
+        "Название": embed.name,
+        "Роли": options.map(o => `<@&${o.roleId}>`),
+        "Стиль": styleLabel,
+        "Лимит ролей": roleLimit > 0 ? roleLimit : "без лимита",
+        "Режим": roleModeLabels[roleMode] ?? roleMode,
+        "Уведомления": Boolean(value.notifyEnabled),
+        "Шаблон уведомления": template,
+      });
+  } else {
+    recordDashboardChange(guildId, user, "Роли", `Создана панель «${embed.name}» · ${options.length} ${styleLabel}`);
+  }
   return NextResponse.json({ ok: true, panelId });
 });
 

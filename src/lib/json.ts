@@ -13,8 +13,8 @@ export function parseStringArray(raw: string | null | undefined): string[] {
 
 // Пустой/битый payload → тот же дефолт, что применяет бот к ненастроенному правилу.
 export function parseActions(raw: string | null | undefined): string[] {
-  const parsed = safeJson<unknown>(raw, []);
-  return Array.isArray(parsed) && parsed.length ? parsed.filter((value): value is string => typeof value === "string") : [...automodDefaultActions];
+  const parsed = parseStringArray(raw);
+  return parsed.length ? parsed : [...automodDefaultActions];
 }
 
 // Ключи сортируются, массивы только из строк — тоже: два payload'а с равным

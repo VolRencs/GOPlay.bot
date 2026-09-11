@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, ArrowRight, Check, ChevronDown } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
@@ -72,6 +72,18 @@ export function useAsyncAction() {
     try { await action(); } finally { busyRef.current = false; setBusy(false); }
   };
   return { busy, run };
+}
+
+/** Debounce-запись черновика в sessionStorage; File-объекты отбрасываются. */
+export function useSessionDraft(key: string, enabled: boolean, deps: readonly unknown[], value: () => unknown): void {
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = setTimeout(() => {
+      try { sessionStorage.setItem(key, JSON.stringify(value(), (_key, item) => item instanceof File ? undefined : item)); } catch { /* storage full or unavailable */ }
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps перезапускают debounce, как прежние локальные эффекты.
+  }, [key, enabled, ...deps]);
 }
 
 /** Кнопка сохранения карточки: единый вид «Сохраняем…» на время busy. */
@@ -190,14 +202,7 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
     }
     return next;
   });
-  useEffect(()=>{
-    if(!open)return;
-    const onPointerDown=(event:MouseEvent)=>{if(!rootRef.current?.contains(event.target as Node))setOpen(false);};
-    const onKeyDown=(event:KeyboardEvent)=>{if(event.key==="Escape")setOpen(false);};
-    document.addEventListener("mousedown",onPointerDown);
-    document.addEventListener("keydown",onKeyDown);
-    return()=>{document.removeEventListener("mousedown",onPointerDown);document.removeEventListener("keydown",onKeyDown);};
-  },[open]);
+  useDismissOnOutside(rootRef, open, () => setOpen(false), "mousedown");
   const select=(emoji:string)=>{onChange(emoji);setOpen(false);};
   return (
     <div className="emoji-picker" ref={rootRef}>
@@ -210,6 +215,18 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
       </div>
     </div>
   );
+}
+
+/** Закрытие поповера по клику вне него и Escape. */
+export function useDismissOnOutside<T extends HTMLElement>(ref: RefObject<T | null>, open: boolean, onClose: () => void, eventType: "mousedown" | "pointerdown" = "pointerdown"): void {
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: Event) => { if (!ref.current?.contains(event.target as Node)) onClose(); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener(eventType, onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener(eventType, onPointerDown); document.removeEventListener("keydown", onKeyDown); };
+  }, [ref, open, onClose, eventType]);
 }
 
 export function useObjectUrl(file: File | null) {
@@ -260,7 +277,6 @@ export function MediaField({ icon, label, file, previewUrl, saved, onPick, onCle
 
 export function Select({ value, onChange, options, ariaLabel, placeholder, disabled }: { value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; ariaLabel: string; placeholder?: string | undefined; disabled?: boolean | undefined }) {
   const [open, setOpen] = useState(false);
-  const [flip, setFlip] = useState(false);
   const [coords, setCoords] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -274,7 +290,6 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
     if (!rect) return;
     const spaceBelow = window.innerHeight - rect.bottom;
     const willFlip = spaceBelow < Math.min(300, window.innerHeight / 2);
-    setFlip(willFlip);
     setCoords({
       left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
       width: rect.width,
@@ -349,7 +364,7 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
           role="listbox"
           aria-label={ariaLabel}
           ref={listRef}
-          style={{ left: coords.left, width: coords.width, ...(flip ? { bottom: coords.bottom } : { top: coords.top }) }}
+          style={{ left: coords.left, width: coords.width, ...(coords.bottom !== undefined ? { bottom: coords.bottom } : coords.top !== undefined ? { top: coords.top } : {}) }}
           onKeyDown={onListKeyDown}
         >
           {options.length
@@ -405,26 +420,25 @@ export function ModalShell({ labelledBy, onClose, children }: { labelledBy: stri
 type ConfirmTone = "default" | "danger";
 type ConfirmItem = { message: string; confirmLabel: string; tone: ConfirmTone; resolve: (ok: boolean) => void };
 let queue: ConfirmItem[] = [];
-const subscribers = new Set<(items: ConfirmItem[]) => void>();
-const emit = () => { for (const subscriber of subscribers) subscriber(queue); };
+const subscribers = new Set<() => void>();
+const emit = () => { for (const subscriber of subscribers) subscriber(); };
+const EMPTY_QUEUE: ConfirmItem[] = [];
+const subscribeConfirms = (callback: () => void) => { subscribers.add(callback); return () => { subscribers.delete(callback); }; };
+const getConfirmSnapshot = () => queue;
+const getConfirmServerSnapshot = () => EMPTY_QUEUE;
 
 const DESTRUCTIVE_LABEL = /удали|убра|стереть|сотр|очист/i;
 
-export function confirmAction(message: string, confirmLabel = "Подтвердить", opts?: { tone?: ConfirmTone }): Promise<boolean> {
+export function confirmAction(message: string, confirmLabel = "Подтвердить"): Promise<boolean> {
   return new Promise(resolve => {
-    const item: ConfirmItem = { message, confirmLabel, tone: opts?.tone ?? (DESTRUCTIVE_LABEL.test(confirmLabel) ? "danger" : "default"), resolve };
+    const item: ConfirmItem = { message, confirmLabel, tone: DESTRUCTIVE_LABEL.test(confirmLabel) ? "danger" : "default", resolve };
     queue = [...queue, item];
     emit();
   });
 }
 
 export function ConfirmHost() {
-  const [items, setItems] = useState<ConfirmItem[]>([]);
-  useEffect(() => {
-    const subscriber = (next: ConfirmItem[]) => setItems(next);
-    subscribers.add(subscriber);
-    return () => { subscribers.delete(subscriber); };
-  }, []);
+  const items = useSyncExternalStore(subscribeConfirms, getConfirmSnapshot, getConfirmServerSnapshot);
   const current = items[0];
   const close = (ok: boolean) => {
     if (!current) return;

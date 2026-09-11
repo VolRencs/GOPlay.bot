@@ -81,8 +81,6 @@ export const automodTr = makeTr({
   protectedWipedFailed: { ru: "Защищённый канал: сообщение удалено, сообщения за 24 часа стёрты, бан не применён (не хватило прав)", en: "Protected channel: message deleted, last 24h wiped, ban not applied (insufficient permissions)" },
   roleUnavailable: { ru: "❌ Эта роль недоступна.", en: "❌ This role is unavailable." },
   roleLimitReached: { ru: "❌ Достигнут лимит ролей: {n}.", en: "❌ Role limit reached: {n}." },
-  roleGiven: { ru: "✅ Выдана роль **{role}**", en: "✅ Role **{role}** added" },
-  roleRemoved: { ru: "❌ Роль **{role}** снята", en: "❌ Role **{role}** removed" },
   genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
 });
 

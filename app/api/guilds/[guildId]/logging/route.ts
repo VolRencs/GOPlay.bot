@@ -2,11 +2,12 @@ import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { db } from "../../../../../src/db/database.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
-import { logKeys, type LoggingGet, type LoggingPutBody } from "../../../../../src/lib/labels.ts";
+import { logGroups, logKeys, type LoggingGet, type LoggingPutBody } from "../../../../../src/lib/labels.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 
 const defaults: Record<string, boolean> = Object.fromEntries(logKeys.map(key => [key, true]));
+const categoryTitles: Record<string, string> = Object.fromEntries(logGroups.flatMap(group => group.items.map(([key, , title]) => [key, title])));
 const loggingUpsert = db.prepare("INSERT INTO logging_settings(guild_id,channel_id,categories_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET channel_id=excluded.channel_id,categories_json=excluded.categories_json,updated_at=excluded.updated_at");
 
 export const GET = guildRoute(async (_, { guildId }) => {
@@ -27,7 +28,14 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const current=saved?stableJson({channel:saved.channel_id??null,categories:Object.fromEntries(logKeys.map(key=>[key,Boolean(storedCategories[key])]))}):null;
   if(current===next)return NextResponse.json({ok:true,unchanged:true});
   loggingUpsert.run(guildId,body.channelId,JSON.stringify(categories),Date.now());
-  const enabledCount=Object.values(categories).filter(Boolean).length;
-  recordDashboardChange(guildId,user,"Логи",`Журнал событий: ${body.channelId ? "канал выбран" : "канал не выбран"} · включено категорий: ${enabledCount}`);
+  recordDashboardDiff(guildId, user, "Логи", "Журнал событий: ",
+    {
+      "Канал": saved?.channel_id ? `<#${saved.channel_id}>` : null,
+      "Включённые категории": logKeys.filter(key => Boolean(storedCategories[key])).map(key => categoryTitles[key]!),
+    },
+    {
+      "Канал": body.channelId ? `<#${body.channelId}>` : null,
+      "Включённые категории": logKeys.filter(key => categories[key]).map(key => categoryTitles[key]!),
+    });
   return NextResponse.json({ok:true});
 });

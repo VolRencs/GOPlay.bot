@@ -1,5 +1,3 @@
-"use client";
-
 type ApiError = { error?: unknown };
 
 /** Достаёт человекочитаемую ошибку из ответа API (единый формат `{error}`). */

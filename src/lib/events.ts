@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { db, withTransaction } from "../db/database.ts";
 import { DAY_MS, clampNumber } from "./constants.ts";
 import { discordFetch, isSnowflake, sendDiscordDM } from "./guild-access.ts";
@@ -28,7 +27,7 @@ type EventEmbed = {
   fields?: { name: string; value: string; inline?: boolean }[];
   timestamp?: boolean;
 };
-export type EventEmbedPayload = Omit<EventEmbed, "timestamp" | "footer" | "thumbnail" | "image"> & { timestamp?: string; footer?: { text: string }; thumbnail?: { url: string }; image?: { url: string } };
+export type EventEmbedPayload = Omit<EventEmbed, "timestamp" | "footer" | "thumbnail" | "image"> & { footer?: { text: string }; thumbnail?: { url: string }; image?: { url: string } };
 export type EventButton = { key: "join" | "leave"; label: string; emoji: string; style: EventButtonStyle; enabled: boolean; order: number };
 type EventRecurrence = { freq: RecurrenceFrequency; interval: number };
 
@@ -96,9 +95,11 @@ export function parseEventButtons(raw: string | null | undefined): EventButton[]
     return key === "join" || key === "leave";
   });
 }
+function sanitizeReminders(value: unknown): number[] {
+  return Array.isArray(value) ? [...new Set(value.filter((v): v is number => Number.isInteger(v) && v > 0 && v <= MAX_REMINDER_MINUTES))].slice(0, 10) : [];
+}
 function parseEventReminders(raw: string | null | undefined): number[] {
-  const parsed = safeJson<unknown>(raw, []);
-  return Array.isArray(parsed) ? parsed.filter((v): v is number => Number.isInteger(v) && v > 0 && v <= MAX_REMINDER_MINUTES) : [];
+  return sanitizeReminders(safeJson<unknown>(raw, []));
 }
 function parseEventRecurrence(raw: string | null | undefined): EventRecurrence {
   const parsed = safeJson<{ freq?: unknown; interval?: unknown }>(raw, {});
@@ -141,7 +142,7 @@ export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: Ev
   if (event.status !== "scheduled") added.push({ name: tr("fldStatus"), value: eventStatusMetaM[event.status]?.label[lang] ?? event.status, inline: true });
   if (event.registrationEnabled || counts.joined > 0) added.push({ name: tr("fldParticipants"), value: event.maxParticipants > 0 ? tr("joinedOf", { a: String(counts.joined), b: String(event.maxParticipants) }) : String(counts.joined), inline: true });
   if (counts.waitlist > 0) added.push({ name: tr("fldWaitlist"), value: String(counts.waitlist), inline: true });
-  const fields = [...userFields.slice(0, Math.max(0, 25 - added.length)), ...added].slice(0, 25);
+  const fields = [...userFields.slice(0, Math.max(0, 25 - added.length)), ...added];
   return {
     ...(embed.title ? { title: embed.title } : {}),
     ...(embed.description ? { description: embed.description } : {}),
@@ -159,7 +160,6 @@ export function renderEventButtons(event: RenderableEvent, buttons: EventButton[
   const closed = event.status !== "scheduled" && event.status !== "live";
   const limitReached = event.maxParticipants > 0 && counts.joined >= event.maxParticipants;
   return buttons
-    .filter(b => b.key === "join" || b.key === "leave")
     .sort((a, b) => a.order - b.order)
     .map(b => ({ ...b, disabled: !b.enabled || (b.key === "join" ? event.status !== "scheduled" || !event.registrationEnabled || (limitReached && !event.waitlistEnabled) : closed) }));
 }
@@ -168,16 +168,17 @@ type JoinOutcome = "joined" | "waitlisted" | "already_joined";
 type JoinResult = { ok: true; action: JoinOutcome; state: "joined" | "waitlisted"; counts: EventCounts } | { ok: false; error: string };
 
 export function joinEvent(eventId: string, userId: string, guildId?: string): JoinResult {
+  const lang = guildLang(guildId ?? "");
   return withTransaction(() => {
     const event = eventGet.get(eventId) as EventRow | undefined;
-    if (!event || (guildId !== undefined && event.guild_id !== guildId)) return { ok: false, error: eventsTr(guildLang(guildId ?? ""), "notFound") };
-    if (event.status !== "scheduled") { const l = guildLang(guildId ?? ""); return { ok: false, error: eventsTr(l, event.status === "live" ? "evAlreadyLive" : "evRegClosed") }; }
-    if (!event.registration_enabled) { const l = guildLang(guildId ?? ""); return { ok: false, error: eventsTr(l, "evRegDisabled") }; }
+    if (!event || (guildId !== undefined && event.guild_id !== guildId)) return { ok: false, error: eventsTr(lang, "notFound") };
+    if (event.status !== "scheduled") return { ok: false, error: eventsTr(lang, event.status === "live" ? "evAlreadyLive" : "evRegClosed") };
+    if (!event.registration_enabled) return { ok: false, error: eventsTr(lang, "evRegDisabled") };
     const existing = participantGet.get(eventId, userId) as ParticipantRow | undefined;
     if (existing) return { ok: true, action: "already_joined", state: existing.waitlist ? "waitlisted" : "joined", counts: eventCounts(eventId) };
     const counts = eventCounts(eventId);
     const limitReached = event.max_participants > 0 && counts.joined >= event.max_participants;
-    if (limitReached && !event.waitlist_enabled) { const l = guildLang(guildId ?? ""); return { ok: false, error: eventsTr(l, "evFull") }; }
+    if (limitReached && !event.waitlist_enabled) return { ok: false, error: eventsTr(lang, "evFull") };
     participantInsert.run(eventId, userId, Date.now(), limitReached ? 1 : 0);
     return { ok: true, action: limitReached ? "waitlisted" : "joined", state: limitReached ? "waitlisted" : "joined", counts: eventCounts(eventId) };
   });
@@ -187,10 +188,11 @@ type LeaveOutcome = "left" | "left_waitlist" | "promoted" | "not_registered";
 type LeaveResult = { ok: true; action: LeaveOutcome; promotedUserId: string | null; counts: EventCounts } | { ok: false; error: string };
 
 export function leaveEvent(eventId: string, userId: string, guildId?: string): LeaveResult {
+  const lang = guildLang(guildId ?? "");
   return withTransaction(() => {
     const event = eventGet.get(eventId) as EventRow | undefined;
-    if (!event || (guildId !== undefined && event.guild_id !== guildId)) return { ok: false, error: eventsTr(guildLang(guildId ?? ""), "notFound") };
-    if (event.status !== "scheduled" && event.status !== "live") { const l = guildLang(guildId ?? ""); return { ok: false, error: eventsTr(l, "evRegClosed") }; }
+    if (!event || (guildId !== undefined && event.guild_id !== guildId)) return { ok: false, error: eventsTr(lang, "notFound") };
+    if (event.status !== "scheduled" && event.status !== "live") return { ok: false, error: eventsTr(lang, "evRegClosed") };
     const row = participantGet.get(eventId, userId) as ParticipantRow | undefined;
     if (!row) return { ok: true, action: "not_registered", promotedUserId: null, counts: eventCounts(eventId) };
     participantDelete.run(eventId, userId);
@@ -237,7 +239,7 @@ function recomputeReminders(event: EventRow) {
   reminderDeleteUnsent.run(event.id);
   if (event.status === "completed" || event.status === "cancelled") return;
   const now = Date.now();
-  const offsets = [...new Set(parseEventReminders(event.reminders_json))].slice(0, 10);
+  const offsets = parseEventReminders(event.reminders_json);
   for (const offset of offsets) {
     const dueAt = event.scheduled_at - offset * 60_000;
     if (dueAt > now) reminderInsert.run(event.id, dueAt);
@@ -271,7 +273,7 @@ export function transitionDueEvents(now: number): { changed: EventRow[]; created
       const step = intervalDays(recurrence) * DAY_MS;
       let nextScheduledAt = event.scheduled_at + step;
       while (nextScheduledAt <= now) nextScheduledAt += step;
-      const id = randomUUID();
+      const id = crypto.randomUUID();
       const at = Date.now();
       eventInsert.run(id, event.guild_id, event.channel_id, null, seriesId, event.embed_json, event.buttons_json, nextScheduledAt, event.max_participants, event.registration_enabled, event.waitlist_enabled, "scheduled", event.event_role_id, event.reminders_json, event.recurrence_json, at, at, null, null, null, null);
       const follower = eventGet.get(id) as EventRow;
@@ -306,16 +308,17 @@ export type EventInput = {
 };
 
 export function insertEvent(guildId: string, input: EventInput): EventRow {
-  const id = input.id ?? randomUUID();
+  const id = input.id ?? crypto.randomUUID();
   const now = Date.now();
   const startedAt = input.status === "live" ? now : null;
   // Повторяющееся событие — корень своей серии, так находятся последователи.
   const seriesId = input.recurrence.freq !== "none" ? id : null;
-  withTransaction(() => {
+  return withTransaction(() => {
     eventInsert.run(id, guildId, input.channelId, input.messageId, seriesId, JSON.stringify(input.embed), JSON.stringify(input.buttons), input.scheduledAt, input.maxParticipants, input.registrationEnabled ? 1 : 0, input.waitlistEnabled ? 1 : 0, input.status, input.eventRoleId, JSON.stringify(input.reminders), JSON.stringify(input.recurrence), now, now, startedAt, null, null, null);
-    recomputeReminders(eventGet.get(id) as EventRow);
+    const row = eventGet.get(id) as EventRow;
+    recomputeReminders(row);
+    return row;
   });
-  return eventGet.get(id) as EventRow;
 }
 
 export function updateEvent(guildId: string, id: string, input: EventInput): EventRow | null {
@@ -462,9 +465,9 @@ export function clampEventInput(input: Record<string, unknown>): EventInput | { 
   const scheduledAt = Number(input.scheduledAt);
   if (!Number.isInteger(scheduledAt) || scheduledAt <= 0) return { error: "Укажите дату и время события." };
   const status: EventStatus = eventStatuses.includes(input.status as EventStatus) ? input.status as EventStatus : "scheduled";
-  const maxParticipants = clampNumber(input.maxParticipants ?? 0, 0, 0, MAX_PARTICIPANTS_LIMIT, "integer");
+  const maxParticipants = clampNumber(input.maxParticipants, 0, 0, MAX_PARTICIPANTS_LIMIT, "integer");
   const eventRoleId = typeof input.eventRoleId === "string" && isSnowflake(input.eventRoleId) ? input.eventRoleId : null;
-  const reminders = Array.isArray(input.reminders) ? [...new Set(input.reminders.filter((v): v is number => Number.isInteger(v) && Number(v) > 0 && Number(v) <= MAX_REMINDER_MINUTES).map(Number))].slice(0, 10) : [];
+  const reminders = sanitizeReminders(input.reminders);
   const recurrence: EventRecurrence = parseEventRecurrence(typeof input.recurrence === "object" && input.recurrence !== null ? JSON.stringify(input.recurrence) : null);
   const embed = cleanEmbed(input.payload);
   const buttons = cleanButtons(input.buttons);
@@ -490,13 +493,15 @@ function cleanEmbed(value: unknown): EventEmbed {
     const field = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
     return { name: (typeof field.name === "string" ? field.name : "").trim().slice(0, 256), value: (typeof field.value === "string" ? field.value : "").trim().slice(0, 1024), inline: Boolean(field.inline) };
   }).filter(f => f.name && f.value) : [];
+  const title = text(v.title)?.slice(0, 256), description = text(v.description)?.slice(0, 4096);
+  const footer = text(v.footer)?.slice(0, 2048), thumbnail = text(v.thumbnail)?.slice(0, 2048), image = text(v.image)?.slice(0, 2048);
   return {
-    ...(text(v.title) ? { title: text(v.title)!.slice(0, 256) } : {}),
-    ...(text(v.description) ? { description: text(v.description)!.slice(0, 4096) } : {}),
+    ...(title ? { title } : {}),
+    ...(description ? { description } : {}),
     ...(Number.isInteger(v.color) ? { color: v.color as number } : {}),
-    ...(text(v.footer) ? { footer: { text: text(v.footer)!.slice(0, 2048) } } : {}),
-    ...(text(v.thumbnail) ? { thumbnail: { url: text(v.thumbnail)!.slice(0, 2048) } } : {}),
-    ...(text(v.image) ? { image: { url: text(v.image)!.slice(0, 2048) } } : {}),
+    ...(footer ? { footer: { text: footer } } : {}),
+    ...(thumbnail ? { thumbnail: { url: thumbnail } } : {}),
+    ...(image ? { image: { url: image } } : {}),
     ...(fields.length ? { fields } : {}),
     timestamp: v.timestamp === true,
   };

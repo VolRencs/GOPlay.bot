@@ -7,7 +7,7 @@ import { parseImageConfig, welcomeDefaults, type WelcomeGet, type WelcomePutBody
 import { stableJson } from "../../../../../src/lib/json.ts";
 import { rejectOversized } from "../../../../../src/lib/uploads.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 
 // Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
 const welcomeUpsert = db.prepare(`INSERT INTO welcome_settings(guild_id,enabled,channel_id,message,image_enabled,image_config_json,goodbye_enabled,goodbye_channel_id,goodbye_message,updated_at)
@@ -16,8 +16,8 @@ const welcomeUpsert = db.prepare(`INSERT INTO welcome_settings(guild_id,enabled,
 const welcomeBackgroundUpsert = db.prepare("INSERT INTO welcome_settings(guild_id,background_path,updated_at) VALUES(?,?,?) ON CONFLICT(guild_id) DO UPDATE SET background_path=excluded.background_path,updated_at=excluded.updated_at");
 
 export const GET = guildRoute(async (_, { guildId }) => {
-  const saved = stmt.welcomeSettings.get(guildId) as Partial<WelcomeGet> | undefined;
-  return NextResponse.json<WelcomeGet>({ ...welcomeDefaults, ...saved } as WelcomeGet);
+  const saved = stmt.welcomeSettings.get(guildId) as WelcomeGet | undefined;
+  return NextResponse.json<WelcomeGet>({ ...welcomeDefaults, ...saved });
 });
 
 export const PUT = guildRoute(async (request, { guildId, user }) => {
@@ -27,12 +27,36 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   if ((value.enabled && !value.channelId) || (value.goodbyeEnabled && !value.goodbyeChannelId)) return jsonError("Для включённого события выберите канал.");
   if ((value.channelId && !isSnowflake(value.channelId)) || (value.goodbyeChannelId && !isSnowflake(value.goodbyeChannelId))) return jsonError("Некорректный канал.");
   const saved = stmt.welcomeSettings.get(guildId) as Record<string, unknown> | undefined;
-  const next = stableJson({ enabled: Number(Boolean(value.enabled)), channelId: value.channelId ?? null, message: value.message, imageEnabled: Number(Boolean(value.imageEnabled)), imageConfig: parseImageConfig(value.imageConfig), goodbyeEnabled: Number(Boolean(value.goodbyeEnabled)), goodbyeChannelId: value.goodbyeChannelId ?? null, goodbyeMessage: value.goodbyeMessage });
-  const current = saved ? stableJson({ enabled: Number(saved.enabled), channelId: saved.channel_id ?? null, message: saved.message, imageEnabled: Number(saved.image_enabled), imageConfig: parseImageConfig(saved.image_config_json), goodbyeEnabled: Number(saved.goodbye_enabled), goodbyeChannelId: saved.goodbye_channel_id ?? null, goodbyeMessage: saved.goodbye_message }) : null;
+  const nextImageConfig = parseImageConfig(value.imageConfig);
+  const currentImageConfig = parseImageConfig(saved?.image_config_json);
+  const next = stableJson({ enabled: Number(Boolean(value.enabled)), channelId: value.channelId ?? null, message: value.message, imageEnabled: Number(Boolean(value.imageEnabled)), imageConfig: nextImageConfig, goodbyeEnabled: Number(Boolean(value.goodbyeEnabled)), goodbyeChannelId: value.goodbyeChannelId ?? null, goodbyeMessage: value.goodbyeMessage });
+  const current = saved ? stableJson({ enabled: Number(saved.enabled), channelId: saved.channel_id ?? null, message: saved.message, imageEnabled: Number(saved.image_enabled), imageConfig: currentImageConfig, goodbyeEnabled: Number(saved.goodbye_enabled), goodbyeChannelId: saved.goodbye_channel_id ?? null, goodbyeMessage: saved.goodbye_message }) : null;
   if (current === next) return NextResponse.json({ ok: true, unchanged: true });
-  const welcomeConfig = JSON.stringify(parseImageConfig(value.imageConfig));
+  const welcomeConfig = JSON.stringify(nextImageConfig);
   welcomeUpsert.run(guildId, Number(Boolean(value.enabled)), value.channelId, value.message, Number(Boolean(value.imageEnabled)), welcomeConfig, Number(Boolean(value.goodbyeEnabled)), value.goodbyeChannelId, value.goodbyeMessage, Date.now());
-  recordDashboardChange(guildId, user, "Приветствие", `Приветствие: ${value.enabled ? "включено" : "выключено"}${value.imageEnabled ? ", картинка включена" : ""} · Прощание: ${value.goodbyeEnabled ? "включено" : "выключено"}`);
+  const src: Record<string, unknown> = saved ?? welcomeDefaults;
+  recordDashboardDiff(guildId, user, "Приветствие", "Приветствие: ",
+    {
+      "Режим приветствия": Boolean(src.enabled),
+      "Канал приветствия": src.channel_id ? `<#${String(src.channel_id)}>` : null,
+      "Текст приветствия": String(src.message),
+      "Персональная картинка": Boolean(src.image_enabled),
+      "Настройки картинки": stableJson(currentImageConfig),
+      "Режим прощания": Boolean(src.goodbye_enabled),
+      "Канал прощания": src.goodbye_channel_id ? `<#${String(src.goodbye_channel_id)}>` : null,
+      "Текст прощания": String(src.goodbye_message),
+    },
+    {
+      "Режим приветствия": Boolean(value.enabled),
+      "Канал приветствия": value.channelId ? `<#${value.channelId}>` : null,
+      "Текст приветствия": value.message,
+      "Персональная картинка": Boolean(value.imageEnabled),
+      "Настройки картинки": stableJson(nextImageConfig),
+      "Режим прощания": Boolean(value.goodbyeEnabled),
+      "Канал прощания": value.goodbyeChannelId ? `<#${value.goodbyeChannelId}>` : null,
+      "Текст прощания": value.goodbyeMessage,
+    },
+    { "Настройки картинки": "изменены" });
   return NextResponse.json({ ok: true });
 });
 

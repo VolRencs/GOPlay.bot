@@ -3,7 +3,7 @@ import { db, withTransaction } from "../db/database.ts";
 import { stmt } from "../bot/db/statements.ts";
 import { discordFetch, sendDiscordDM } from "./guild-access.ts";
 import { punishmentLabel } from "./labels.ts";
-import type { Bi, Locale } from "./i18n/core.ts";
+import type { Locale } from "./i18n/core.ts";
 import { guildLang } from "./i18n/bot.ts";
 import { trAppeals } from "./i18n/bot/appeals.ts";
 
@@ -29,27 +29,24 @@ const insertStmt = db.prepare("INSERT INTO appeals(guild_id,user_id,punishment_i
 const updateStmt = db.prepare("UPDATE appeals SET status=?,moderator_comment=?,updated_at=?,reviewed_by=?,reviewed_at=? WHERE id=? AND guild_id=? AND status IN ('pending','reviewing')");
 // Счётчик на гильдию: инкремент в той же транзакции, что и insert — серверы не
 // делят последовательность, номера непрерывны. UNIQUE (guild_id, number)
-// страхует выделение даже при отсутствующей строке гильдии (тогда MAX+1 ниже).
+// страхует от гонок выделения.
 const nextNumberStmt = db.prepare("UPDATE guilds SET appeal_counter = appeal_counter + 1 WHERE id = ? RETURNING appeal_counter");
-const maxNumberStmt = db.prepare("SELECT COALESCE(MAX(number), 0) + 1 AS next FROM appeals WHERE guild_id = ?");
 
 function getPunishment(punishmentId: number): Punishment | undefined {
   return punishmentStmt.get(punishmentId) as Punishment | undefined;
 }
 
 function nextAppealNumber(guildId: string): number {
-  const row = nextNumberStmt.get(guildId) as { appeal_counter: number } | undefined;
-  if (row) return row.appeal_counter;
-  return (maxNumberStmt.get(guildId) as { next: number }).next;
+  // Гильдия гарантирована FK-проверкой наказания: RETURNING всегда вернёт строку.
+  return (nextNumberStmt.get(guildId) as { appeal_counter: number }).appeal_counter;
 }
 
 // Любая строка апелляции — включая отклонённую — навсегда блокирует новую
 // по тому же наказанию: «Отказаться» в оффере в ЛС закрывает возможность.
-function existingError(guildId: string, existing: { id: number; number: number; status: AppealStatus } | undefined) {
-  const lang = guildLang(guildId);
+function existingError(lang: Locale, existing: { id: number; number: number; status: AppealStatus } | undefined) {
   if (!existing) return trAppeals(lang, "createFail");
   if (existing.status === "declined") return trAppeals(lang, "alreadyDeclined");
-  return trAppeals(lang, "duplicateShort", { n: String(existing.number ?? existing.id) });
+  return trAppeals(lang, "duplicateShort", { n: String(existing.number) });
 }
 
 function insertAppeal(guildId: string, userId: string, punishmentId: number, type: string, reason: string, status: AppealStatus): Appeal {
@@ -62,20 +59,21 @@ function insertAppeal(guildId: string, userId: string, punishmentId: number, typ
 }
 
 export function createAppeal(input: { guildId: string; userId: string; punishmentId: number; reason: string }): Result<Appeal> {
+  const lang = guildLang(input.guildId);
   const punishment = getPunishment(input.punishmentId);
-  if (!punishment || punishment.guild_id !== input.guildId) return { ok: false, error: trAppeals(guildLang(input.guildId), "notFound") };
-  if (punishment.user_id !== input.userId) return { ok: false, error: trAppeals(guildLang(input.guildId), "notYours") };
+  if (!punishment || punishment.guild_id !== input.guildId) return { ok: false, error: trAppeals(lang, "notFound") };
+  if (punishment.user_id !== input.userId) return { ok: false, error: trAppeals(lang, "notYours") };
   const reason = input.reason.trim();
-  if (reason.length < 10) return { ok: false, error: trAppeals(guildLang(input.guildId), "reasonTooShort") };
-  if (reason.length > 4000) return { ok: false, error: trAppeals(guildLang(input.guildId), "reasonTooLong") };
+  if (reason.length < 10) return { ok: false, error: trAppeals(lang, "reasonTooShort") };
+  if (reason.length > 4000) return { ok: false, error: trAppeals(lang, "reasonTooLong") };
   const existing = existingStmt.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
-  if (existing) return { ok: false, error: existingError(input.guildId, existing) };
+  if (existing) return { ok: false, error: existingError(lang, existing) };
   try {
     return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, punishment.type, reason, "pending") };
   } catch {
     // UNIQUE(punishment_id): вторая апелляция обогнала проверку выше.
     const raced = existingStmt.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
-    return { ok: false, error: existingError(input.guildId, raced) };
+    return { ok: false, error: existingError(lang, raced) };
   }
 }
 
@@ -83,30 +81,32 @@ export function createAppeal(input: { guildId: string; userId: string; punishmen
 // апелляция по тому же наказанию отклоняется. Существующая строка (гонка с
 // «Подать апелляцию» или повторный клик) не пишется и не считается ошибкой.
 export function declineAppeal(input: { guildId: string; userId: string; punishmentId: number }): Result<Appeal | null> {
+  const lang = guildLang(input.guildId);
   const punishment = getPunishment(input.punishmentId);
-  if (!punishment || punishment.guild_id !== input.guildId) return { ok: false, error: trAppeals(guildLang(input.guildId), "notFound") };
-  if (punishment.user_id !== input.userId) return { ok: false, error: trAppeals(guildLang(input.guildId), "notYours") };
+  if (!punishment || punishment.guild_id !== input.guildId) return { ok: false, error: trAppeals(lang, "notFound") };
+  if (punishment.user_id !== input.userId) return { ok: false, error: trAppeals(lang, "notYours") };
   if (existingStmt.get(input.punishmentId)) return { ok: true, value: null };
   try {
-    return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, punishment.type, trAppeals(guildLang(input.guildId), "declinedReason"), "declined") };
+    return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, punishment.type, trAppeals(lang, "declinedReason"), "declined") };
   } catch (error) {
     if (existingStmt.get(input.punishmentId)) return { ok: true, value: null };
     throw error;
   }
 }
 
-type ReviewResult = { appeal: Appeal; reversal: "unban" | "untimeout" | null };
+type ReviewResult = { appeal: Appeal; reversal: "unban" | "untimeout" | null; previousStatus: AppealStatus };
 export function reviewAppeal(input: { guildId: string; appealId: number; action: ReviewAction; reviewerId: string; comment?: string | null }): ReviewResultValue {
+  const lang = guildLang(input.guildId);
   const appeal = byIdStmt.get(input.appealId, input.guildId) as Appeal | undefined;
-  if (!appeal) return { ok: false, error: trAppeals(guildLang(input.guildId), "appealNotFound"), status: 404 };
-  if (appeal.status !== "pending" && appeal.status !== "reviewing") return { ok: false, error: trAppeals(guildLang(input.guildId), "appealClosedAlready"), status: 409 };
-  if (input.action === "reviewing" && appeal.status === "reviewing") return { ok: false, error: trAppeals(guildLang(input.guildId), "alreadyReviewing"), status: 409 };
-  const comment = input.comment === undefined ? null : String(input.comment).trim().slice(0, 500);
+  if (!appeal) return { ok: false, error: trAppeals(lang, "appealNotFound"), status: 404 };
+  if (appeal.status !== "pending" && appeal.status !== "reviewing") return { ok: false, error: trAppeals(lang, "appealClosedAlready"), status: 409 };
+  if (input.action === "reviewing" && appeal.status === "reviewing") return { ok: false, error: trAppeals(lang, "alreadyReviewing"), status: 409 };
+  const comment = typeof input.comment === "string" ? input.comment.trim().slice(0, 500) || null : null;
   const at = Date.now();
   const result = updateStmt.run(input.action, comment, at, input.reviewerId, at, input.appealId, input.guildId);
-  if (result.changes === 0) return { ok: false, error: trAppeals(guildLang(input.guildId), "appealClosedAlready"), status: 409 };
+  if (result.changes === 0) return { ok: false, error: trAppeals(lang, "appealClosedAlready"), status: 409 };
   const reversal = input.action === "approved" ? reversalFor(appeal.type) : null;
-  return { ok: true, value: { appeal: { ...appeal, status: input.action, moderator_comment: comment, updated_at: at, reviewed_by: input.reviewerId, reviewed_at: at }, reversal } };
+  return { ok: true, value: { appeal: { ...appeal, status: input.action, moderator_comment: comment, updated_at: at, reviewed_by: input.reviewerId, reviewed_at: at }, reversal, previousStatus: appeal.status } };
 }
 
 // После одобренной апелляции отменить можно только ban (unban) и timeout
@@ -118,16 +118,15 @@ export function reversalFor(type: string): "unban" | "untimeout" | null {
   return null;
 }
 
-const reversalLabelsM: Record<"unban" | "untimeout", Bi> = { unban: { ru: "Бан", en: "Ban" }, untimeout: { ru: "Тайм-аут", en: "Timeout" } };
-
 export async function applyAppealReversal(lang: Locale, guildId: string, userId: string, reversal: "unban" | "untimeout"): Promise<{ ok: boolean; label: string }> {
-  if (!process.env.DISCORD_TOKEN) return { ok: false, label: reversalLabelsM[reversal][lang] };
+  const label = punishmentLabel(lang, reversal === "unban" ? "ban" : "timeout");
+  if (!process.env.DISCORD_TOKEN) return { ok: false, label };
   try {
     const response = reversal === "unban"
       ? await discordFetch(`/guilds/${guildId}/bans/${userId}`, { method: "DELETE" })
       : await discordFetch(`/guilds/${guildId}/members/${userId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ communication_disabled_until: null }) });
-    return { ok: response.ok, label: reversalLabelsM[reversal][lang] };
-  } catch { return { ok: false, label: reversalLabelsM[reversal][lang] }; }
+    return { ok: response.ok, label };
+  } catch { return { ok: false, label }; }
 }
 
 export async function notifyAppealStatus(appeal: Appeal, reversal?: { ok: boolean; label: string } | null): Promise<boolean> {

@@ -13,7 +13,7 @@ export type TempPutBody = { presets: TempPresetPutBody[] };
 export type TempchannelsGet = { presets: TempPresetApi[] };
 
 export function clampUserLimit(value: unknown): number {
-  return clampNumber(value ?? 0, 0, 0, 99, "integer");
+  return clampNumber(value, 0, 0, 99, "integer");
 }
 
 export function buildTempPutBody(

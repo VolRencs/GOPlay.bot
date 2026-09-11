@@ -26,7 +26,6 @@ export type ResourcesGet = {
   emojis: ServerEmoji[]; server: ServerIdentity; stats: ServerStats;
 };
 export type StatsGet = {
-  period: "24h" | "7d" | "30d";
   points: { label: string; messages: number }[];
   totals: { joins: number; leaves: number; messages: number; moderation: number };
   moderation: { type: string; label: string; count: number }[];

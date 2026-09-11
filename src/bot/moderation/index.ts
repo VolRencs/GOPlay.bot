@@ -1,5 +1,6 @@
 import { ChannelType, MessageFlags, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type NewsChannel, type TextChannel, type ThreadChannel } from "discord.js";
 import { stmt } from "../db/statements.ts";
+import { sleep } from "../../db/database.ts";
 import { logger } from "../utils/logger.ts";
 import { addMetric } from "../metrics.ts";
 import { time } from "../perf.ts";
@@ -10,13 +11,10 @@ import { DAY_MS } from "../../lib/constants.ts";
 import { guildTr } from "../../lib/i18n/bot.ts";
 import { trModeration } from "../../lib/i18n/bot/moderation.ts";
 function canTarget(actor: GuildMember, target: GuildMember) { return actor.id !== target.id && actor.roles.highest.position > target.roles.highest.position && target.manageable; }
-function record(guildId: string, userId: string, moderatorId: string | null, type: string, reason: string): number {
-  const result = stmt.moderationInsert.run(guildId, userId, moderatorId, type, reason, Date.now());
-  addMetric(guildId, "moderation");
-  return Number(result.lastInsertRowid);
-}
 export function recordPunishmentAndOffer(client: Client, input: { guildId: string; guildName: string; userId: string; type: string; reason: string; moderatorId: string | null }) {
-  const punishmentId = record(input.guildId, input.userId, input.moderatorId, input.type, input.reason);
+  const result = stmt.moderationInsert.run(input.guildId, input.userId, input.moderatorId, input.type, input.reason, Date.now());
+  addMetric(input.guildId, "moderation");
+  const punishmentId = Number(result.lastInsertRowid);
   // untimeout — коррекция, kick необратим: оффер апелляции не нужен обоим.
   if (input.type === "untimeout" || input.type === "kick") return;
   void offerAppeal(client, { punishmentId, guildId: input.guildId, guildName: input.guildName, userId: input.userId, type: input.type, reason: input.reason });
@@ -159,7 +157,7 @@ async function purgeMessages(guild: Guild, userId: string, cutoff: number): Prom
       }),
     );
     for (const r of results) if (r.status === "fulfilled") deleted += r.value;
-    if (i + CONCURRENCY < channels.length) await new Promise((res) => setTimeout(res, 100));
+    if (i + CONCURRENCY < channels.length) await sleep(100);
   }
   time("purge.messages", performance.now() - started);
   return deleted;

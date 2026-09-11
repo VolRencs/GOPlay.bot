@@ -10,11 +10,10 @@ type DiscordEmoji = { id: string | null; name: string | null; animated: boolean 
 type DiscordMember = { roles: string[] };
 
 const ttl = 60_000;
-class DiscordTokenMissingError extends Error {}
 
 const resourceCache = ttlCacheAsync<string, ResourcesGet>(async (guildId) => {
   const token = process.env.DISCORD_TOKEN, botUserId = process.env.DISCORD_CLIENT_ID;
-  if (!token || !botUserId) throw new DiscordTokenMissingError("DISCORD_TOKEN missing");
+  if (!token || !botUserId) throw new Error("DISCORD_TOKEN missing");
   return loadResources(guildId, botUserId);
 }, ttl, true);
 

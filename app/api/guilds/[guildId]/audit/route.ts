@@ -12,7 +12,8 @@ export const GET = guildRoute(async (request, { guildId }) => {
   // Чистое чтение: retention выполняется на записи (recordDashboardChange).
   const where = "guild_id=?" + (section ? " AND section=?" : "");
   const args: (string | number)[] = section ? [guildId, section] : [guildId];
-  const entries = db.prepare(`SELECT id,user_name,section,summary,created_at FROM dashboard_audit WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(...args, limit, offset) as AuditEntry[];
-  const total = (db.prepare(`SELECT COUNT(*) AS count FROM dashboard_audit WHERE ${where}`).get(...args) as { count: number }).count;
+  const rows = db.prepare(`SELECT id,user_name,section,summary,created_at,COUNT(*) OVER() AS total FROM dashboard_audit WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`).all(...args, limit, offset) as (AuditEntry & { total: number })[];
+  const total = rows[0]?.total ?? 0;
+  const entries: AuditEntry[] = rows.map(({ total: _total, ...entry }) => entry);
   return NextResponse.json<AuditListGet>({ entries, total });
 });

@@ -1,9 +1,9 @@
 import { EmbedBuilder, Events, MessageFlags, type Client, type Guild, type Interaction, type Message, type VoiceChannel, type VoiceState } from "discord.js";
 import { withTransaction } from "../../db/database.ts";
-import { stmt } from "../db/statements.ts";
+import { aliveGuildIds, isForeignKeyError, stmt } from "../db/statements.ts";
 import { logger } from "../utils/logger.ts";
 import { unrefInterval } from "../utils/timers.ts";
-import { guard, replyInteractionError } from "../../lib/errors.ts";
+import { failInteraction, guard } from "../../lib/errors.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { levelFromXp, levelProgress, type LevelReward, type LevelSettings } from "../../lib/levels.ts";
 import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
@@ -65,15 +65,10 @@ export function flushLevels(): LevelUp[] {
   return levelUps;
 }
 
-function isForeignKeyError(error: unknown): boolean {
-  return error instanceof Error && /FOREIGN KEY/i.test(error.message);
-}
-
 /** Гильдии из буфера, отсутствующие в guilds; null — проверить не удалось. */
 function missingGuilds(entries: PendingXp[]): Set<string> | null {
-  let alive: Set<string>;
-  try { alive = new Set((stmt.guildIds.all() as { id: string }[]).map(row => row.id)); }
-  catch { return null; }
+  const alive = aliveGuildIds();
+  if (!alive) return null;
   const missing = new Set<string>();
   for (const entry of entries) if (!alive.has(entry.guildId)) missing.add(entry.guildId);
   return missing;
@@ -85,7 +80,7 @@ function handleMessage(message: Message): void {
   if (!settings.enabled || settings.xp_per_message <= 0) return;
   if (settings.ignored_channel_ids.includes(message.channelId)) return;
   if (settings.ignored_role_ids.length && message.member?.roles.cache.some(role => settings.ignored_role_ids.includes(role.id))) return;
-  if ((message.content ?? "").trim().length < settings.min_message_length) return;
+  if (message.content.trim().length < settings.min_message_length) return;
   const key = keyFor(message.guild.id, message.author.id);
   const now = Date.now();
   if (now - (messageCooldowns.get(key) ?? 0) < settings.message_cooldown_seconds * 1000) return;
@@ -127,7 +122,7 @@ function targetReward(rewards: LevelReward[], level: number): LevelReward | unde
 // Одна роль на уровень: роль высшей достигнутой награды выдаётся, награды
 // предыдущих уровней снимаются. Ошибки прав/иерархии не ломают level-up.
 async function applyRewards(guild: Guild, userId: string, level: number, rewards: LevelReward[]): Promise<void> {
-  const member = guild.members.cache.get(userId) ?? await guild.members.fetch(userId).catch(() => null);
+  const member = await guild.members.fetch(userId).catch(() => null);
   if (!member) return;
   const target = targetReward(rewards, level);
   for (const reward of rewards) {
@@ -252,8 +247,7 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
     await i.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
     return true;
   } catch (error) {
-    logger.warn("[LEVELS] Команда уровня не выполнена", i.guildId ?? "dm", error);
-    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
+    failInteraction("[LEVELS] Команда уровня не выполнена", i, error, t("genericError"), i.guildId ?? "dm");
     return true;
   }
 }

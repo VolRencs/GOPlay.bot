@@ -3,24 +3,33 @@ import { guildRoute, isSnowflake, isSnowflakeArray, jsonError, readJson } from "
 import { db } from "../../../../../src/db/database.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
 import { automodRulesM } from "../../../../../src/lib/labels.ts";
-import { automodActions, isAutomodSecurityPutBody, type AutomodGet, type AutomodPutBody, type AutomodRuleRow } from "../../../../../src/lib/automod.ts";
+import { automodActions, automodThresholdRanges, automodWindowRange, isAutomodSecurityPutBody, type AutomodGet, type AutomodPutBody, type AutomodRuleRow } from "../../../../../src/lib/automod.ts";
 import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../../../src/lib/constants.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+
+const thresholdLabels: Record<string, string> = {
+  messages: "Сообщений", repeatCount: "Повторов", minimumCharacters: "Минимум букв",
+  uppercasePercentage: "Заглавных %", maxEmojiCount: "Эмодзи", maxMentions: "Упоминаний",
+  mode: "Режим", media: "Тип медиа", channels: "Каналы", durationSeconds: "Тайм-аут, с",
+};
+const modeValueLabels: Record<string, string> = {
+  block_all: "блокировать все ссылки", block_domains: "блокировать список доменов",
+  allow_only: "разрешить только список доменов", block: "блокировать приглашения",
+  any: "фото и видео", photo: "только фото", video: "только видео",
+};
+function thresholdDisplay(threshold: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(threshold).filter(([key]) => thresholdLabels[key]).map(([key, value]) => [
+    thresholdLabels[key]!,
+    key === "channels" && Array.isArray(value) ? value.map(id => `<#${String(id)}>`) : typeof value === "string" ? (modeValueLabels[value] ?? value) : value,
+  ]));
+}
 
 const kinds: readonly string[] = Object.keys(automodRulesM);
-// Числовые пороги детекторов: без клампов messages:1e12 = правило-пустышка,
+// Числовые пороги: без клампов messages:1e12 = правило-пустышка, а
 // minimumCharacters:0 = ложные срабатывания. Проверяем только заданные ключи.
-const thresholdRanges: Record<string, { min: number; max: number }> = {
-  messages: { min: 2, max: 100 },
-  repeatCount: { min: 2, max: 50 },
-  minimumCharacters: { min: 1, max: 1000 },
-  uppercasePercentage: { min: 1, max: 100 },
-  maxEmojiCount: { min: 1, max: 100 },
-  maxMentions: { min: 0, max: 50 },
-};
 function isValidThreshold(threshold: Record<string, unknown>): boolean {
-  for (const [key, range] of Object.entries(thresholdRanges)) {
+  for (const [key, range] of Object.entries(automodThresholdRanges)) {
     const value = threshold[key];
     if (value === undefined) continue;
     if (typeof value !== "number" || !Number.isInteger(value) || value < range.min || value > range.max) return false;
@@ -56,7 +65,17 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     const storedRoles=(()=>{const parsed=safeJson<unknown>(savedSecurity?.ignored_role_ids_json,[]);return isSnowflakeArray(parsed)?[...parsed].sort():[]})();
     const unchangedSecurity=savedSecurity ? stableJson(storedRoles)===stableJson([...roles].sort())&&(savedSecurity.protected_channel_id??null)===channel : roles.length===0&&channel===null;
     if(unchangedSecurity)return NextResponse.json({ok:true,unchanged:true});
-    securityUpsert.run(guildId,JSON.stringify(roles),channel,Date.now());recordDashboardChange(guildId,user,"Автомодерация",`Общие исключения: ${roles.length ? `${roles.length} ролей` : "нет"}${channel ? ", защищённый канал выбран" : ""}`);return NextResponse.json({ok:true});
+    securityUpsert.run(guildId,JSON.stringify(roles),channel,Date.now());
+    recordDashboardDiff(guildId,user,"Автомодерация","Общие исключения: ",
+      {
+        "Исключённые роли": storedRoles.map(id=>`<@&${id}>`),
+        "Защищённый канал": savedSecurity?.protected_channel_id ? `<#${savedSecurity.protected_channel_id}>` : null,
+      },
+      {
+        "Исключённые роли": [...roles].map(id=>`<@&${id}>`),
+        "Защищённый канал": channel ? `<#${channel}>` : null,
+      });
+    return NextResponse.json({ok:true});
   }
   if(typeof r.threshold!=="object"||r.threshold===null||Array.isArray(r.threshold))return jsonError("Некорректные числовые пороги правила.");
   const channels=r.threshold.channels, domains=r.threshold.domains;
@@ -65,7 +84,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   {
     const validKind = kinds.includes(r.kind);
     const validActions = Array.isArray(r.actions) && r.actions.length > 0 && r.actions.every(x => automodActions.includes(x));
-    const validWindow = Number.isInteger(r.window) && r.window >= 1 && r.window <= 3600;
+    const validWindow = Number.isInteger(r.window) && r.window >= automodWindowRange.min && r.window <= automodWindowRange.max;
     const validChannels = channels === undefined || isSnowflakeArray(channels);
     if (!validKind || !validActions || !validWindow || !validChannels) {
       return jsonError("Некорректные настройки правила, ролей или канала.");
@@ -75,12 +94,19 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   if(JSON.stringify(r.threshold).length>10000)return jsonError("Слишком большой список порогов.");
   const duration=Number(r.threshold.durationSeconds??DEFAULT_TIMEOUT_SECONDS); if(!Number.isFinite(duration)||duration<1||duration>MAX_TIMEOUT_SECONDS)return jsonError("Тайм-аут может длиться от 1 секунды до 28 дней.");
   const existingRule=ruleGetStmt.get(guildId,r.kind) as {enabled:number;action_json:string;threshold_json:string;window_seconds:number;escalation:number}|undefined;
+  const storedActions=safeJson<unknown>(existingRule?.action_json,[]);
+  const cleanStoredActions=Array.isArray(storedActions)?storedActions.filter((x):x is string=>typeof x==="string"):[];
+  const beforeThreshold=existingRule?safeJson<Record<string,unknown>>(existingRule.threshold_json,{}):{};
   if(existingRule){
-    const storedActions=safeJson<unknown>(existingRule.action_json,[]);
-    const unchangedRule=existingRule.enabled===+r.enabled&&existingRule.window_seconds===r.window&&existingRule.escalation===+r.escalation&&stableJson(Array.isArray(storedActions)?storedActions.filter(x=>typeof x==="string"):[])===stableJson(r.actions)&&stableJson(safeJson<unknown>(existingRule.threshold_json,null))===stableJson(r.threshold);
+    const unchangedRule=existingRule.enabled===+r.enabled&&existingRule.window_seconds===r.window&&existingRule.escalation===+r.escalation&&stableJson(cleanStoredActions)===stableJson(r.actions)&&stableJson(beforeThreshold)===stableJson(r.threshold);
     if(unchangedRule)return NextResponse.json({ok:true,unchanged:true});
   }
   ruleUpsertStmt.run(guildId,r.kind,+r.enabled,JSON.stringify(r.actions),JSON.stringify(r.threshold),r.window,+r.escalation,Date.now());
-  recordDashboardChange(guildId,user,"Автомодерация",`Правило «${automodRulesM[r.kind]?.title.ru ?? r.kind}» ${r.enabled ? "включено" : "выключено"} · действия: ${r.actions.join(", ")}`);
+  const payload=(enabled:boolean,actions:string[],window:number,escalation:boolean,threshold:Record<string,unknown>)=>({
+    "Включено":enabled, "Действия":actions, "Окно, с":window, "Эскалация":escalation, ...thresholdDisplay(threshold),
+  });
+  recordDashboardDiff(guildId,user,"Автомодерация",`Правило «${automodRulesM[r.kind]?.title.ru ?? r.kind}»: `,
+    existingRule?payload(Boolean(existingRule.enabled),cleanStoredActions,existingRule.window_seconds,Boolean(existingRule.escalation),beforeThreshold):{},
+    payload(r.enabled,r.actions,r.window,r.escalation,r.threshold));
   return NextResponse.json({ok:true});
 });

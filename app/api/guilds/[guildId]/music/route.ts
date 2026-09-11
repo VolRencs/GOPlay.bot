@@ -2,10 +2,15 @@ import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { musicSettingsFor } from "../../../../../src/lib/music-settings.ts";
 import { clampMusicSeconds } from "../../../../../src/lib/labels.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+import { safeJson } from "../../../../../src/lib/json.ts";
 import { db } from "../../../../../src/db/database.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
 import type { MusicPutBody } from "../../../../../src/components/dashboard/types.ts";
+
+const channelRef = (id: string) => `<#${id}>`;
+const roleRef = (id: string) => `<@&${id}>`;
+const leaveLabel = (seconds: number) => seconds === 0 ? "выключен" : seconds % 60 === 0 ? `${seconds / 60} мин` : `${seconds} с`;
 
 const musicUpsertStmt = db.prepare(
   "INSERT INTO music_settings(guild_id,command_channel_id,voice_channel_ids_json,allowed_role_ids_json,leave_after_seconds) VALUES(?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET command_channel_id=excluded.command_channel_id,voice_channel_ids_json=excluded.voice_channel_ids_json,allowed_role_ids_json=excluded.allowed_role_ids_json,leave_after_seconds=excluded.leave_after_seconds",
@@ -58,6 +63,18 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
 
   musicUpsertStmt.run(guildId, next.command_channel_id, next.voice_channel_ids_json, next.allowed_role_ids_json, next.leave_after_seconds);
 
-  recordDashboardChange(guildId, user, "Музыка", `Настройки музыки обновлены.`);
+  recordDashboardDiff(guildId, user, "Музыка", "Настройки музыки: ",
+    {
+      "Канал команд": current?.command_channel_id ? channelRef(current.command_channel_id) : null,
+      "Голосовые каналы": current ? safeJson<string[]>(current.voice_channel_ids_json, []).map(channelRef) : [],
+      "Разрешённые роли": current ? safeJson<string[]>(current.allowed_role_ids_json, []).map(roleRef) : [],
+      "Автовыход": current ? leaveLabel(current.leave_after_seconds) : null,
+    },
+    {
+      "Канал команд": next.command_channel_id ? channelRef(next.command_channel_id) : null,
+      "Голосовые каналы": ids.map(channelRef),
+      "Разрешённые роли": roles.map(roleRef),
+      "Автовыход": leaveLabel(leaveAfterSeconds),
+    });
   return NextResponse.json({ ok: true });
 });

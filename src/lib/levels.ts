@@ -62,23 +62,26 @@ export function xpForLevel(level: number, baseXp: number, growthPercent: number)
   return total;
 }
 
-export function levelFromXp(xp: number, baseXp: number, growthPercent: number): number {
-  let total = 0;
+/** Один проход по порогам: уровень по XP, накопленный порог и шаг следующего. */
+function levelInfo(xp: number, baseXp: number, growthPercent: number): { level: number; floor: number; need: number } {
+  let floor = 0;
   let need = baseXp;
   for (let level = 1; level <= MAX_LEVEL; level++) {
-    total += need;
-    if (xp < total) return level - 1;
+    if (xp < floor + need) return { level: level - 1, floor, need };
+    floor += need;
     need = Math.round(need * (1 + growthPercent / 100));
   }
-  return MAX_LEVEL;
+  return { level: MAX_LEVEL, floor: 0, need: 0 };
+}
+
+export function levelFromXp(xp: number, baseXp: number, growthPercent: number): number {
+  return levelInfo(xp, baseXp, growthPercent).level;
 }
 
 export function levelProgress(xp: number, baseXp: number, growthPercent: number): { level: number; current: number; needed: number } {
-  const level = levelFromXp(xp, baseXp, growthPercent);
+  const { level, floor, need } = levelInfo(xp, baseXp, growthPercent);
   if (level >= MAX_LEVEL) return { level, current: 0, needed: 0 };
-  const floor = xpForLevel(level, baseXp, growthPercent);
-  const next = xpForLevel(level + 1, baseXp, growthPercent);
-  return { level, current: xp - floor, needed: next - floor };
+  return { level, current: xp - floor, needed: need };
 }
 
 export function buildLevelsPutBody(settings: LevelSettings, rewards: LevelReward[]): LevelsPutBody {

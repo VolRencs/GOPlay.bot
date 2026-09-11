@@ -20,41 +20,14 @@ test("messages, channels and users are aggregated without double counting", () =
   addMessage("g1", "c1", "u1", at(day, 10));
   addMessage("g1", "c2", "u2", at(day, 11));
   flushMetrics();
-  const daily = db.prepare("SELECT * FROM guild_daily_metrics WHERE guild_id='g1'").get() as { day: string; messages: number; active_users: number; peak_messages: number };
-  assert.equal(daily.day, day); assert.equal(daily.messages, 3); assert.equal(daily.active_users, 2); assert.equal(daily.peak_messages, 2);
+  const daily = db.prepare("SELECT * FROM guild_daily_metrics WHERE guild_id='g1'").get() as { day: string; messages: number };
+  assert.equal(daily.day, day); assert.equal(daily.messages, 3);
   const channels = plain(db.prepare("SELECT channel_id,messages FROM guild_daily_channel_stats WHERE guild_id='g1' ORDER BY channel_id").all() as { channel_id: string; messages: number }[]);
   assert.deepEqual(channels, [{ channel_id: "c1", messages: 2 }, { channel_id: "c2", messages: 1 }]);
   const users = plain(db.prepare("SELECT user_id,messages FROM guild_daily_user_stats WHERE guild_id='g1' ORDER BY user_id").all() as { user_id: string; messages: number }[]);
   assert.deepEqual(users, [{ user_id: "u1", messages: 2 }, { user_id: "u2", messages: 1 }]);
   const hourly = plain(db.prepare("SELECT hour,messages FROM guild_hourly_messages WHERE guild_id='g1' ORDER BY hour").all() as { hour: number; messages: number }[]);
   assert.deepEqual(hourly, [{ hour: 10, messages: 2 }, { hour: 11, messages: 1 }]);
-});
-
-test("a user is counted once per day even across repeated flushes", () => {
-  const day = "2026-08-16";
-  addMessage("g1", "c1", "u1", at(day, 9));
-  flushMetrics();
-  addMessage("g1", "c1", "u1", at(day, 12));
-  flushMetrics();
-  const daily = db.prepare("SELECT active_users FROM guild_daily_metrics WHERE guild_id='g1' AND day=?").get(day) as { active_users: number };
-  assert.equal(daily.active_users, 1);
-});
-
-test("a new day counts the same user again", () => {
-  addMessage("g2", "c1", "u1", at("2026-08-01", 9));
-  addMessage("g2", "c1", "u1", at("2026-08-02", 9));
-  flushMetrics();
-  const rows = plain(db.prepare("SELECT day,active_users FROM guild_daily_metrics WHERE guild_id='g2' ORDER BY day").all() as { day: string; active_users: number }[]);
-  assert.deepEqual(rows, [{ day: "2026-08-01", active_users: 1 }, { day: "2026-08-02", active_users: 1 }]);
-});
-
-test("peak tracks the busiest single hour", () => {
-  addMessage("g3", "c1", "u1", at("2026-08-10", 14));
-  addMessage("g3", "c1", "u1", at("2026-08-10", 14));
-  addMessage("g3", "c1", "u1", at("2026-08-10", 15));
-  flushMetrics();
-  const daily = db.prepare("SELECT peak_messages FROM guild_daily_metrics WHERE guild_id='g3'").get() as { peak_messages: number };
-  assert.equal(daily.peak_messages, 2);
 });
 
 test("a deleted guild is evicted without blocking live metrics", () => {

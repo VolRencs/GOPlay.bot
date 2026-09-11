@@ -42,8 +42,6 @@ const channelCache = ttlCacheAsync<string, SendableChannels | null>((channelId) 
 
 export async function resolveChannel(channelId: string): Promise<SendableChannels | null> {
   if (!client) return null;
-  const cached = client.channels.cache.get(channelId);
-  if (cached && "isTextBased" in cached && cached.isTextBased()) return cached as SendableChannels;
   try {
     return await channelCache.get(channelId);
   } catch {
@@ -188,13 +186,9 @@ const logColors: Record<string, number> = {
 function buildEmbed(guildId: string, settings: { channelId: string | null; categories: Record<string, boolean> }, input: Omit<LogActionInput, "guildId">): EmbedBuilder | null {
   const { type, targetId, moderatorId, details } = input;
   if (!settings.channelId) return null;
-  const categories = settings.categories;
-  const legacyCategory = type === "automod" || type === "member_ban" || type === "member_unban" || type === "member_kick" || type === "member_timeout" ? "moderation" : type.startsWith("member_") ? "members" : type.startsWith("message_") ? "messages" : undefined;
-  let allowed: boolean;
-  if (type === "member_warn" || type === "member_warn_clear") allowed = categories.member_warn ?? categories.moderation ?? true;
-  // Типы, отсутствующие в сохранённой конфиге (новые события, конфиги до
-  // появления тумблеров), считаются включёнными; явный false уважается.
-  else allowed = categories[type] ?? (legacyCategory && categories[legacyCategory]) ?? true;
+  // Тип, отсутствующий в сохранённой конфиге (новое событие), считается
+  // включённым; явный false уважается.
+  const allowed = settings.categories[type] ?? true;
   if (!allowed) return null;
   const lang = guildLang(guildId);
   const t = (k: Parameters<typeof logTr>[1], v?: Record<string, string | number>) => logTr(lang, k, v);

@@ -32,19 +32,17 @@ function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] |
 
 export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guildId: string }) {
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("7d");
-  const [data, setData] = useState<StatsGet | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [data, setData] = useState<StatsGet | null | undefined>(undefined);
 
   useEffect(() => {
     if (!guildId) return;
     const controller = new AbortController();
-    setLoaded(false);
-    setData(null);
+    setData(undefined);
     void apiGet<StatsGet | null>(`/api/guilds/${guildId}/stats?period=${period}`, null, controller.signal)
-      .then(value => { if (!controller.signal.aborted) setData(value); })
-      .finally(() => { if (!controller.signal.aborted) setLoaded(true); });
+      .then(value => { if (!controller.signal.aborted) setData(value); });
     return () => controller.abort();
   }, [guildId, period]);
+  const loading = data === undefined;
 
   const totals = data?.totals ?? { joins: 0, leaves: 0, messages: 0, moderation: 0 };
   const points = data?.points ?? [];
@@ -68,8 +66,8 @@ export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guild
       </div>
       <article className="card chart-card">
         <CardHeader title="Активность сообщества" muted={period === "24h" ? "Сообщения по часам." : "Сообщения по дням."}
-          action={!loaded || !points.length ? null : <span className="chart-average-label">среднее {formatNumber(avg)}</span>}/>
-        {!loaded ? <p className="hint" role="status">Загружаем статистику…</p> : !points.length ? <p className="hint">Пока нет данных {periodLabel}.</p> : (
+          action={loading || !points.length ? null : <span className="chart-average-label">среднее {formatNumber(avg)}</span>}/>
+        {loading ? <p className="hint" role="status">Загружаем статистику…</p> : !points.length ? <p className="hint">Пока нет данных {periodLabel}.</p> : (
           <div className="activity-chart" role="img" aria-label={`Активность сообщества ${periodLabel}: пик ${formatNumber(max)} сообщений, среднее ${formatNumber(avg)}.`}>
             <i className="chart-average" style={{ bottom: `${Math.min(97, (avg / max) * 100)}%` }}/>
             {points.map((p, index) => (

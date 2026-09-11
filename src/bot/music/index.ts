@@ -1,8 +1,8 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type GuildMember, type Interaction, type Message, type StringSelectMenuInteraction } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type GuildMember, type Interaction, type StringSelectMenuInteraction } from "discord.js";
 import { count, time } from "../perf.ts";
 import { logger } from "../utils/logger.ts";
 import { stmt } from "../db/statements.ts";
-import { isMissingDiscordResource, replyInteractionError } from "../../lib/errors.ts";
+import { failInteraction, isMissingDiscordResource } from "../../lib/errors.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
@@ -215,13 +215,12 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       : t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }));
     return true;
   } catch (error) {
-    logger.warn("[MUSIC] Команда не выполнена", i.guildId, error);
-    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
+    failInteraction("[MUSIC] Команда не выполнена", i, error, t("genericError"), i.guildId);
     return true;
   }
 }
 
-type PanelRef = { channelId: string; messageId: string; message?: Message };
+type PanelRef = { channelId: string; messageId: string };
 const panels = new Map<string, PanelRef>();
 const panelTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const panelBusy = new Set<string>();
@@ -301,7 +300,7 @@ function renderPanel(state: { current: Track; queuePreview: Track[]; queueLength
 }
 
 async function refreshPanelNow(guildId: string): Promise<void> {
-  let ref = panels.get(guildId);
+  const ref = panels.get(guildId);
   const state = playbackStateOf(guildId);
   if (!state) {
     if (ref) void deletePanelMessage(ref);
@@ -316,13 +315,10 @@ async function refreshPanelNow(guildId: string): Promise<void> {
   if (!channel) return;
   const payload = renderPanel(state, guildLang(guildId));
   if (ref) {
-    // Кэшированный объект Message → правка без GET. После выметания из кэша
-    // discord.js один GET возвращает объект в ref.message, дальше снова edit.
+    // Прямой PATCH по id — один REST-запрос без fetch сообщения.
     try {
-      const message = ref.message ?? await channel.messages.fetch(ref.messageId);
       count("music.panel_edit");
-      await message.edit(payload);
-      ref.message = message;
+      await channel.messages.edit(ref.messageId, payload);
       return;
     } catch (error) {
       // Пересоздаём только когда сообщение/канал реально исчезли; остальное
@@ -336,7 +332,7 @@ async function refreshPanelNow(guildId: string): Promise<void> {
   }
   try {
     const message = await channel.send(payload);
-    panels.set(guildId, { channelId: channel.id, messageId: message.id, message });
+    panels.set(guildId, { channelId: channel.id, messageId: message.id });
     rememberPanel(guildId, channel.id, message.id);
   } catch (error) {
     logger.warn("[MUSIC] Панель не отправлена", guildId, error);
@@ -388,8 +384,7 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
     }
     await i.deferUpdate().catch(() => null);
   } catch (error) {
-    logger.warn("[MUSIC] Кнопка панели не сработала", i.guildId, error);
-    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
+    failInteraction("[MUSIC] Кнопка панели не сработала", i, error, t("genericError"), i.guildId);
   }
 }
 
@@ -473,7 +468,6 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
       return;
     }
   } catch (error) {
-    logger.warn("[MUSIC] Выбор в меню очереди не сработал", i.guildId, error);
-    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
+    failInteraction("[MUSIC] Выбор в меню очереди не сработал", i, error, t("genericError"), i.guildId);
   }
 }

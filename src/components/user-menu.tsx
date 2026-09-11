@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowRight, Check, LogOut, ShieldCheck, X } from "lucide-react";
 import { authClient } from "../lib/auth-client.ts";
-import { useAsyncAction } from "./dashboard/ui.tsx";
+import { useAsyncAction, useDismissOnOutside } from "./dashboard/ui.tsx";
 import type { AccountAccess } from "../lib/access.ts";
 
 export default function UserMenu({ access }: { access: AccountAccess }) {
@@ -10,14 +10,7 @@ export default function UserMenu({ access }: { access: AccountAccess }) {
   const root = useRef<HTMLDivElement>(null);
   const { busy, run } = useAsyncAction();
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => { if (root.current && !root.current.contains(event.target as Node)) setOpen(false); };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKey); };
-  }, [open]);
+  useDismissOnOutside(root, open, () => setOpen(false));
 
   if (!access.authenticated) {
     return <a className="nav-dashboard" href="/login"><span>Войти</span><ArrowRight size={16} /></a>;

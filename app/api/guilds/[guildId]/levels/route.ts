@@ -5,7 +5,9 @@ import { stmt } from "../../../../../src/bot/db/statements.ts";
 import { stableJson } from "../../../../../src/lib/json.ts";
 import { MAX_LEVEL, MAX_REWARDS, levelRanges, notifyModes, type LevelReward, type LevelSettings, type LevelsGet, type NotifyMode } from "../../../../../src/lib/levels.ts";
 import { levelRewardsFor, levelSettingsFor } from "../../../../../src/lib/levels-store.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+
+const notifyModeLabels: Record<NotifyMode, string> = { off: "выключены", dm: "в личные сообщения", channel: "в канал" };
 
 export const GET = guildRoute(async (_, { guildId }) => {
   return NextResponse.json<LevelsGet>({ settings: levelSettingsFor(guildId), rewards: levelRewardsFor(guildId) });
@@ -18,11 +20,14 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   if (!raw.settings || typeof raw.settings !== "object" || Array.isArray(raw.settings)) return jsonError("Некорректные настройки уровней.");
   const s = raw.settings as Record<string, unknown>;
   if (typeof s.enabled !== "boolean") return jsonError("Некорректное состояние системы уровней.");
-  for (const [key, range] of Object.entries(levelRanges)) {
+  const numbers = {} as Record<keyof typeof levelRanges, number>;
+  for (const key of Object.keys(levelRanges) as (keyof typeof levelRanges)[]) {
     const value = s[key];
+    const range = levelRanges[key];
     if (typeof value !== "number" || !Number.isInteger(value) || value < range.min || value > range.max) {
       return jsonError("Некорректные числовые настройки уровней.");
     }
+    numbers[key] = value;
   }
   if (!notifyModes.includes(s.notify_mode as NotifyMode)) return jsonError("Некорректный режим уведомлений.");
   const notifyMode = s.notify_mode as NotifyMode;
@@ -38,22 +43,23 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   for (const entry of raw.rewards) {
     if (!entry || typeof entry !== "object") return jsonError("Некорректная награда за уровень.");
     const reward = entry as Record<string, unknown>;
-    if (!Number.isInteger(reward.level) || (reward.level as number) < 1 || (reward.level as number) > MAX_LEVEL) return jsonError("Некорректный уровень награды.");
+    const level = reward.level;
+    if (typeof level !== "number" || !Number.isInteger(level) || level < 1 || level > MAX_LEVEL) return jsonError("Некорректный уровень награды.");
     if (typeof reward.role_id !== "string" || !isSnowflake(reward.role_id)) return jsonError("Некорректная роль награды.");
-    if (levels.has(reward.level as number)) return jsonError("На один уровень можно назначить только одну роль.");
-    levels.add(reward.level as number);
-    rewards.push({ level: reward.level as number, role_id: reward.role_id });
+    if (levels.has(level)) return jsonError("На один уровень можно назначить только одну роль.");
+    levels.add(level);
+    rewards.push({ level, role_id: reward.role_id });
   }
   rewards.sort((a, b) => a.level - b.level);
 
   const settings: LevelSettings = {
     enabled: s.enabled,
-    xp_per_message: s.xp_per_message as number,
-    message_cooldown_seconds: s.message_cooldown_seconds as number,
-    min_message_length: s.min_message_length as number,
-    xp_per_voice_minute: s.xp_per_voice_minute as number,
-    base_xp: s.base_xp as number,
-    growth_percent: s.growth_percent as number,
+    xp_per_message: numbers.xp_per_message,
+    message_cooldown_seconds: numbers.message_cooldown_seconds,
+    min_message_length: numbers.min_message_length,
+    xp_per_voice_minute: numbers.xp_per_voice_minute,
+    base_xp: numbers.base_xp,
+    growth_percent: numbers.growth_percent,
     ignored_channel_ids: [...ignoredChannels],
     ignored_role_ids: [...ignoredRoles],
     notify_mode: notifyMode,
@@ -69,6 +75,34 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     stmt.levelRewardsDelete.run(guildId);
     for (const reward of rewards) stmt.levelRewardsInsert.run(guildId, reward.level, reward.role_id);
   });
-  recordDashboardChange(guildId, user, "Уровни", `Система уровней ${settings.enabled ? "включена" : "выключена"} · XP: ${settings.xp_per_message}/сообщение, ${settings.xp_per_voice_minute}/мин голоса · наград: ${rewards.length}`);
+  recordDashboardDiff(guildId, user, "Уровни", "Система уровней: ",
+    {
+      "Система уровней": current.settings.enabled,
+      "XP за сообщение": current.settings.xp_per_message,
+      "Кулдаун сообщений, с": current.settings.message_cooldown_seconds,
+      "Мин. длина сообщения": current.settings.min_message_length,
+      "XP за минуту голоса": current.settings.xp_per_voice_minute,
+      "Базовый XP": current.settings.base_xp,
+      "Рост, %": current.settings.growth_percent,
+      "Исключённые каналы": current.settings.ignored_channel_ids.map(id => `<#${id}>`),
+      "Исключённые роли": current.settings.ignored_role_ids.map(id => `<@&${id}>`),
+      "Уведомления": notifyModeLabels[current.settings.notify_mode],
+      "Канал уведомлений": current.settings.notify_channel_id ? `<#${current.settings.notify_channel_id}>` : null,
+      "Награды": current.rewards.map(reward => `ур. ${reward.level} → <@&${reward.role_id}>`),
+    },
+    {
+      "Система уровней": settings.enabled,
+      "XP за сообщение": settings.xp_per_message,
+      "Кулдаун сообщений, с": settings.message_cooldown_seconds,
+      "Мин. длина сообщения": settings.min_message_length,
+      "XP за минуту голоса": settings.xp_per_voice_minute,
+      "Базовый XP": settings.base_xp,
+      "Рост, %": settings.growth_percent,
+      "Исключённые каналы": settings.ignored_channel_ids.map(id => `<#${id}>`),
+      "Исключённые роли": settings.ignored_role_ids.map(id => `<@&${id}>`),
+      "Уведомления": notifyModeLabels[settings.notify_mode],
+      "Канал уведомлений": settings.notify_channel_id ? `<#${settings.notify_channel_id}>` : null,
+      "Награды": rewards.map(reward => `ур. ${reward.level} → <@&${reward.role_id}>`),
+    });
   return NextResponse.json({ ok: true });
 });

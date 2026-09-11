@@ -1,9 +1,8 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Interaction, type ModalSubmitInteraction } from "discord.js";
 import { createAppeal, declineAppeal } from "../../lib/appeals.ts";
 import { punishmentLabel } from "../../lib/labels.ts";
-import { replyInteractionError } from "../../lib/errors.ts";
+import { failInteraction } from "../../lib/errors.ts";
 import { count } from "../perf.ts";
-import { logger } from "../utils/logger.ts";
 import { guildLang } from "../../lib/i18n/bot.ts";
 import { trAppeals } from "../../lib/i18n/bot/appeals.ts";
 
@@ -16,8 +15,7 @@ async function handleInteraction(i: Interaction) {
     if (i.isButton() && i.customId.startsWith("appeal:offer:")) await handleOffer(i);
     else if (i.isModalSubmit() && i.customId.startsWith("appeal:modal:")) await handleModal(i);
   } catch (error) {
-    logger.warn("[APPEALS] Взаимодействие не обработано", i.guildId ?? "dm", error);
-    if (i.isRepliable()) replyInteractionError(i, trAppeals(guildLang(i.guildId ?? ""), "genericError"));
+    failInteraction("[APPEALS] Взаимодействие не обработано", i, error, trAppeals(guildLang(i.guildId ?? ""), "genericError"), i.guildId ?? "dm");
   }
 }
 

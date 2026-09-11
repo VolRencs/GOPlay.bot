@@ -8,7 +8,7 @@ export const SERVER_FALLBACK_NAME = "Discord server";
 // (значения совпадают с enum discord.js) и payload'ам панели.
 export const BUTTON_STYLE_IDS = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;
 type ButtonStyleName = keyof typeof BUTTON_STYLE_IDS;
-export const buttonStyleId = (name: string): number => BUTTON_STYLE_IDS[name as ButtonStyleName] ?? BUTTON_STYLE_IDS.primary;
+export const buttonStyleId = (name: string): number => Object.hasOwn(BUTTON_STYLE_IDS, name) ? BUTTON_STYLE_IDS[name as ButtonStyleName] : BUTTON_STYLE_IDS.primary;
 
 /** Парсит число в диапазон: нечисло → fallback; mode — округление/целочисленность. */
 export function clampNumber(value: unknown, fallback: number, min: number, max: number, mode: "exact" | "round" | "integer" = "exact"): number {

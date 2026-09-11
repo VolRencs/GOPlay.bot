@@ -7,7 +7,7 @@ const contentTypes: Record<string, string> = { png: "image/png", jpg: "image/jpe
 
 export const GET = guildRoute<{ kind: string; guildId: string; filename: string }>(async (_, { guildId, params }) => {
   const { kind, filename } = params;
-  if ((kind !== "embeds" && kind !== "events") || !isSnowflake(guildId) || !filename || filename.includes("/") || filename.includes("\\") || filename.includes("..")) return new Response(null, { status: 404 });
+  if ((kind !== "embeds" && kind !== "events") || !isSnowflake(guildId) || !filename) return new Response(null, { status: 404 });
   // Загрузки модераторов — не публичный контент «по угаданному URL»: читать
   // могут только пользователи панели (<img> в дашборде шлёт cookies сам).
   // Проверяем доступ именно к этой гильдии, иначе кросс-гильд IDOR.

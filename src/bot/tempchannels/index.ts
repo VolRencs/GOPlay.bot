@@ -7,7 +7,7 @@ import { parseStringArray } from "../../lib/json.ts";
 import { DEFAULT_SETTINGS, type TempConfig } from "../../lib/tempchannels.ts";
 import { stopAndLeave } from "../../lib/player/session.ts";
 import { tempTr, guildTr } from "../../lib/i18n/bot.ts";
-import { isMissingDiscordResource, replyInteractionError } from "../../lib/errors.ts";
+import { failInteraction, isMissingDiscordResource } from "../../lib/errors.ts";
 
 type TempRow = { id: number; guild_id: string; channel_id: string; owner_id: string; panel_message_id: string | null; source_channel_id: string | null; created_at: number };
 type TempPresetRow = TempConfig & { guild_id: string; name: string; trigger_channel_ids_json: string; updated_at: number };
@@ -106,17 +106,13 @@ async function handleTriggerJoin(guild: Guild, member: GuildMember, triggerChann
 
 // 10003 = канал реально удалён; прочие сбои транзиентны (сеть, rate limit,
 // авария API) и обязаны сохранять строку БД — иначе живой канал осиротеет.
-function unknownChannel(error: unknown): boolean {
-  return isMissingDiscordResource(error, "channel");
-}
-
 // Служебный fetch голосового канала: null — канал удалён (строку БД снимаем),
 // undefined — транзиентный сбой (строку сохраняем до следующей попытки).
 async function fetchTempChannel(guild: Guild, channelId: string): Promise<VoiceChannel | null | undefined> {
   return guild.channels.fetch(channelId).then(
     (value) => value as VoiceChannel | null,
     (error: unknown) => {
-      if (!unknownChannel(error)) { logger.warn("[TEMP] Канал недоступен, строка сохранена", guild.id, channelId, error); return undefined; }
+      if (!isMissingDiscordResource(error, "channel")) { logger.warn("[TEMP] Канал недоступен, строка сохранена", guild.id, channelId, error); return undefined; }
       return null as VoiceChannel | null;
     },
   );
@@ -124,6 +120,12 @@ async function fetchTempChannel(guild: Guild, channelId: string): Promise<VoiceC
 
 function isTempEmpty(channel: VoiceChannel): boolean {
   return !channel.members.some((m) => !m.user.bot);
+}
+
+async function destroyTempChannel(guild: Guild, channelId: string, channel: VoiceChannel): Promise<void> {
+  stmt.tempDelete.run(channelId);
+  if (guild.members.me?.voice.channelId === channelId) stopAndLeave(guild.id);
+  await channel.delete().catch((error) => logger.warn("[TEMP] Удаление пустого канала не удалось", guild.id, error));
 }
 
 // Один таймер на канал: уход всей компании эмитит по voice-event на каждого,
@@ -138,11 +140,7 @@ function scheduleEmptinessCheck(guild: Guild, channelId: string) {
       const channel = await fetchTempChannel(guild, channelId);
       if (channel === undefined) return; // транзиентный сбой — строка ждёт следующей проверки
       if (!channel) { stmt.tempDelete.run(channelId); return; }
-      if (isTempEmpty(channel)) {
-        stmt.tempDelete.run(channelId);
-        if (guild.members.me?.voice.channelId === channelId) stopAndLeave(guild.id);
-        await channel.delete().catch((error) => logger.warn("[TEMP] Удаление пустого канала не удалось", guild.id, error));
-      }
+      if (isTempEmpty(channel)) await destroyTempChannel(guild, channelId, channel);
     } catch (error) {
       logger.warn("[TEMP] Проверка пустоты канала не удалась", guild.id, error);
     }
@@ -238,8 +236,7 @@ async function handleInteraction(i: Interaction) {
     if (i.isButton() && i.customId.startsWith("temp:")) await handlePanelButton(i, i.customId.slice("temp:".length));
     else if (i.isModalSubmit() && i.customId.startsWith("temp:modal-")) await handleModalSubmit(i, i.customId.slice("temp:modal-".length));
   } catch (error) {
-    logger.warn("[TEMP] Действие панели не выполнено", i.guildId, error);
-    if (i.isRepliable()) replyInteractionError(i, t("genericError"));
+    failInteraction("[TEMP] Действие панели не выполнено", i, error, t("genericError"), i.guildId);
   }
 }
 
@@ -350,13 +347,16 @@ export async function cleanupTempChannels(client: Client) {
     if (fetched === undefined) continue;
     if (!fetched) { stmt.tempDelete.run(row.channel_id); continue; }
     if (isTempEmpty(fetched)) {
-      stmt.tempDelete.run(row.channel_id);
-      if (guild.members.me?.voice.channelId === row.channel_id) stopAndLeave(guild.id);
-      await fetched.delete().catch((error) => logger.warn("[TEMP] Очистка канала не удалась", row.guild_id, error));
+      await destroyTempChannel(guild, row.channel_id, fetched);
       continue;
     }
     if (row.panel_message_id) {
-      const message = await fetched.messages.fetch(row.panel_message_id).catch(() => null);
+      // Транзиентный сбой сети/rate limit не должен порождать вторую панель.
+      const message = await fetched.messages.fetch(row.panel_message_id).catch((error) => {
+        if (isMissingDiscordResource(error, "message")) return null;
+        logger.warn("[TEMP] Панель канала не проверена, повтор позже", row.guild_id, error);
+        return "error" as const;
+      });
       if (message) continue;
     }
     const panel = await sendPanel(guild, fetched);

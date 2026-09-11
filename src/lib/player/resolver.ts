@@ -29,12 +29,11 @@ export const safeYtDlpTarget = (query: string): string | null => (isAllowedMedia
 
 function probeBinary(command: string, args: string[], capture: boolean, verdict: (code: number | null, stdout: string) => boolean): Promise<boolean> {
   return new Promise(resolve => {
-    const proc = spawn(command, args, { stdio: capture ? ["ignore", "pipe", "ignore"] : "ignore", windowsHide: true });
+    const proc = spawn(command, args, { stdio: capture ? ["ignore", "pipe", "ignore"] : "ignore", windowsHide: true, signal: AbortSignal.timeout(5_000) });
     let stdout = "";
     if (capture) proc.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
-    const watchdog = setTimeout(() => proc.kill(), 5_000);
-    proc.once("error", () => { clearTimeout(watchdog); resolve(false); });
-    proc.once("close", code => { clearTimeout(watchdog); resolve(verdict(code, stdout)); });
+    proc.once("error", () => resolve(false));
+    proc.once("close", code => resolve(verdict(code, stdout)));
   });
 }
 
@@ -136,19 +135,21 @@ function runYtDlpJsonOnce(query: string): Promise<{ meta: Record<string, unknown
     if (!target) return resolve({ meta: null, error: "unsupported-url" });
     // Кап плейлиста отдаём yt-dlp (--playlist-items): бесконечные Mix'ы иначе
     // рвут JSON на RAM-капе и не парсятся. Watchdog против зависшего спавна.
-    const proc = spawn(YT_DLP, ytDlpArgs("--skip-download", "--flat-playlist", "--playlist-items", `1-${MAX_PLAYLIST}`, "-J", target), { windowsHide: true });
+    const proc = spawn(YT_DLP, ytDlpArgs("--skip-download", "--flat-playlist", "--playlist-items", `1-${MAX_PLAYLIST}`, "-J", target), { windowsHide: true, signal: AbortSignal.timeout(60_000) });
     const chunks: Buffer[] = [];
     let size = 0, errTail = "", capped = false;
-    const watchdog = setTimeout(() => proc.kill(), 60_000);
     proc.stdout.on("data", (chunk: Buffer) => {
       chunks.push(chunk); // буферы, не строки: граница chunk'а может резать UTF-8
       size += chunk.length;
       if (size > 8 * 1024 * 1024 && !capped) { capped = true; proc.kill(); }
     });
     proc.stderr.on("data", chunk => { errTail = `${errTail}${chunk}`.slice(-400); });
-    proc.once("error", () => { clearTimeout(watchdog); resolve({ meta: null, error: "yt-dlp failed to spawn" }); });
+    proc.once("error", (error: Error) => {
+      // Таймаут signal: close-путь ниже сформирует ту же ошибку, что и kill.
+      if (error.name === "AbortError") return;
+      resolve({ meta: null, error: "yt-dlp failed to spawn" });
+    });
     proc.once("close", code => {
-      clearTimeout(watchdog);
       // Процесс, срезанный собственным капом, закрывается с code === null:
       // это не ошибка — обрезанный вывод чинится в parseYtDlpMeta(out, capped).
       const cappedExit = capped && code === null;
@@ -170,7 +171,7 @@ const BOTCHECK_RE = /confirm|sign in|cookies/i;
 export const isBotcheckError = (text: string): boolean => BOTCHECK_RE.test(text);
 
 // Хосты одиночного видео: как в ALLOWED_MEDIA_HOSTS, но без music.youtube.com.
-const SINGLE_VIDEO_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"]);
+const SINGLE_VIDEO_HOSTS = new Set([...ALLOWED_MEDIA_HOSTS].filter(host => host !== "music.youtube.com"));
 
 /** Одиночное YouTube-видео (watch/shorts/youtu.be) без list=: достаточно одной
  *  -J экстракции, название и длительность доедут параллельной гидрацией. */
@@ -188,16 +189,19 @@ export function isSingleYouTubeVideoUrl(query: string): boolean {
   } catch { return false; }
 }
 
+function cacheSingleMeta(key: string, title: string, duration: number, mediaUrl: string | null): void {
+  evictOldest(singleMeta);
+  singleMeta.set(key, { at: Date.now(), title, duration, ...(mediaUrl ? { mediaUrl, mediaUrlExpiresAt: Date.now() + MEDIA_URL_TTL_MS } : {}) });
+}
+
 function trackFromFullMeta(meta: Record<string, unknown>, fallbackQuery: string, requestedBy: string): Track | null {
   const duration = typeof meta.duration === "number" ? meta.duration : 0;
   if (duration > MAX_DURATION_SECONDS) return null;
   const mediaUrl = pickAudioUrl(meta);
-  const expiresAt = Date.now() + MEDIA_URL_TTL_MS;
   const track: Track = { query: String(meta.webpage_url ?? fallbackQuery), title: String(meta.title ?? fallbackQuery), requestedBy, ...(duration > 0 ? { duration } : {}) };
   // Прямой URL экономит вторую полную экстракцию на старте стрима.
-  if (mediaUrl) { track.mediaUrl = mediaUrl; track.mediaUrlExpiresAt = expiresAt; }
-  evictOldest(singleMeta);
-  singleMeta.set(normalizeTrackKey(track.query), { at: Date.now(), title: track.title, duration, ...(mediaUrl ? { mediaUrl, mediaUrlExpiresAt: expiresAt } : {}) });
+  if (mediaUrl) { track.mediaUrl = mediaUrl; track.mediaUrlExpiresAt = Date.now() + MEDIA_URL_TTL_MS; }
+  cacheSingleMeta(normalizeTrackKey(track.query), track.title, duration, mediaUrl);
   return track;
 }
 
@@ -268,8 +272,7 @@ export function hydrateTrackMeta(track: Track, guildId: string): void {
     if (!meta || meta._type === "playlist") { track.metaPending = false; return; }
     const duration = typeof meta.duration === "number" ? meta.duration : 0;
     const mediaUrl = pickAudioUrl(meta);
-    evictOldest(singleMeta);
-    singleMeta.set(key, { at: Date.now(), title: String(meta.title ?? track.query), duration, ...(mediaUrl ? { mediaUrl, mediaUrlExpiresAt: Date.now() + MEDIA_URL_TTL_MS } : {}) });
+    cacheSingleMeta(key, String(meta.title ?? track.query), duration, mediaUrl);
     applyHydration(track, guildId, String(meta.title ?? track.title), duration, mediaUrl ?? undefined, mediaUrl ? Date.now() + MEDIA_URL_TTL_MS : undefined);
   }).catch(() => { track.metaPending = false; });
 }

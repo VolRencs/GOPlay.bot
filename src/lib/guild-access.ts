@@ -205,15 +205,14 @@ export async function readJson<T>(request: Request): Promise<T | null> {
 }
 
 export async function sendDiscordDM(userId: string, content: string): Promise<boolean> {
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) return false;
+  if (!process.env.DISCORD_TOKEN) return false;
   try {
-    const h = { Authorization: `Bot ${token}`, "content-type": "application/json" } as const;
-    const ch = await fetch(`https://discord.com/api/v10/users/${userId}/channels`, { method: "POST", headers: h, body: JSON.stringify({ recipient_id: userId }), cache: "no-store" });
-    if (!ch.ok) return false;
-    const { id } = (await ch.json()) as { id: string };
-    const msg = await fetch(`https://discord.com/api/v10/channels/${id}/messages`, { method: "POST", headers: h, body: JSON.stringify({ content: content.slice(0, 2000) }), cache: "no-store" });
-    return msg.ok;
+    const headers = { "content-type": "application/json" };
+    const channel = await discordFetch(`/users/${userId}/channels`, { method: "POST", headers, body: JSON.stringify({ recipient_id: userId }) });
+    if (!channel.ok) return false;
+    const { id } = await channel.json() as { id: string };
+    const message = await discordFetch(`/channels/${id}/messages`, { method: "POST", headers, body: JSON.stringify({ content: content.slice(0, 2000) }) });
+    return message.ok;
   } catch { return false; }
 }
 

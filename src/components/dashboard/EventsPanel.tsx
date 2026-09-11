@@ -6,7 +6,7 @@ import { eventStatusMeta } from "../../../src/lib/labels.ts";
 import { safeJson } from "../../../src/lib/json.ts";
 import type { EventListGet, EventListItem } from "../../../src/lib/events.ts";
 import { buttonColorOptions, DEFAULT_ACCENT, type Channel, type EmbedField, type PanelFail, type PanelNotify, type Role, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, useAsyncAction, useObjectUrl } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, useAsyncAction, useObjectUrl, useSessionDraft } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 
 const EVENT_TONE: Record<string, string> = { scheduled: "pill-info", live: "pill-ok", completed: "pill-accent", cancelled: "pill-err" };
@@ -45,16 +45,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
   const imagePreview = useObjectUrl(draft.imageFile) || draft.image;
 
   const draftKey = `goplay-draft-event-${guildId}`;
-  useEffect(() => {
-    if (!guildId) return;
-    const timer = setTimeout(() => {
-      try {
-        // Файлы не сериализуемы — replacer выкидывает их без промежуточных копий.
-        sessionStorage.setItem(draftKey, JSON.stringify({ editingId, ...draft }, (_key, value) => value instanceof File ? undefined : value));
-      } catch { /* storage full or unavailable */ }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [draftKey, guildId, editingId, draft]);
+  useSessionDraft(draftKey, Boolean(guildId), [editingId, draft], () => ({ editingId, ...draft }));
   useEffect(() => {
     if (!guildId) return;
     try {

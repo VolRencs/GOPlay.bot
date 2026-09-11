@@ -56,9 +56,8 @@ export function startAudioStream(opts: { track: Track; player: AudioPlayer; offs
   const { track, player } = opts;
   const offset = opts.offsetSec && opts.offsetSec > 0 ? Math.floor(opts.offsetSec) : 0;
   let settled = false, cancelled = false, finished = false;
-  let resolveOutcome!: (o: StreamOutcome) => void;
+  const { promise, resolve: resolveOutcome } = Promise.withResolvers<StreamOutcome>();
   const settle = (value: StreamOutcome) => { if (!settled) { settled = true; resolveOutcome(value); } };
-  const promise = new Promise<StreamOutcome>(resolve => { resolveOutcome = resolve; });
 
   // Прямой URL живёт ограниченное время: протух или не выдался — через yt-dlp.
   const viaExtractor = !(track.mediaUrl && track.mediaUrlExpiresAt && Date.now() < track.mediaUrlExpiresAt && isAllowedStreamUrl(track.mediaUrl));

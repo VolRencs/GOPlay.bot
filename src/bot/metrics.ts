@@ -1,4 +1,4 @@
-import { stmt } from "./db/statements.ts";
+import { aliveGuildIds, isForeignKeyError, stmt } from "./db/statements.ts";
 import { logger } from "./utils/logger.ts";
 import { unrefInterval } from "./utils/timers.ts";
 import { db, withTransaction } from "../db/database.ts";
@@ -9,8 +9,6 @@ type MetricKey = "joins" | "leaves" | "messages" | "moderation";
 type Counts = Record<MetricKey, number>;
 
 const pending = new Map<string, Map<string, Counts>>();
-const messageUsers = new Map<string, Set<string>>();
-const flushedUsers = new Map<string, Set<string>>();
 const channelCounts = new Map<string, Map<string, number>>();
 const userCounts = new Map<string, Map<string, number>>();
 const hourlyCounts = new Map<string, Map<number, number>>();
@@ -45,11 +43,6 @@ export function addMessage(guildId: string, channelId: string, userId: string, a
   const hour = date.getUTCHours();
   const key = `${guildId}:${day}`;
   countsFor(guildId, day).messages += 1;
-  if (!flushedUsers.get(key)?.has(userId)) {
-    const users = messageUsers.get(key) ?? new Set<string>();
-    users.add(userId);
-    messageUsers.set(key, users);
-  }
   const channels = channelCounts.get(key) ?? new Map<string, number>();
   channels.set(channelId, (channels.get(channelId) ?? 0) + 1);
   channelCounts.set(key, channels);
@@ -70,7 +63,7 @@ function noteFlushFailure(error: unknown, started: number): void {
   time("db.metrics_flush", performance.now() - started);
 }
 
-type FlushRow = { guildId: string; day: string; key: string; counts: Counts; activeUsersDelta: number; peak: number };
+type FlushRow = { guildId: string; day: string; key: string; counts: Counts };
 
 export function flushMetrics() {
   // Пустой буфер: не открываем BEGIN IMMEDIATE каждые 5 c — соседний
@@ -78,13 +71,8 @@ export function flushMetrics() {
   if (!pending.size) return;
   const started = performance.now();
   const rows: FlushRow[] = [];
-  const newActive: { key: string; ids: string[] }[] = [];
   for (const [guildId, days] of pending) for (const [day, counts] of days) {
-    const key = `${guildId}:${day}`;
-    const users = messageUsers.get(key), flushed = flushedUsers.get(key) ?? new Set<string>();
-    const fresh = users ? [...users].filter(id => !flushed.has(id)) : [];
-    if (fresh.length) newActive.push({ key, ids: fresh });
-    rows.push({ guildId, day, key, counts, activeUsersDelta: fresh.length, peak: Math.max(0, ...(hourlyCounts.get(key)?.values() ?? [])) });
+    rows.push({ guildId, day, key: `${guildId}:${day}`, counts });
   }
   try {
     commitWindow(rows);
@@ -93,14 +81,12 @@ export function flushMetrics() {
     logger.warn("Метрики содержали данные стёртой гильдии — ключи выкинуты, повторяю флеш");
     const alive = evictDeadGuildKeys();
     if (!alive) { noteFlushFailure(error, started); return; }
-    // Буферы уже очищены evict'ом, но посчитанные rows/newActive ещё содержат
-    // мёртвую гильдию — без фильтра повторный commit упал бы тем же FK.
+    // Буферы уже очищены evict'ом, но посчитанные rows ещё содержат мёртвую
+    // гильдию — без фильтра повторный commit упал бы тем же FK.
     for (let i = rows.length - 1; i >= 0; i--) if (!alive.has(rows[i]!.guildId)) rows.splice(i, 1);
-    for (let i = newActive.length - 1; i >= 0; i--) if (!alive.has(guildIdOfKey(newActive[i]!.key))) newActive.splice(i, 1);
     try { commitWindow(rows); } catch (retryError) { noteFlushFailure(retryError, started); return; }
   }
   flushFailures = 0;
-  for (const entry of newActive) { const flushed = flushedUsers.get(entry.key) ?? new Set<string>(); for (const id of entry.ids) flushed.add(id); flushedUsers.set(entry.key, flushed); }
   pending.clear();
   channelCounts.clear();
   userCounts.clear();
@@ -111,7 +97,7 @@ export function flushMetrics() {
 function commitWindow(rows: FlushRow[]): void {
   withTransaction(() => {
     for (const row of rows) {
-      stmt.metric.run(row.guildId, row.day, row.counts.joins, row.counts.leaves, row.counts.messages, row.counts.moderation, row.activeUsersDelta, row.peak);
+      stmt.metric.run(row.guildId, row.day, row.counts.joins, row.counts.leaves, row.counts.messages, row.counts.moderation);
       const channels = channelCounts.get(row.key);
       if (channels) for (const [channelId, messages] of channels) stmt.channelMetric.run(row.guildId, row.day, channelId, messages);
       const byUser = userCounts.get(row.key);
@@ -122,20 +108,15 @@ function commitWindow(rows: FlushRow[]): void {
   });
 }
 
-function isForeignKeyError(error: unknown): boolean {
-  return error instanceof Error && /FOREIGN KEY/i.test(error.message);
-}
-
 const guildIdOfKey = (key: string): string => key.slice(0, key.indexOf(":"));
 
 /** Выкидывает из буферов дельты гильдий, которых уже нет в БД.
  *  Возвращает множество живых гильдий (null — БД недоступна). */
 function evictDeadGuildKeys(): Set<string> | null {
-  let alive: Set<string>;
-  try { alive = new Set((stmt.guildIds.all() as { id: string }[]).map(r => r.id)); }
-  catch { return null; }
+  const alive = aliveGuildIds();
+  if (!alive) return null;
   for (const guildId of [...pending.keys()]) if (!alive.has(guildId)) pending.delete(guildId);
-  for (const map of [channelCounts, userCounts, hourlyCounts, messageUsers, flushedUsers]) {
+  for (const map of [channelCounts, userCounts, hourlyCounts]) {
     for (const key of [...map.keys()]) if (!alive.has(guildIdOfKey(key))) map.delete(key);
   }
   return alive;
@@ -148,8 +129,6 @@ unrefInterval(() => {
     for (const cleanup of [stmt.cleanupChannelStats, stmt.cleanupUserStats, stmt.cleanupHourlyStats, stmt.cleanupDailyStats]) cleanup.run(cutoff);
     moderationPrune.run(Date.now() - MODERATION_RETENTION_DAYS * 86_400_000);
     pruneOldEvents();
-    const minDay = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
-    for (const key of messageUsers.keys()) if (key.slice(key.indexOf(":") + 1) < minDay) { messageUsers.delete(key); flushedUsers.delete(key); }
   } catch (error) {
     logger.warn("Очистка статистики не удалась", error);
   }

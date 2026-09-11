@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Image, Trash2, User } from "lucide-react";
 import { safeJson } from "../../../src/lib/json.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, useAsyncAction, useObjectUrl } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, useAsyncAction, useObjectUrl, useSessionDraft } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type SavedEmbed } from "./types.ts";
 
@@ -47,13 +47,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
   const authorIconPreview = useObjectUrl(authorFile) || form.authorIcon;
 
   const draftKey = `goplay-draft-embeds-${guildId}`;
-  useEffect(() => {
-    if (!guildId) return;
-    const timer = setTimeout(() => {
-      try { sessionStorage.setItem(draftKey, JSON.stringify({ ...form, id: form.id ?? null })); } catch { /* storage full or unavailable */ }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [draftKey, guildId, form]);
+  useSessionDraft(draftKey, Boolean(guildId), [form], () => form);
   useEffect(() => {
     if (!guildId) return;
     try {
@@ -148,7 +142,6 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
     await run(async () => {
       const upload = new FormData();
       upload.set("data", JSON.stringify({ id: form.id, name: form.name, mode: form.mode, saveOnly: action === "save", updateMessage: action === "update", payload }));
-      upload.set("name", form.name);
       if (imageFile) upload.set("imageFile", imageFile);
       if (thumbnailFile) upload.set("thumbnailFile", thumbnailFile);
       if (authorFile) upload.set("authorFile", authorFile);

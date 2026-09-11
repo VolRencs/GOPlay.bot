@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Bot, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, X } from "lucide-react";
 import { buildWelcomePutBody, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../src/lib/welcome.ts";
 import { automodRules, buildLoggingPutBody, type LoggingGet, type LoggingPutBody } from "../../../src/lib/labels.ts";
@@ -42,6 +42,7 @@ const TAB_LABELS: Record<TabKey, { nav: string; title: string }> = {
 
 type Toast = { id: number; text: string; tone: "ok" | "warn" | "error" };
 let toastSeq = 0;
+const dirty = (a: unknown, b: unknown) => a !== null && stableStringify(a) !== stableStringify(b);
 
 export default function GuildSettings({ params }: { params: Promise<{ guildId: string }> }) {
   const [guildId, setGuildId] = useState("");
@@ -127,7 +128,7 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       ]);
       if (!resourcesRes.ok || !welcomeRes.ok || !rulesRes.ok || !loggingRes.ok || !tempRes.ok || !langRes.ok || !musicRes.ok || !levelsRes.ok) {
         const failed=[resourcesRes,welcomeRes,rulesRes,loggingRes,tempRes,langRes,musicRes,levelsRes].find(response=>!response.ok);
-        if(active) fail(!failed || failed.ok ? loadFail : failed.error);
+        if(active) fail(failed!.error);
         return;
       }
       const resourceData = resourcesRes.data, welcomeData = welcomeRes.data, automodData = rulesRes.data, loggingData = loggingRes.data, tempData = tempRes.data, langData = langRes.data, musicData = musicRes.data, levelsData = levelsRes.data;
@@ -186,7 +187,8 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
     const payload: LevelsPutBody = buildLevelsPutBody(levels.settings, levels.rewards);
     return apiPut<LevelsPutBody>(`/api/guilds/${guildId}/levels`, payload, () => { setLevels(payload); setSavedLevels(payload); }, "Настройки уровней сохранены.", report);
   }
-  async function saveAutoMod(): Promise<void>{let ok=await saveSecurity(false); for(const k of Object.keys(rules)) ok=(await saveRule(k,false))&&ok; if(ok) notify("Настройки автомодерации сохранены.");}
+  async function saveDirtyRules():Promise<boolean>{let ok=true;for(const k of Object.keys(rules)) if(dirty(savedRules?.[k]??null,rules[k])) ok=(await saveRule(k,false))&&ok;return ok;}
+  async function saveAutoMod(): Promise<void>{let ok=true;if(securityDirty)ok=await saveSecurity(false);if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(ok) notify("Настройки автомодерации сохранены.");}
 
   function updateRule(kind: string, change: Partial<Rule>) {
     const current = rules[kind] ?? defaultRule(kind);
@@ -194,18 +196,17 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
   }
 
   async function uploadWelcomeBackground(file: File) { const body=new FormData(); body.set("background",file); const sent=await apiSend<{backgroundPath:string}>(`/api/guilds/${guildId}/welcome`,{method:"POST",body},"Не удалось загрузить фон."); if(sent.ok){const data=sent.data;setWelcome(v=>({...v,background_path:data.backgroundPath}));setSavedWelcome(p=>p?{...p,background_path:data.backgroundPath}:p);setBgTimestamp(Date.now());notify("Фон загружен.");}else fail(sent.error); }
-  const dirty=(a:unknown,b:unknown)=>a!==null&&stableStringify(a)!==stableStringify(b);
-  const welcomeDirty=dirty(savedWelcome,welcome);
-  const rulesDirty=dirty(savedRules,rules);
-  const securityDirty=dirty(savedSecurity,{roles:ignoredRoleIds,channel:protectedChannelId});
-  const loggingDirty=dirty(savedLogging,logging);
-  const tempDirty=dirty(savedTemp,temp);
-  const langDirty=dirty(savedServerLang,serverLang);
-  const musicDirty=dirty(savedMusic,music);
-  const levelsDirty=dirty(savedLevels,levels);
+  const welcomeDirty=useMemo(()=>dirty(savedWelcome,welcome),[savedWelcome,welcome]);
+  const rulesDirty=useMemo(()=>dirty(savedRules,rules),[savedRules,rules]);
+  const securityDirty=useMemo(()=>dirty(savedSecurity,{roles:ignoredRoleIds,channel:protectedChannelId}),[savedSecurity,ignoredRoleIds,protectedChannelId]);
+  const loggingDirty=useMemo(()=>dirty(savedLogging,logging),[savedLogging,logging]);
+  const tempDirty=useMemo(()=>dirty(savedTemp,temp),[savedTemp,temp]);
+  const langDirty=useMemo(()=>dirty(savedServerLang,serverLang),[savedServerLang,serverLang]);
+  const musicDirty=useMemo(()=>dirty(savedMusic,music),[savedMusic,music]);
+  const levelsDirty=useMemo(()=>dirty(savedLevels,levels),[savedLevels,levels]);
   const isDirty=Boolean(guildId)&&(welcomeDirty||rulesDirty||securityDirty||loggingDirty||tempDirty||langDirty||musicDirty||levelsDirty);
-  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty) for(const k of Object.keys(rules)) if(dirty(savedRules?.[k] ?? null,rules[k])) ok=(await saveRule(k,false))&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDirty)ok=(await saveLogging(false))&&ok;if(tempDirty)ok=(await saveTemp(false))&&ok;if(langDirty)ok=(await saveLang(false))&&ok;if(musicDirty)ok=(await saveMusic(false))&&ok;if(levelsDirty)ok=(await saveLevels(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
-  function discardChanges(){if(savedServerLang)setServerLang(savedServerLang);if(savedMusic)setMusic(savedMusic);if(savedWelcome)setWelcome(savedWelcome);if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}if(savedLogging)setLogging(savedLogging);if(savedTemp)setTemp(savedTemp);if(savedLevels)setLevels(savedLevels);notify("Несохранённые изменения сброшены.");}
+  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDirty)ok=(await saveLogging(false))&&ok;if(tempDirty)ok=(await saveTemp(false))&&ok;if(langDirty)ok=(await saveLang(false))&&ok;if(musicDirty)ok=(await saveMusic(false))&&ok;if(levelsDirty)ok=(await saveLevels(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
+  function discardChanges(){setServerLang(savedServerLang);if(savedMusic)setMusic(savedMusic);if(savedWelcome)setWelcome(savedWelcome);if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}if(savedLogging)setLogging(savedLogging);if(savedTemp)setTemp(savedTemp);if(savedLevels)setLevels(savedLevels);notify("Несохранённые изменения сброшены.");}
   function applyNav(nav:NonNullable<typeof pendingNav>){if("tab" in nav)switchTab(nav.tab as TabKey);else window.location.href=nav.href;setPendingNav(null);}
   async function saveAndGo(){if(!pendingNav)return;const ok=await saveAllDirty();if(ok)applyNav(pendingNav);else setPendingNav(null);}
   function discardAndGo(){if(!pendingNav)return;discardChanges();applyNav(pendingNav);}

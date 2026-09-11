@@ -58,6 +58,12 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     presetsDelete.run(guildId);
     for (const preset of presets) presetsInsert.run(guildId, preset.name, JSON.stringify(preset.triggers), preset.config.categoryId, preset.config.nameTemplate, preset.config.userLimit, preset.config.canRename ? 1 : 0, preset.config.canManageAccess ? 1 : 0, preset.config.canClose ? 1 : 0, timestamp);
   });
-  recordDashboardChange(guildId, user, "Временные каналы", `Сохранены шаблоны: ${presets.length ? presets.map(p => `«${p.name}»`).join(", ") : "список пуст"}`);
+  const existingByName = new Map(existingRows.map((row, index) => [row.name, existing[index]!]));
+  const nextNames = new Set(presets.map(preset => preset.name));
+  const added = presets.filter(preset => !existingByName.has(preset.name)).map(preset => `«${preset.name}»`);
+  const removed = existingRows.filter(row => !nextNames.has(row.name)).map(row => `«${row.name}»`);
+  const changed = presets.filter(preset => { const was = existingByName.get(preset.name); return was !== undefined && was !== canonical(preset); }).map(preset => `«${preset.name}»`);
+  const parts = [added.length ? `добавлены ${added.join(", ")}` : "", removed.length ? `удалены ${removed.join(", ")}` : "", changed.length ? `изменены ${changed.join(", ")}` : ""].filter(Boolean);
+  recordDashboardChange(guildId, user, "Временные каналы", `Шаблоны: ${parts.join("; ")}`);
   return NextResponse.json({ ok: true, presets: (stmt.tempPresets.all(guildId) as PresetRow[]).map(toJson) });
 });

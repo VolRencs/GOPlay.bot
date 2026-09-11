@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { automodRules } from "../../../src/lib/labels.ts";
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
-import { automodDefaultActions, automodThresholdDefaults } from "../../../src/lib/automod.ts";
+import { automodDefaultActions, automodThresholdDefaults, automodThresholdRanges, automodWindowRange } from "../../../src/lib/automod.ts";
 import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../src/lib/constants.ts";
 import type { Channel, Role, Rule } from "./types.ts";
 import { CardHeader, CheckList, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
@@ -28,9 +28,12 @@ export function defaultRule(kind: string): Rule {
 }
 
 function RuleThreshold({ kind, threshold, onChange }: { kind: string; threshold: Record<string, unknown>; onChange: (change: Record<string, unknown>) => void }) {
-  const field = (label: string, key: string) => (
-    <NumberField key={key} label={label} min={1} value={Number(threshold[key] ?? 1)} onChange={value => onChange({ [key]: value || 1 })}/>
-  );
+  const field = (label: string, key: string) => {
+    const range = automodThresholdRanges[key] ?? { min: 1, max: 1000 };
+    return (
+      <NumberField key={key} label={label} min={range.min} max={range.max} value={Number(threshold[key] ?? range.min)} onChange={value => onChange({ [key]: Number.isFinite(value) ? Math.min(range.max, Math.max(range.min, value)) : range.min })}/>
+    );
+  };
   if (kind === "spam") return field("Сообщений", "messages");
   if (kind === "duplicate") return field("Повторов", "repeatCount");
   if (kind === "caps") return <>{field("Минимум букв", "minimumCharacters")}{field("Заглавных, %", "uppercasePercentage")}</>;
@@ -140,7 +143,7 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Ru
               options={[{ value: "any", label: "Фото и видео" }, { value: "image", label: "Только фото" }, { value: "video", label: "Только видео" }]}/></label>
           )}
           {WINDOW_KINDS.includes(kind) && (
-            <NumberField label="Период проверки, сек" min={1} max={3600} value={rule.window_seconds} onChange={window_seconds => onChange(kind, { window_seconds: window_seconds || 1 })}/>
+            <NumberField label="Период проверки, сек" min={automodWindowRange.min} max={automodWindowRange.max} value={rule.window_seconds} onChange={window_seconds => onChange(kind, { window_seconds: window_seconds || automodWindowRange.min })}/>
           )}
         </div>
         <div className="punishment-box">

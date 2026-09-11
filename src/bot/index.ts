@@ -12,7 +12,7 @@ import { stmt } from "./db/statements.ts";
 import { forgetMessage, flushMessageCache, messageContent, rememberMessage } from "./db/message-cache.ts";
 import { logger } from "./utils/logger.ts";
 import { unrefInterval } from "./utils/timers.ts";
-import { guard, replyInteractionError } from "../lib/errors.ts";
+import { failInteraction, guard } from "../lib/errors.ts";
 import { addMessage, addMetric, flushMetrics } from "./metrics.ts";
 import { auditActor, auditFind, initLogging, isBotAction, logAction, markBotAction, resolveChannel } from "./logging/index.ts";
 import { cachedRules, invalidateReactionPanels, purgeConfigCaches, reactionPanel, stopTimer, type CachedRule } from "./config-cache.ts";
@@ -31,9 +31,6 @@ import { logTr } from "../lib/i18n/bot/logs.ts";
 import { wipeGuildData } from "../lib/server-cleanup.ts";
 import { deleteGuildFiles } from "../lib/uploads.ts";
 const langUpdate = db.prepare("UPDATE guilds SET lang=? WHERE id=?");
-function trAutomodReason(lang: "ru"|"en", ruleName: string): string {
-  return automodTr(lang, "reason", { rule: ruleName });
-}
 const automodRuleTitles = { ru: automodRulesFor("ru"), en: automodRulesFor("en") } as const;
 const token = process.env.DISCORD_TOKEN; if (!token) throw new Error("DISCORD_TOKEN is required");
 process.on("unhandledRejection", (reason) => { logger.error("[PROCESS] Unhandled rejection:", reason); });
@@ -218,9 +215,7 @@ async function applyPanelRole(guildId: string, panelId: number, roleId: string, 
       if (ids.filter(id => member.roles.cache.has(id)).length >= panel.role_limit) return { text: automodTr(guildLang(guildId), "roleLimitReached", { n: String(panel.role_limit) }), notify: true };
     }
     await member.roles[action](role);
-    const panelLang = guildLang(guildId);
-    const fallback = action === "add" ? automodTr(panelLang, "roleGiven", { role: role.name }) : automodTr(panelLang, "roleRemoved", { role: role.name });
-    return { text: (panel.notify_template || fallback).replace(/\{role\}/g, role.name), notify: Boolean(panel.notify_enabled) };
+    return { text: panel.notify_template.replace(/\{role\}/g, role.name), notify: Boolean(panel.notify_enabled) };
   });
 }
 const automodActionSet = new Set<string>(automodActions);
@@ -235,7 +230,7 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   let actions: string[] = []; const parsedActions = safeJson<unknown>(row.action_json, []); if (Array.isArray(parsedActions)) actions = parsedActions.filter((x): x is string => typeof x === "string" && automodActionSet.has(x));
   if (!actions.length) actions = [...automodDefaultActions];
   const lang = cachedRules(guild.id).lang;
-  const ruleName = automodRuleTitles[lang][row.kind]?.title ?? row.kind, reason = trAutomodReason(lang, ruleName);
+  const ruleName = automodRuleTitles[lang][row.kind]?.title ?? row.kind, reason = automodTr(lang, "reason", { rule: ruleName });
   const rule: Rule = { kind: row.kind, threshold, window: row.window_seconds };
   const burstKind = ["spam", "duplicate", "emoji"].includes(row.kind);
   let burst: { id: string; channelId: string }[] = [];
@@ -281,17 +276,11 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   time("automod.enforce", performance.now() - started);
 }
 async function deleteBurst(guild: Guild, burst: { id: string; channelId: string }[]): Promise<number> {
-  const byChannel = new Map<string, string[]>();
-  for (const entry of burst) {
-    const ids = byChannel.get(entry.channelId) ?? [];
-    ids.push(entry.id);
-    byChannel.set(entry.channelId, ids);
-  }
   let deleted = 0;
-  for (const [channelId, ids] of byChannel) {
+  for (const [channelId, entries] of Map.groupBy(burst, entry => entry.channelId)) {
     const channel = guild.channels.cache.get(channelId);
     if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement && !channel.isThread())) continue;
-    const removed = await channel.bulkDelete(ids, true).catch(() => null);
+    const removed = await channel.bulkDelete(entries.map(entry => entry.id), true).catch(() => null);
     deleted += removed?.size ?? 0;
   }
   return deleted;
@@ -299,7 +288,7 @@ async function deleteBurst(guild: Guild, burst: { id: string; channelId: string 
 client.on(Events.MessageCreate, async message => {
   count("events.message_create");
   if (!message.guild || message.author.bot) return;
-  rememberMessage(message.id, message.guild.id, message.channel.id, message.content ?? "");
+  rememberMessage(message.id, message.guild.id, message.channel.id, message.content);
   addMessage(message.guild.id, message.channel.id, message.author.id);
   const cache = cachedRules(message.guild.id);
   if (!cache.protectedChannelId && cache.rules.length === 0) return;
@@ -345,7 +334,7 @@ async function routeInteraction(i: Interaction) {
       } else if (i.commandName === "user") {
         const user = i.options.getUser("user") ?? i.user;
         const member = i.guild?.members.cache.get(user.id);
-        const fields = [{ name: "ID", value: user.id, inline: true }, { name: tC("accountCreated"), value: `<t:${Math.floor((user.createdTimestamp ?? Date.now()) / 1000)}:d>`, inline: true }];
+        const fields = [{ name: "ID", value: user.id, inline: true }, { name: tC("accountCreated"), value: `<t:${Math.floor(user.createdTimestamp / 1000)}:d>`, inline: true }];
         if (member) fields.push({ name: tC("joinedAt"), value: `<t:${Math.floor((member.joinedTimestamp ?? Date.now()) / 1000)}:d>`, inline: true }, { name: tC("rolesField"), value: member.roles.cache.filter(r => r.id !== i.guild!.id).map(r => `<@&${r.id}>`).slice(0, 25).join(" ") || "—", inline: false });
         await i.reply({ embeds: [new EmbedBuilder().setTitle(user.tag).setThumbnail(user.displayAvatarURL({ size: 256 })).setColor(0x5865f2).addFields(fields)] });
       } else if (i.commandName === "server") {
@@ -370,7 +359,7 @@ async function routeInteraction(i: Interaction) {
       const [, id, roleId] = i.customId.split(":");
       const member = i.guild ? await resolveMember(i.guild, i.user.id) : null;
       if (!id || !roleId || !member) return;
-      const result = await applyPanelRole(i.guildId!, Number(id), roleId, member).catch(() => ({ text: automodTr(guildLang(i.guildId!), "roleUpdateFail"), notify: true }));
+      const result = await applyPanelRoleSafe(i.guildId!, Number(id), roleId, member);
       if (result.notify) await i.reply({ content: result.text, flags: MessageFlags.Ephemeral });
       else await i.deferUpdate();
     }
@@ -379,23 +368,23 @@ async function routeInteraction(i: Interaction) {
       const member = i.guild ? await resolveMember(i.guild, i.user.id) : null;
       if (!member) return;
       const results = await Promise.all(i.values.map(roleId =>
-        applyPanelRole(i.guildId!, id, roleId, member).catch(() => ({ text: automodTr(guildLang(i.guildId!), "roleUpdateFail"), notify: true })),
+        applyPanelRoleSafe(i.guildId!, id, roleId, member),
       ));
       const messages = results.filter(r => r.notify).map(r => r.text);
       if (messages.length) await i.reply({ content: messages.join("\n"), flags: MessageFlags.Ephemeral });
       else await i.deferUpdate();
     }
   } catch (error) {
-    logger.warn("[INTERACTION] Обработка взаимодействия не удалась", i.guildId ?? "dm", error);
-    if (i.isRepliable()) replyInteractionError(i, automodTr(guildLang(i.guildId ?? ""), "genericError"));
+    failInteraction("[INTERACTION] Обработка взаимодействия не удалась", i, error, automodTr(guildLang(i.guildId ?? ""), "genericError"), i.guildId ?? "dm");
   }
 }
 function normalizeEmoji(value: string) { return value.replace(/\uFE0F/g, "").replace(/\u200D/g, ""); }
 function samePanelEmoji(saved: string | null, name: string | null, identifier: string) { if (!saved) return normalizeEmoji(name ?? "") === "✅"; const custom = saved.match(/^<(?:a)?:[^:]+:(\d+)>$/); return custom ? identifier.endsWith(custom[1]!) : normalizeEmoji(saved) === normalizeEmoji(name ?? ""); }
 function resolveMember(guild: Guild, userId: string): Promise<GuildMember | null> {
-  const cached = guild.members.cache.get(userId);
-  if (cached) return Promise.resolve(cached);
   return guild.members.fetch(userId).catch(() => null);
+}
+function applyPanelRoleSafe(guildId: string, panelId: number, roleId: string, member: GuildMember): Promise<{ text: string; notify: boolean }> {
+  return applyPanelRole(guildId, panelId, roleId, member).catch(() => ({ text: automodTr(guildLang(guildId), "roleUpdateFail"), notify: true }));
 }
 async function handleReaction(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser, removing: boolean) {
   count("events.reaction");
@@ -415,7 +404,7 @@ async function handleReaction(reaction: MessageReaction | PartialMessageReaction
     if (role?.editable && member.roles.cache.has(role.id)) await member.roles.remove(role).catch(() => null);
     return;
   }
-  const result = await applyPanelRole(message.guild.id, panel.id, option.role_id, member).catch(() => ({ text: automodTr(guildLang(member.guild.id), "roleUpdateFail"), notify: true }));
+  const result = await applyPanelRoleSafe(message.guild.id, panel.id, option.role_id, member);
   if (result.notify) await member.send(result.text).catch(() => null);
 }
 client.on(Events.MessageReactionAdd, (reaction, user) => void handleReaction(reaction, user, false));
@@ -435,7 +424,7 @@ client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
   const before = new Set(oldMember?.roles.cache.keys() ?? []), after = new Set(newMember.roles.cache.keys());
   const added = [...after].filter(id => !before.has(id) && id !== newMember.guild.id), removed = [...before].filter(id => !after.has(id) && id !== newMember.guild.id);
   const logRoles = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_roles", targetId: newMember.id, moderatorId: actor, details: (() => { const l = guildLang(newMember.guild.id); return logTr(l, "rolesPrefix") + [...added.map(id => logTr(l, "roleGivenPart", { id })), ...removed.map(id => logTr(l, "roleRemovedPart", { id }))].join(", "); })() });
-  if (added.length || removed.length) void auditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id, { retries: 0 }).then(logRoles).catch(() => logRoles());
+  if (added.length || removed.length) void auditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id, { retries: 0 }).then(logRoles, () => logRoles());
   if (!isBotAction(newMember.guild.id, "member_timeout", newMember.id) && oldMember?.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {
     const isSet = Boolean(newMember.communicationDisabledUntilTimestamp);
     const logTimeout = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_timeout", targetId: newMember.id, moderatorId: actor, details: isSet ? logTr(guildLang(newMember.guild.id), "timeoutSet") : logTr(guildLang(newMember.guild.id), "timeoutCleared") });
@@ -443,7 +432,7 @@ client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
     void auditFind(newMember.guild, AuditLogEvent.MemberUpdate, newMember.id, { priority: isSet, retries: 1, retryDelay: 800 }).then(entry => {
       logTimeout(entry?.executor?.id);
       if (isSet && entry) recordPunishmentAndOffer(client, { guildId: newMember.guild.id, guildName: newMember.guild.name, userId: newMember.id, type: "timeout", reason: entry.reason ?? logTr(guildLang(newMember.guild.id), "noReason"), moderatorId: entry.executor?.id ?? null });
-    }).catch(() => logTimeout());
+    }, () => logTimeout());
   }
 });
 const editPending = new Map<string, { before: string; after: string; timer: ReturnType<typeof setTimeout> }>();

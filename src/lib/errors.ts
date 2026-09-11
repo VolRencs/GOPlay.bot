@@ -1,5 +1,5 @@
 import { logger } from "../bot/utils/logger.ts";
-import { MessageFlags, type RepliableInteraction } from "discord.js";
+import { MessageFlags, type Interaction, type RepliableInteraction } from "discord.js";
 
 /** Fire-and-forget вызов async-функции, трогающей SQLite/сеть, из gateway-
  *  обработчика: sync-throw или rejection логируются с контекстом вместо того,
@@ -22,6 +22,12 @@ type RestLike = { code?: unknown; status?: unknown; rawError?: { code?: unknown 
 export function replyInteractionError(i: RepliableInteraction, content: string): void {
   if (i.replied) return;
   void (i.deferred ? i.editReply(content) : i.reply({ content, flags: MessageFlags.Ephemeral })).catch(() => null);
+}
+
+/** Единый catch обработчика интеракции: лог с контекстом и best-effort ответ. */
+export function failInteraction(message: string, i: Interaction, error: unknown, content: string, ...context: unknown[]): void {
+  logger.warn(message, ...context, error);
+  if (i.isRepliable()) replyInteractionError(i, content);
 }
 
 /** «Ресурс реально удалён»: сообщение (10008), канал (10003) или HTTP 404.
