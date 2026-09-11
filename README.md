@@ -13,7 +13,7 @@ single process: a `discord.js` bot + a `Next.js` dashboard with Discord OAuth lo
 ## Features
 
 **Bot (slash commands, RU + EN localization):**
-- Info: `play`, `ping`, `help`, `user`, `server`, `avatar`.
+- Info: `play`, `ping`, `help`, `user`, `server`, `avatar`, `lvl`, `top`.
 - Moderation: `ban`, `kick`, `timeout` / `untimeout`, `warn` / `warnings` / `clearwarn`,
   `purge`, `slowmode`, `lock` / `unlock` (moderation commands are administrator-only).
 
@@ -24,6 +24,7 @@ single process: a `discord.js` bot + a `Next.js` dashboard with Discord OAuth lo
 | Welcome | Text + image for new members and farewells (templates like `{user}`, `{server}`, `{count}`…; rendered via resvg) |
 | Automod | Rules against spam, links, invites, flooding and duplicates; ignored roles, protected channel, punishment escalation |
 | Roles | Self-assignable roles via buttons, selects and reactions |
+| Levels | XP for messages and voice time, anti-farm rules (cooldown, min length, 2+ members in voice), level reward roles, notifications to a channel or DMs; `/lvl` and `/top` commands |
 | Embeds | Embed message builder, media attachments, templates |
 | Music | YouTube in a voice channel: `yt-dlp → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
 | Events | Event creation, participants, reminders |
@@ -119,10 +120,10 @@ app/                  Next.js App Router: landing, /dashboard, /admin,
                       upload serving (/uploads/...)
 src/bot/              Bot entry point (index.ts) + modules:
                       moderation, automod, appeals, logging,
-                      tempchannels, music, events, db, utils
+                      tempchannels, music, events, levels, db, utils
 src/db/               database.ts (node:sqlite, WAL) + migrations/*.sql
 src/lib/              Shared logic: auth, guild-access, automod, welcome,
-                      appeals, uploads, player/* (yt-dlp/ffmpeg stack), i18n
+                      appeals, levels, uploads, player/* (yt-dlp/ffmpeg stack), i18n
 src/components/       React: user-menu + dashboard/* (tab panels)
 scripts/              migrate-auth.ts, rotate-log.mjs (bot.log rotation > 5 MB)
 deploy/               nginx-ip-https.conf (reverse-proxy example)

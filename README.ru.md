@@ -15,7 +15,7 @@ Discord-бот и веб-панель управления сервером в �
 ## Возможности
 
 **Бот (slash-команды, RU + EN-локализация):**
-- Инфо: `play`, `ping`, `help`, `user`, `server`, `avatar`.
+- Инфо: `play`, `ping`, `help`, `user`, `server`, `avatar`, `lvl`, `top`.
 - Модерация: `ban`, `kick`, `timeout` / `untimeout`, `warn` / `warnings` / `clearwarn`,
   `purge`, `slowmode`, `lock` / `unlock` (команды модерации — только для администраторов).
 
@@ -26,6 +26,7 @@ Discord-бот и веб-панель управления сервером в �
 | Приветствие | Текст + картинка для новых участников и прощание (шаблоны `{user}`, `{server}`, `{count}`…; рендер через resvg) |
 | Автомодерация | Правила против спама, ссылок, инвайтов, флуда и дубликатов; игнор-роли, защищённый канал, эскалация наказаний |
 | Роли | Самовыдача через кнопки, селекты и реакции |
+| Уровни | XP за сообщения и время в голосе, анти-фарм (кулдаун, мин. длина, 2+ участника в голосе), роли-награды за уровни, уведомления в канал или ЛС; команды `/lvl` и `/top` |
 | Embeds | Конструктор embed-сообщений, медиа-вложения, шаблоны |
 | Музыка | YouTube в голосовом канале: `yt-dlp → ffmpeg (libopus) → voice`; очередь до 50 треков, плейлисты до 100, лимит длины 2 ч |
 | События | Создание ивентов, участники, напоминания |
@@ -121,10 +122,10 @@ app/                  Next.js App Router: лендинг, /dashboard, /admin,
                       раздача загрузок (/uploads/...)
 src/bot/              Точка входа бота (index.ts) + модули:
                       moderation, automod, appeals, logging,
-                      tempchannels, music, events, db, utils
+                      tempchannels, music, events, levels, db, utils
 src/db/               database.ts (node:sqlite, WAL) + migrations/*.sql
 src/lib/              Общая логика: auth, guild-access, automod, welcome,
-                      appeals, uploads, player/* (yt-dlp/ffmpeg стек), i18n
+                      appeals, levels, uploads, player/* (yt-dlp/ffmpeg стек), i18n
 src/components/       React: user-menu + dashboard/* (панели вкладок)
 scripts/              migrate-auth.ts, rotate-log.mjs (ротация bot.log > 5 МБ)
 deploy/               nginx-ip-https.conf (пример reverse-proxy)
