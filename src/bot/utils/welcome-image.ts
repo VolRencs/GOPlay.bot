@@ -2,7 +2,7 @@ import { Resvg } from "@resvg/resvg-js";
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { buildWelcomeSvg, imageSize, parseImageConfig, renderWelcomeTemplate, type WelcomeImageConfig } from "../../lib/welcome.ts";
+import { buildWelcomeSvg, imageSize, parseImageConfig, renderWelcomeTemplate, WELCOME_DESIGN, type WelcomeImageConfig } from "../../lib/welcome.ts";
 const PUBLIC_ROOT = resolve(process.cwd(), "public");
 const WELCOME_ROOT = resolve(PUBLIC_ROOT, "uploads/welcome");
 const MAX_WELCOME_CONCURRENCY = 2;
@@ -100,7 +100,7 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
     background = await readFile(resolve(PUBLIC_ROOT, "." + backgroundPath)).catch(() => null);
     if (background) bgDataUri = `data:image/${backgroundPath.endsWith(".jpg") ? "jpeg" : backgroundPath.split(".").pop()};base64,${background.toString("base64")}`;
   }
-  const size = background ? imageSize(background) : { width: 900, height: 480 };
+  const size = background ? imageSize(background) : WELCOME_DESIGN;
   const avatar = await avatarData(input.avatar);
   const svg = buildWelcomeSvg({ backgroundHref: bgDataUri, backgroundWidth: size.width, backgroundHeight: size.height, avatarHref: avatar, title, subtitle, config });
   const png = await withWelcomeSlot(() => new Resvg(svg, { font: { fontFiles } }).render().asPng());

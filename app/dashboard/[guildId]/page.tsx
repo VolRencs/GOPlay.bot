@@ -172,9 +172,9 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
   async function saveLogging(report=true): Promise<boolean>{ return apiPut<LoggingPutBody>(`/api/guilds/${guildId}/logging`, buildLoggingPutBody(logging), ()=>setSavedLogging(logging), "Настройки логов сохранены.", report); }
   async function saveTemp(report=true): Promise<boolean>{
     const body: TempPutBody = buildTempPutBody(temp.presets);
-    const sent=await apiSend<{presets?:TempPresetApi[];unchanged?:boolean}>(`/api/guilds/${guildId}/tempchannels`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить временные каналы.");
+    const sent=await apiSend<{presets:TempPresetApi[];unchanged?:boolean}>(`/api/guilds/${guildId}/tempchannels`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить временные каналы.");
     if(!sent.ok){fail(sent.error);return false;}
-    const n=sent.data.presets?{presets:sent.data.presets.map(tempPresetFromApi)}:temp; setTemp(n); setSavedTemp(n); if(report) notify(sent.data.unchanged?"Изменений нет.":"Настройки временных каналов сохранены."); return true;
+    const n={presets:sent.data.presets.map(tempPresetFromApi)}; setTemp(n); setSavedTemp(n); if(report) notify(sent.data.unchanged?"Изменений нет.":"Настройки временных каналов сохранены."); return true;
   }
   async function saveLang(report=true): Promise<boolean> {
     return apiPut<LangPutBody>(`/api/guilds/${guildId}/lang`, { lang: serverLang }, () => setSavedServerLang(serverLang), "Язык сообщений бота сохранён.", report);

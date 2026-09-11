@@ -6,6 +6,7 @@ import { addMetric } from "../metrics.ts";
 import { time } from "../perf.ts";
 import { logAction, markBotAction } from "../logging/index.ts";
 import { offerAppeal } from "../appeals/index.ts";
+import { appealPunishmentTypes } from "../../lib/appeals.ts";
 import { clearWarns } from "../../lib/warns.ts";
 import { DAY_MS } from "../../lib/constants.ts";
 import { guildTr } from "../../lib/i18n/bot.ts";
@@ -17,7 +18,9 @@ export function recordPunishmentAndOffer(client: Client, input: { guildId: strin
   const punishmentId = Number(result.lastInsertRowid);
   // untimeout — коррекция, kick необратим: оффер апелляции не нужен обоим.
   if (input.type === "untimeout" || input.type === "kick") return;
-  void offerAppeal(client, { punishmentId, guildId: input.guildId, guildName: input.guildName, userId: input.userId, type: input.type, reason: input.reason });
+  const appealType = appealPunishmentTypes.find(type => type === input.type);
+  if (!appealType) return;
+  void offerAppeal(client, { punishmentId, guildId: input.guildId, guildName: input.guildName, userId: input.userId, type: input.type, reason: input.reason, appealType });
 }
 // Логируем сразу с известным исполнителем (без audit-lookup) и помечаем,
 // чтобы соответствующее gateway-событие не задублировало запись.

@@ -13,12 +13,12 @@ export type ServerIdentity = { name: string; icon: string | null };
 // enabled/escalation: из GET приходят как number (0/1 из SQLite),
 // в PUT уходят как boolean. Тип допускает оба, конверсия — Boolean()/+ на границе.
 export type Rule = Omit<AutomodRuleRow, "enabled" | "escalation"> & { enabled: number | boolean; escalation: number | boolean };
-export type Welcome = { enabled: number | boolean; channel_id: string | null; message: string; image_enabled: number | boolean; background_path?: string | null; image_config_json: string; goodbye_enabled: number | boolean; goodbye_channel_id: string | null; goodbye_message: string };
+export type Welcome = { enabled: number | boolean; channel_id: string | null; message: string; image_enabled: number | boolean; background_path: string | null; image_config_json: string; goodbye_enabled: number | boolean; goodbye_channel_id: string | null; goodbye_message: string };
 export type LoggingState = Omit<LoggingPutBody, "channelId"> & { channelId: string };
 export type TempChannelConfig = { categoryId: string | null; nameTemplate: string; userLimit: number; canRename: boolean; canManageAccess: boolean; canClose: boolean };
 export type TempPreset = { id: number; name: string; triggerChannelIds: string[]; config: TempChannelConfig };
 export type TempChannelsState = { presets: TempPreset[] };
-export type TempPresetApi = { id: number; name: string; triggerChannelIds: string[]; categoryId?: string | null; nameTemplate?: string; userLimit?: number; canRename?: number | boolean; canManageAccess?: number | boolean; canClose?: number | boolean };
+export type TempPresetApi = { id: number; name: string; triggerChannelIds: string[]; categoryId: string | null; nameTemplate: string; userLimit: number; canRename: boolean; canManageAccess: boolean; canClose: boolean };
 export type EmbedSending = { id: number; embed_id: number; channel_id: string; message_id: string; sent_at: number };
 export type SavedEmbed = { id: number; name: string; payload_json: string; mode: "embed" | "text"; channel_id?: string | null; message_id?: string | null };
 export type ResourcesGet = {
@@ -50,7 +50,7 @@ export type GuildListGet = GuildListItem[];
 
 export const defaultTempConfig: TempChannelConfig = { categoryId: null, nameTemplate: DEFAULT_SETTINGS.name_template, userLimit: 0, canRename: true, canManageAccess: true, canClose: true };
 export const defaultTempChannels: TempChannelsState = { presets: [] };
-export const tempPresetFromApi = (p: TempPresetApi): TempPreset => ({ id: p.id, name: p.name, triggerChannelIds: p.triggerChannelIds.map(String), config: { categoryId: p.categoryId ?? null, nameTemplate: p.nameTemplate ?? defaultTempConfig.nameTemplate, userLimit: Number(p.userLimit ?? 0), canRename: Boolean(p.canRename), canManageAccess: Boolean(p.canManageAccess), canClose: Boolean(p.canClose) } });
+export const tempPresetFromApi = (p: TempPresetApi): TempPreset => ({ id: p.id, name: p.name, triggerChannelIds: [...p.triggerChannelIds], config: { categoryId: p.categoryId, nameTemplate: p.nameTemplate, userLimit: p.userLimit, canRename: p.canRename, canManageAccess: p.canManageAccess, canClose: p.canClose } });
 
 export const DEFAULT_ACCENT = "#5865f2";
 export const COLOR_PRESETS = ["#5865f2", "#eb459e", "#57f287", "#fee75c", "#ed4245", "#00b0f4", "#9b59b6", "#e67e22", "#313338"];

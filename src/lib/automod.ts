@@ -16,14 +16,15 @@ export const automodThresholdDefaults: Record<RuleKind, Record<string, unknown>>
 };
 
 // Числовые пороги детекторов: общий источник для API-валидации и полей панели.
-export const automodThresholdRanges: Record<string, { min: number; max: number }> = {
+export const automodThresholdRanges = {
   messages: { min: 2, max: 100 },
   repeatCount: { min: 2, max: 50 },
   minimumCharacters: { min: 1, max: 1000 },
   uppercasePercentage: { min: 1, max: 100 },
   maxEmojiCount: { min: 1, max: 100 },
   maxMentions: { min: 0, max: 50 },
-};
+} as const satisfies Record<string, { min: number; max: number }>;
+export type AutomodThresholdKey = keyof typeof automodThresholdRanges;
 export const automodWindowRange = { min: 1, max: 3600 } as const;
 
 export type AutomodRulePutBody = {

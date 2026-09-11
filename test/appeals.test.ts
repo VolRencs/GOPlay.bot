@@ -24,6 +24,7 @@ punishment(8, "g1", "u2", "warn");
 punishment(9, "g1", "u1", "warn");
 punishment(10, "g1", "u1", "ban");
 punishment(13, "g1", "u1", "ban");
+punishment(14, "g1", "u1", "automod");
 
 
 const withToken = async <T>(token: string, run: () => Promise<T>): Promise<T> => {
@@ -96,6 +97,15 @@ test("approval reversal matches the punishment type", () => {
   assert.equal(reversalFor("kick"), null);
   assert.equal(reversalFor("automod"), null);
   assert.equal(reversalFor("untimeout"), null);
+});
+
+test("automod appeal stores the concrete punishment type so approval reverses it", () => {
+  const appeal = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 14, reason: "Автомодерация забанила по ошибке.", type: "ban" });
+  assert.ok(appeal.ok);
+  assert.equal(appeal.value.type, "ban", "тип из оффера, а не generic 'automod'");
+  const approved = reviewAppeal({ guildId: "g1", appealId: appeal.value.id, action: "approved", reviewerId: "mod1" });
+  assert.ok(approved.ok);
+  assert.equal(approved.value.reversal, "unban");
 });
 
 test("review rejects unknown appeals and appeals of other guilds", () => {

@@ -114,6 +114,8 @@ export function buildWelcomePutBody(w: {
 
 const escapeXml = (value: string) => value.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[c] ?? c);
 
+export const WELCOME_DESIGN = { width: 900, height: 480 } as const;
+
 // Размеры из заголовков PNG/GIF/WEBP/JPEG без декодирования картинки.
 // Значения атакер-контролируемые (5 МБ PNG может заявить 60000x60000):
 // парсинг под охраной, результат клампится — иначе Resvg пытается растеризовать
@@ -121,7 +123,7 @@ const escapeXml = (value: string) => value.replace(/[&<>"']/g, (c) => ({"&":"&am
 const MAX_IMAGE_DIMENSION = 4096;
 const clampSize = ({ width, height }: { width: number; height: number }) => ({ width: Math.min(MAX_IMAGE_DIMENSION, Math.max(1, Math.round(width))), height: Math.min(MAX_IMAGE_DIMENSION, Math.max(1, Math.round(height))) });
 
-export function imageSize(data: Buffer, fallback = { width: 900, height: 480 }): { width: number; height: number } {
+export function imageSize(data: Buffer, fallback = { width: WELCOME_DESIGN.width, height: WELCOME_DESIGN.height }): { width: number; height: number } {
   try {
     if (data.length >= 24 && data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return clampSize({ width: data.readUInt32BE(16), height: data.readUInt32BE(20) });
     if (data.length >= 10 && data.subarray(0, 3).toString() === "GIF") return clampSize({ width: data.readUInt16LE(6), height: data.readUInt16LE(8) });
@@ -142,20 +144,24 @@ export function imageSize(data: Buffer, fallback = { width: 900, height: 480 }):
 
 // SVG картинки приветствия, один шаблон на обоих потребителей: бот гонит его
 // через Resvg в PNG для Discord, панель вставляет тот же markup инлайн —
-// мгновенно и с идентичной раскладкой (координаты и масштаб общие).
+// мгновенно и с идентичной раскладкой. Канва равна реальному размеру фона
+// (фото показывается целиком и без искажений), элементы позиционируются
+// пропорционально канве, а их размеры масштабируются одним коэффициентом по
+// ширине — иначе на фоне с чужой пропорцией аватар превращался бы в овал.
 // backgroundHref/avatarHref — data: URI у бота либо same-origin пути в превью.
 export function buildWelcomeSvg(input: { backgroundHref?: string | null; backgroundWidth: number; backgroundHeight: number; avatarHref: string; title: string; subtitle: string; config: WelcomeImageConfig }) {
   const { config } = input;
-  const scaleX = input.backgroundWidth / 900, scaleY = input.backgroundHeight / 480;
+  const scaleX = input.backgroundWidth / WELCOME_DESIGN.width, scaleY = input.backgroundHeight / WELCOME_DESIGN.height;
   const x = (value: number) => value * scaleX, y = (value: number) => value * scaleY;
-  const aw = x(config.avatarWidth), ah = y(config.avatarHeight), ax = x(config.avatarX), ay = y(config.avatarY);
+  const size = (value: number) => value * scaleX;
+  const aw = size(config.avatarWidth), ah = size(config.avatarHeight), ax = x(config.avatarX), ay = y(config.avatarY);
   const bg = input.backgroundHref
     ? `<image href="${escapeXml(input.backgroundHref)}" width="${input.backgroundWidth}" height="${input.backgroundHeight}"/>`
     : `<defs><linearGradient id="g"><stop stop-color="#111827"/><stop offset="1" stop-color="#312e81"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/>`;
   const avatar = `<clipPath id="c"><ellipse cx="${ax}" cy="${ay}" rx="${aw / 2}" ry="${ah / 2}"/></clipPath>`
     + `<image href="${escapeXml(input.avatarHref)}" x="${ax - aw / 2}" y="${ay - ah / 2}" width="${aw}" height="${ah}" preserveAspectRatio="xMidYMid slice" clip-path="url(#c)"/>`;
-  const title = `<text x="${x(config.titleX)}" y="${y(config.titleY)}" text-anchor="middle" fill="${escapeXml(config.titleColor)}" font-family="Noto Sans, sans-serif" font-size="${x(config.titleSize)}" font-weight="700">${escapeXml(input.title)}</text>`;
-  const subtitle = `<text x="${x(config.subtitleX)}" y="${y(config.subtitleY)}" text-anchor="middle" fill="${escapeXml(config.subtitleColor)}" font-family="Noto Sans, sans-serif" font-size="${x(config.subtitleSize)}">${escapeXml(input.subtitle)}</text>`;
+  const title = `<text x="${x(config.titleX)}" y="${y(config.titleY)}" text-anchor="middle" fill="${escapeXml(config.titleColor)}" font-family="Noto Sans, sans-serif" font-size="${size(config.titleSize)}" font-weight="700">${escapeXml(input.title)}</text>`;
+  const subtitle = `<text x="${x(config.subtitleX)}" y="${y(config.subtitleY)}" text-anchor="middle" fill="${escapeXml(config.subtitleColor)}" font-family="Noto Sans, sans-serif" font-size="${size(config.subtitleSize)}">${escapeXml(input.subtitle)}</text>`;
   return `<svg viewBox="0 0 ${input.backgroundWidth} ${input.backgroundHeight}" width="${input.backgroundWidth}" height="${input.backgroundHeight}" xmlns="http://www.w3.org/2000/svg">`
     + `<rect width="100%" height="100%" fill="#111827"/>${bg}`
     + `<rect width="100%" height="100%" fill="#000" opacity=".25"/>`

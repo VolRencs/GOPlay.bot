@@ -250,15 +250,18 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   if (actions.includes("kick") && member?.kickable) { markBotAction(guild.id, "member_kick", author.id); if (await member.kick(reason).then(() => true, () => false)) applied.push("kick"); }
   if (actions.includes("ban") && member?.bannable) { markBotAction(guild.id, "member_ban", author.id); if (await member.ban({ reason }).then(() => true, () => false)) applied.push("ban"); }
   // Предупреждение видно в /warnings: строка type='warn', как у ручного /warn.
+  let warnPunishmentId: number | null = null;
   if (actions.includes("warn")) {
     try {
-      stmt.moderationInsert.run(guild.id, author.id, "automod", "warn", reason, Date.now());
+      warnPunishmentId = Number(stmt.moderationInsert.run(guild.id, author.id, "automod", "warn", reason, Date.now()).lastInsertRowid);
       addMetric(guild.id, "moderation");
       applied.push("warn");
     } catch (error) { logger.warn("Не удалось записать предупреждение автомодерации", guild.id, error); }
   }
-  // Строка type='automod' — только для наказаний (timeout/kick/ban): апелляция
-  // предлагается при timeout/ban, kick — без апелляции, delete/warn — тоже.
+  // Строка type='automod' — для наказаний (timeout/kick/ban). Апелляция
+  // предлагается при warn/timeout/ban: warn использует строку из /warnings,
+  // kick необратим, delete — не наказание. Конкретное действие передаётся в
+  // апелляцию (appealType), иначе reversalFor('automod') не снял бы ничего.
   let punishmentId: number | null = null;
   if (applied.some(action => action === "timeout" || action === "kick" || action === "ban")) {
     try {
@@ -268,8 +271,11 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   } else if (!applied.length) {
     logger.warn("[AUTOMOD] Ни одна мера не применилась", guild.id, row.kind, author.id, actions.join(","));
   }
-  if (applied.some(action => action === "timeout" || action === "ban") && (!burstKind || shouldWarn(rule, data))) {
-    if (punishmentId !== null) void offerAppeal(client, { punishmentId, guildId: guild.id, guildName: guild.name, userId: author.id, type: "automod", reason });
+  const banApplied = applied.includes("ban"), timeoutApplied = applied.includes("timeout");
+  const appealType = banApplied ? "ban" : timeoutApplied ? "timeout" : applied.includes("warn") && warnPunishmentId !== null ? "warn" : null;
+  if (appealType && (!burstKind || shouldWarn(rule, data))) {
+    const appealTarget = appealType === "warn" ? warnPunishmentId : punishmentId;
+    if (appealTarget !== null) void offerAppeal(client, { punishmentId: appealTarget, guildId: guild.id, guildName: guild.name, userId: author.id, type: "automod", appealType, reason });
     if (burstKind) markWarned(rule, data);
   }
   logAction({ guildId: guild.id, type: "automod", targetId: author.id, moderatorId: "automod", details: `${logTr(lang, "reason", { reason: ruleName })}\n${applied.length ? logTr(lang, "actionsLine", { list: applied.join(", ") }) : logTr(lang, "actionsFailedLine")}${deletedCount > 0 ? logTr(lang, "deletedFromBurst", { n: String(deletedCount) }) : ""}` });

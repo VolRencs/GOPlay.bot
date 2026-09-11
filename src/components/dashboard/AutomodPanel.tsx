@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { automodRules } from "../../../src/lib/labels.ts";
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
-import { automodDefaultActions, automodThresholdDefaults, automodThresholdRanges, automodWindowRange } from "../../../src/lib/automod.ts";
+import { automodDefaultActions, automodThresholdDefaults, automodThresholdRanges, automodWindowRange, type AutomodThresholdKey } from "../../../src/lib/automod.ts";
 import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../src/lib/constants.ts";
 import type { Channel, Role, Rule } from "./types.ts";
 import { CardHeader, CheckList, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
@@ -28,8 +28,8 @@ export function defaultRule(kind: string): Rule {
 }
 
 function RuleThreshold({ kind, threshold, onChange }: { kind: string; threshold: Record<string, unknown>; onChange: (change: Record<string, unknown>) => void }) {
-  const field = (label: string, key: string) => {
-    const range = automodThresholdRanges[key] ?? { min: 1, max: 1000 };
+  const field = (label: string, key: AutomodThresholdKey) => {
+    const range = automodThresholdRanges[key];
     return (
       <NumberField key={key} label={label} min={range.min} max={range.max} value={Number(threshold[key] ?? range.min)} onChange={value => onChange({ [key]: Number.isFinite(value) ? Math.min(range.max, Math.max(range.min, value)) : range.min })}/>
     );

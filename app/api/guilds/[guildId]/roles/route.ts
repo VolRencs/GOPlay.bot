@@ -3,7 +3,7 @@ import { discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "../.
 import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { logger } from "../../../../../src/bot/utils/logger.ts";
-import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId } from "../../../../../src/lib/constants.ts";
+import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId, type ButtonStyleName } from "../../../../../src/lib/constants.ts";
 import type { RolePanelRow } from "../../../../../src/components/dashboard/types.ts";
 
 type PanelPayload = {
@@ -36,6 +36,8 @@ function discordEmoji(value?: string) {
 }
 function reactionEmoji(value?: string) { const emoji=discordEmoji(value); return emoji?.id ? `${emoji.name}:${emoji.id}` : emoji?.name ?? "✅"; }
 
+const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value === "string" && Object.hasOwn(BUTTON_STYLE_IDS, value);
+
 function readOptions(value: PanelPayload) {
   const valid = (raw: { roleId: string; label: string; emoji: string; buttonColor: string }[]) => raw
     .filter(o => Boolean(o) && typeof o === "object" && typeof o.roleId === "string" && o.roleId)
@@ -44,7 +46,7 @@ function readOptions(value: PanelPayload) {
       roleId: o.roleId,
       label: String(o.label ?? ""),
       emoji: typeof o.emoji === "string" ? o.emoji.slice(0, 96) : "",
-      buttonColor: typeof o.buttonColor === "string" && Object.hasOwn(BUTTON_STYLE_IDS, o.buttonColor) ? o.buttonColor : "primary",
+      buttonColor: isButtonStyle(o.buttonColor) ? o.buttonColor : "primary",
     }));
   if (Array.isArray(value.options)) return valid(value.options);
   return [];

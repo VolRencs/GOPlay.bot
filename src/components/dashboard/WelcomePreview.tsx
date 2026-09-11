@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { buildWelcomeSvg, renderWelcomeTemplate, welcomePreviewValues, type WelcomeImageConfig } from "../../../src/lib/welcome.ts";
+import { buildWelcomeSvg, renderWelcomeTemplate, WELCOME_DESIGN, welcomePreviewValues, type WelcomeImageConfig } from "../../../src/lib/welcome.ts";
 
-const DESIGN_W = 900;
-const DESIGN_H = 480;
+const { width: DESIGN_W, height: DESIGN_H } = WELCOME_DESIGN;
 const CENTER_X = DESIGN_W / 2;
 const CENTER_Y = DESIGN_H / 2;
 const SNAP_DIST = 26;
@@ -13,7 +12,7 @@ type DragTarget = "avatar" | "title" | "subtitle";
 type ResizeDir = "ne" | "nw" | "se" | "sw";
 type Gesture =
   | { kind: "move"; target: DragTarget; offX: number; offY: number }
-  | { kind: "resize"; dir: ResizeDir; startW: number; startH: number; ratio: number; cx: number; cy: number };
+  | { kind: "resize"; startW: number; startH: number; ratio: number; centerX: number; centerY: number; startDX: number; startDY: number };
 
 function PreviewFrame({ hint, children }: { hint: string; children: ReactNode }) {
   return (
@@ -38,7 +37,7 @@ function DiscordMessageShell({ children }: { children: ReactNode }) {
 }
 
 export function WelcomePreview({ message, config: committed, background, enabled, onChange }: { message: string; config: WelcomeImageConfig; background: string | null; enabled: boolean; onChange: (config: WelcomeImageConfig) => void }) {
-  const [size, setSize] = useState({ width: DESIGN_W, height: DESIGN_H });
+  const [size, setSize] = useState<{ width: number; height: number }>({ width: DESIGN_W, height: DESIGN_H });
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [snap, setSnap] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
   const [live, setLive] = useState(committed);
@@ -50,6 +49,8 @@ export function WelcomePreview({ message, config: committed, background, enabled
   useEffect(() => { if (!gesture) setLive(committed); }, [committed, gesture]);
   useEffect(() => () => { if (commitTimer.current !== null) clearTimeout(commitTimer.current); }, []);
 
+  // Канва равна реальному размеру фона: фото показывается целиком и сжатым
+  // предпросмотре, без растяжения и обрезки.
   useEffect(() => {
     if (!background) { setSize({ width: DESIGN_W, height: DESIGN_H }); return; }
     const img = new Image();
@@ -81,43 +82,58 @@ export function WelcomePreview({ message, config: committed, background, enabled
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
-  const startResize = (event: ReactPointerEvent<HTMLElement>, dir: ResizeDir) => {
+  const startResize = (event: ReactPointerEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    setGesture({ kind: "resize", dir, startW: live.avatarWidth, startH: live.avatarHeight, ratio: live.avatarWidth / live.avatarHeight, cx: live.avatarX, cy: live.avatarY });
+    const rect = event.currentTarget.closest(".welcome-canvas")?.getBoundingClientRect();
+    if (!rect) return;
+    // Экранные координаты центра аватара и стартового расстояния до курсора:
+    // дальше масштаб считается в пикселях, без пересчёта через оси канвы.
+    const centerX = rect.left + (live.avatarX / DESIGN_W) * rect.width;
+    const centerY = rect.top + (live.avatarY / DESIGN_H) * rect.height;
+    setGesture({
+      kind: "resize",
+      startW: live.avatarWidth,
+      startH: live.avatarHeight,
+      ratio: live.avatarWidth / live.avatarHeight,
+      centerX,
+      centerY,
+      startDX: Math.max(1, Math.abs(event.clientX - centerX)),
+      startDY: Math.max(1, Math.abs(event.clientY - centerY)),
+    });
     setSnap({ x: false, y: false });
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!gesture) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.round(((event.clientX - rect.left) / rect.width) * DESIGN_W);
-    const y = Math.round(((event.clientY - rect.top) / rect.height) * DESIGN_H);
 
-    if (gesture.kind === "move") {
-      let nx = x - gesture.offX, ny = y - gesture.offY;
-      const nextSnap = { x: false, y: false };
-      if (event.shiftKey) {
-        if (Math.abs(nx - CENTER_X) <= SNAP_DIST) { nx = CENTER_X; nextSnap.x = true; }
-        if (Math.abs(ny - CENTER_Y) <= SNAP_DIST) { ny = CENTER_Y; nextSnap.y = true; }
-      }
-      setSnap(nextSnap);
-      nx = Math.max(0, Math.min(DESIGN_W, nx));
-      ny = Math.max(0, Math.min(DESIGN_H, ny));
-      const patch = gesture.target === "avatar" ? { avatarX: nx, avatarY: ny } : gesture.target === "title" ? { titleX: nx, titleY: ny } : { subtitleX: nx, subtitleY: ny };
+    // Ресайз — в экранных пикселях от центра: дизайн-координаты растягиваются
+    // по осям канвы, и пересчёт через них «дёргал» аватар при захвате.
+    if (gesture.kind === "resize") {
+      const scale = Math.max(Math.abs(event.clientX - gesture.centerX) / gesture.startDX, Math.abs(event.clientY - gesture.centerY) / gesture.startDY);
+      const low = Math.max(48, Math.round(48 * gesture.ratio));
+      const high = Math.min(420, Math.round(420 * gesture.ratio));
+      const width = Math.max(low, Math.min(high, Math.round(gesture.startW * scale)));
+      const patch = { avatarWidth: width, avatarHeight: Math.round(width / gesture.ratio) };
       setLive(value => ({ ...value, ...patch }));
       queueCommit(patch);
       return;
     }
 
-    const dx = x - gesture.cx, dy = y - gesture.cy;
-    const halfW = gesture.startW / 2, halfH = gesture.startH / 2;
-    const scale = Math.max(Math.abs(dx) / halfW, Math.abs(dy) / halfH);
-    const low = Math.max(48, Math.round(48 * gesture.ratio));
-    const high = Math.min(420, Math.round(420 * gesture.ratio));
-    const width = Math.max(low, Math.min(high, Math.round(gesture.startW * scale)));
-    const patch = { avatarWidth: width, avatarHeight: Math.round(width / gesture.ratio) };
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.round(((event.clientX - rect.left) / rect.width) * DESIGN_W);
+    const y = Math.round(((event.clientY - rect.top) / rect.height) * DESIGN_H);
+    let nx = x - gesture.offX, ny = y - gesture.offY;
+    const nextSnap = { x: false, y: false };
+    if (event.shiftKey) {
+      if (Math.abs(nx - CENTER_X) <= SNAP_DIST) { nx = CENTER_X; nextSnap.x = true; }
+      if (Math.abs(ny - CENTER_Y) <= SNAP_DIST) { ny = CENTER_Y; nextSnap.y = true; }
+    }
+    setSnap(nextSnap);
+    nx = Math.max(0, Math.min(DESIGN_W, nx));
+    ny = Math.max(0, Math.min(DESIGN_H, ny));
+    const patch = gesture.target === "avatar" ? { avatarX: nx, avatarY: ny } : gesture.target === "title" ? { titleX: nx, titleY: ny } : { subtitleX: nx, subtitleY: ny };
     setLive(value => ({ ...value, ...patch }));
     queueCommit(patch);
   };
@@ -131,7 +147,7 @@ export function WelcomePreview({ message, config: committed, background, enabled
   };
 
   const svg = buildWelcomeSvg({
-    backgroundHref: background || null,
+    backgroundHref: background,
     backgroundWidth: size.width,
     backgroundHeight: size.height,
     avatarHref: "/bot-logo.png",
@@ -150,6 +166,10 @@ export function WelcomePreview({ message, config: committed, background, enabled
     };
     return { ...base, ...map[dir] };
   };
+
+  // Позиции — процент от канвы, размеры — один коэффициент по ширине (как в SVG):
+  // так хит-зоны совпадают с отрисовкой на фоне любой пропорции.
+  const scaleX = size.width / DESIGN_W, scaleY = size.height / DESIGN_H;
 
   return (
     <PreviewFrame hint={`${size.width} × ${size.height}`}>
@@ -172,21 +192,21 @@ export function WelcomePreview({ message, config: committed, background, enabled
             onPointerDown={e => startMove(e, "avatar")}
             style={{
               left: `${(live.avatarX - live.avatarWidth / 2) / 9}%`,
-              top: `${(live.avatarY - live.avatarHeight / 2) / 4.8}%`,
+              top: `${((live.avatarY * scaleY - (live.avatarHeight * scaleX) / 2) / size.height) * 100}%`,
               width: `${live.avatarWidth / 9}%`,
-              height: `${live.avatarHeight / 4.8}%`,
+              height: `${((live.avatarHeight * scaleX) / size.height) * 100}%`,
             }}
           >
             {(["ne","nw","se","sw"] as ResizeDir[]).map(dir => (
-              <span key={dir} className="r-handle" data-dir={dir} style={handleStyle(dir)} onPointerDown={e => startResize(e, dir)} aria-label={`Изменить размер аватара (${dir})`}/>
+              <span key={dir} className="r-handle" data-dir={dir} style={handleStyle(dir)} onPointerDown={e => startResize(e)} aria-label={`Изменить размер аватара (${dir})`}/>
             ))}
           </div>
-          {([["title", live.titleX, live.titleY, live.titleSize], ["subtitle", live.subtitleX, live.subtitleY, live.subtitleSize]] as const).map(([target, tx, ty, size]) => (
+          {([["title", live.titleX, live.titleY, live.titleSize], ["subtitle", live.subtitleX, live.subtitleY, live.subtitleSize]] as const).map(([target, tx, ty, fontSize]) => (
             <div
               key={target}
               className={`preview-hit hit-text${gesture?.kind === "move" && gesture.target === target ? " grabbed" : ""}`}
               onPointerDown={e => startMove(e, target)}
-              style={{ left: `${tx / 9}%`, top: `${(ty - size * 1.2) / 4.8}%`, width: "56%", height: `${(size * 1.7) / 4.8}%` }}
+              style={{ left: `${tx / 9}%`, top: `${((ty * scaleY - fontSize * scaleX * 1.2) / size.height) * 100}%`, width: "56%", height: `${((fontSize * scaleX * 1.7) / size.height) * 100}%` }}
             />
           ))}
         </div>

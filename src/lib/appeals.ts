@@ -12,6 +12,10 @@ export type AppealStatus = (typeof appealStatuses)[number];
 export const reviewActions = ["reviewing", "approved", "rejected", "closed"] as const;
 export type ReviewAction = (typeof reviewActions)[number];
 
+// Типы наказаний, по которым возможна реальная отмена (см. reversalFor).
+export const appealPunishmentTypes = ["warn", "timeout", "ban"] as const;
+export type AppealPunishmentType = (typeof appealPunishmentTypes)[number];
+
 type Punishment = { id: number; guild_id: string; user_id: string; type: string; reason: string | null; created_at: number };
 // id — глобальный PK, number — локальная для гильдии нумерация (1,2,3...),
 // берётся из guilds.appeal_counter.
@@ -58,7 +62,9 @@ function insertAppeal(guildId: string, userId: string, punishmentId: number, typ
   });
 }
 
-export function createAppeal(input: { guildId: string; userId: string; punishmentId: number; reason: string }): Result<Appeal> {
+// `type` — конкретное наказание для автомода: запись moderation_actions хранит
+// type='automod', а отмена зависит от реального действия (timeout/ban/warn).
+export function createAppeal(input: { guildId: string; userId: string; punishmentId: number; reason: string; type?: AppealPunishmentType | undefined }): Result<Appeal> {
   const lang = guildLang(input.guildId);
   const punishment = getPunishment(input.punishmentId);
   if (!punishment || punishment.guild_id !== input.guildId) return { ok: false, error: trAppeals(lang, "notFound") };
@@ -69,7 +75,7 @@ export function createAppeal(input: { guildId: string; userId: string; punishmen
   const existing = existingStmt.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
   if (existing) return { ok: false, error: existingError(lang, existing) };
   try {
-    return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, punishment.type, reason, "pending") };
+    return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, input.type ?? punishment.type, reason, "pending") };
   } catch {
     // UNIQUE(punishment_id): вторая апелляция обогнала проверку выше.
     const raced = existingStmt.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
