@@ -12,7 +12,7 @@ type DragTarget = "avatar" | "title" | "subtitle";
 type ResizeDir = "ne" | "nw" | "se" | "sw";
 type Gesture =
   | { kind: "move"; target: DragTarget; offX: number; offY: number }
-  | { kind: "resize"; startW: number; startH: number; ratio: number; centerX: number; centerY: number; startDX: number; startDY: number };
+  | { kind: "resize"; startW: number; ratio: number; centerX: number; centerY: number; startDX: number; startDY: number };
 
 function PreviewFrame({ hint, children }: { hint: string; children: ReactNode }) {
   return (
@@ -45,30 +45,39 @@ export function WelcomePreview({ message, config: committed, background, enabled
   const commitTimer = useRef<number | null>(null);
   const committedRef = useRef(committed);
   committedRef.current = committed;
-
-  useEffect(() => { if (!gesture) setLive(committed); }, [committed, gesture]);
-  useEffect(() => () => { if (commitTimer.current !== null) clearTimeout(commitTimer.current); }, []);
-
-  // Канва равна реальному размеру фона: фото показывается целиком и сжатым
-  // предпросмотре, без растяжения и обрезки.
-  useEffect(() => {
-    if (!background) { setSize({ width: DESIGN_W, height: DESIGN_H }); return; }
-    const img = new Image();
-    img.onload = () => setSize({ width: img.naturalWidth || DESIGN_W, height: img.naturalHeight || DESIGN_H });
-    img.src = background;
-  }, [background]);
-
-  const render = (text: string) => renderWelcomeTemplate(text, welcomePreviewValues);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   const flushPending = () => {
     const patch = pendingRef.current;
     pendingRef.current = {};
-    if (Object.keys(patch).length) onChange({ ...committedRef.current, ...patch });
+    if (Object.keys(patch).length) onChangeRef.current({ ...committedRef.current, ...patch });
   };
   const queueCommit = (patch: Partial<WelcomeImageConfig>) => {
     pendingRef.current = { ...pendingRef.current, ...patch };
     if (commitTimer.current === null) commitTimer.current = window.setTimeout(() => { commitTimer.current = null; flushPending(); }, 120);
   };
+
+  useEffect(() => { if (!gesture) setLive(committed); }, [committed, gesture]);
+  // Незавершённый debounce не должен терять последний сдвиг при размонтировании.
+  useEffect(() => () => {
+    if (commitTimer.current !== null) { clearTimeout(commitTimer.current); commitTimer.current = null; }
+    flushPending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- flushPending читает только refs.
+  }, []);
+
+  // Канва равна реальному размеру фона: фото показывается целиком и сжатым
+  // предпросмотре, без растяжения и обрезки.
+  useEffect(() => {
+    if (!background) { setSize({ width: DESIGN_W, height: DESIGN_H }); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled) setSize({ width: img.naturalWidth || DESIGN_W, height: img.naturalHeight || DESIGN_H }); };
+    img.src = background;
+    return () => { cancelled = true; img.onload = null; };
+  }, [background]);
+
+  const render = (text: string) => renderWelcomeTemplate(text, welcomePreviewValues);
 
   const startMove = (event: ReactPointerEvent<HTMLElement>, target: DragTarget) => {
     event.preventDefault();
@@ -94,7 +103,6 @@ export function WelcomePreview({ message, config: committed, background, enabled
     setGesture({
       kind: "resize",
       startW: live.avatarWidth,
-      startH: live.avatarHeight,
       ratio: live.avatarWidth / live.avatarHeight,
       centerX,
       centerY,
@@ -173,7 +181,7 @@ export function WelcomePreview({ message, config: committed, background, enabled
 
   return (
     <PreviewFrame hint={`${size.width} × ${size.height}`}>
-      <DiscordMessageShell><p>{render(message.replace("{user}", "@Новый участник"))}</p></DiscordMessageShell>
+      <DiscordMessageShell><p>{renderWelcomeTemplate(message, { ...welcomePreviewValues, user: "@Новый участник" })}</p></DiscordMessageShell>
       {enabled && (
         <div
           className={`welcome-canvas${gesture ? " is-dragging" : ""}`}

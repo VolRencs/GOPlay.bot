@@ -19,7 +19,7 @@ type RestLike = { code?: unknown; status?: unknown; rawError?: { code?: unknown 
 /** Best-effort ответ пользователю из catch-блока обработчика интеракции.
  *  Отложенная интеракция без ответа висит как «думает…» вечно — поэтому
  *  deferred отвечаем через editReply, иначе ephemeral-ответом. */
-export function replyInteractionError(i: RepliableInteraction, content: string): void {
+function replyInteractionError(i: RepliableInteraction, content: string): void {
   if (i.replied) return;
   void (i.deferred ? i.editReply(content) : i.reply({ content, flags: MessageFlags.Ephemeral })).catch(() => null);
 }

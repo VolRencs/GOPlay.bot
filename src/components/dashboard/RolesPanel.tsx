@@ -59,11 +59,12 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
   const [notify, setNotify] = useState(true);
   const [template, setTemplate] = useState("✅ Выдана роль **{role}**");
 
-  const load = async () => {
+  const load = async (signal?: AbortSignal) => {
     const [embedData, rows] = await Promise.all([
-      apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }),
-      apiGet<RolePanelRow[]>(`/api/guilds/${guildId}/roles`, []),
+      apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
+      apiGet<RolePanelRow[]>(`/api/guilds/${guildId}/roles`, [], signal),
     ]);
+    if (signal?.aborted) return;
     setEmbeds(embedData.embeds);
     setSendings(embedData.sendings);
     const map = new Map<number, SavedRolePanel>();
@@ -73,12 +74,16 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
         panel = { id: row.id, channel_id: row.channel_id ?? "", message_id: row.message_id ?? "", title: row.title ?? "", style: row.style === "reaction" || row.style === "select" ? row.style : "buttons", role_limit: row.role_limit, role_mode: row.role_mode, notify_enabled: row.notify_enabled, notify_template: row.notify_template ?? "", options: [] };
         map.set(row.id, panel);
       }
-      // `&& panel` нужен TS: сужение через присвоение внутри if не трекается.
-      if (row.role_id && panel) panel.options.push({ role_id: row.role_id, label: row.label ?? null, emoji: row.emoji ?? null, button_color: row.button_color ?? "primary" });
+      if (row.role_id) panel.options.push({ role_id: row.role_id, label: row.label ?? null, emoji: row.emoji ?? null, button_color: row.button_color ?? "primary" });
     }
     setPanels([...map.values()]);
   };
-  useEffect(() => { if (!guildId) return; load(); }, [guildId]);
+  useEffect(() => {
+    if (!guildId) return;
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [guildId]);
 
   const updateOption = (index: number, change: Partial<PanelOptionInput>) => setOptions(options.map((o, n) => n === index ? { ...o, ...change } : o));
 

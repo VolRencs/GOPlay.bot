@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image, Trash2 } from "lucide-react";
 import { eventStatusMeta } from "../../../src/lib/labels.ts";
 import { safeJson } from "../../../src/lib/json.ts";
@@ -41,6 +41,8 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventDraft>(defaultEventDraft);
   const { busy, run } = useAsyncAction();
+  const imageInput = useRef<HTMLInputElement>(null);
+  const thumbnailInput = useRef<HTMLInputElement>(null);
   const thumbnailPreview = useObjectUrl(draft.thumbnailFile) || draft.thumbnail;
   const imagePreview = useObjectUrl(draft.imageFile) || draft.image;
 
@@ -72,7 +74,9 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
         color: typeof saved.color === "string" ? saved.color : DEFAULT_ACCENT,
         footer: String(saved.footer ?? ""),
         timestamp: Boolean(saved.timestamp),
-        thumbnail: "", image: "", thumbnailFile: null, imageFile: null,
+        thumbnail: typeof saved.thumbnail === "string" ? saved.thumbnail : "",
+        image: typeof saved.image === "string" ? saved.image : "",
+        thumbnailFile: null, imageFile: null,
         fields: Array.isArray(saved.fields) ? (saved.fields as { name?: unknown; value?: unknown; inline?: unknown }[]).map(f => ({ name: String(f?.name ?? ""), value: String(f?.value ?? ""), inline: Boolean(f?.inline) })) : [],
         joinLabel: typeof saved.joinLabel === "string" ? saved.joinLabel : d.joinLabel,
         joinEmoji: typeof saved.joinEmoji === "string" ? saved.joinEmoji : d.joinEmoji,
@@ -86,8 +90,13 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     } catch { /* malformed draft */ }
   }, [guildId]);
 
-  const load = () => void apiGet<EventListGet>(`/api/guilds/${guildId}/events`, { events: [] }).then(data => setEvents(data.events));
-  useEffect(() => { if (!guildId) return; load(); }, [guildId]);
+  const load = (signal?: AbortSignal) => void apiGet<EventListGet>(`/api/guilds/${guildId}/events`, { events: [] }, signal).then(data => { if (!signal?.aborted) setEvents(data.events); });
+  useEffect(() => {
+    if (!guildId) return;
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
+  }, [guildId]);
   const editing = events?.find(e => e.id === editingId) ?? null;
 
   function edit(e: EventListItem) {
@@ -103,11 +112,15 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
       leaveLabel: leave?.label ?? "Отказаться", leaveEmoji: leave?.emoji ?? "❌", leaveStyle: leave?.style ?? "danger", leaveEnabled: leave?.enabled ?? true,
     });
     setEditingId(e.id);
+    if (imageInput.current) imageInput.current.value = "";
+    if (thumbnailInput.current) thumbnailInput.current.value = "";
   }
 
   const reset = () => {
     setEditingId(null);
     setDraft(defaultEventDraft());
+    if (imageInput.current) imageInput.current.value = "";
+    if (thumbnailInput.current) thumbnailInput.current.value = "";
     try { sessionStorage.removeItem(draftKey); } catch { /* unavailable */ }
   };
 
@@ -177,6 +190,8 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
   }
 
   const set = (change: Partial<EventDraft>) => setDraft(d => ({ ...d, ...change }));
+  const clearImage = () => { set({ image: "", imageFile: null }); if (imageInput.current) imageInput.current.value = ""; };
+  const clearThumbnail = () => { set({ thumbnail: "", thumbnailFile: null }); if (thumbnailInput.current) thumbnailInput.current.value = ""; };
   const setButton = (base: "join" | "leave") => (change: { label?: string; emoji?: string; style?: string; enabled?: boolean }) => {
     const keyed = Object.fromEntries(Object.entries(change).map(([k, v]) => [`${base}${k.charAt(0).toUpperCase()}${k.slice(1)}`, v])) as Partial<EventDraft>;
     set(keyed);
@@ -249,8 +264,8 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
             <FieldsEditor fields={draft.fields} onChange={fields => set({ fields })}/>
             <input className="embed-footer-input" value={draft.footer} maxLength={2048} placeholder="Футер" onChange={e => set({ footer: e.target.value })}/>
             <div className="embed-bottom">
-              <MediaField icon={<Image size={18}/>} label="Основное изображение" file={draft.imageFile} previewUrl={imagePreview} saved={Boolean(draft.image)} onPick={file => set({ imageFile: file })} onClear={() => set({ image: "", imageFile: null })} clearLabel="Удалить изображение"/>
-              <MediaField icon={<Image size={18}/>} label="Миниатюра" file={draft.thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(draft.thumbnail)} onPick={file => set({ thumbnailFile: file })} onClear={() => set({ thumbnail: "", thumbnailFile: null })} clearLabel="Удалить миниатюру"/>
+              <MediaField icon={<Image size={18}/>} label="Основное изображение" file={draft.imageFile} previewUrl={imagePreview} saved={Boolean(draft.image)} onPick={file => set({ imageFile: file })} onClear={clearImage} inputRef={imageInput} clearLabel="Удалить изображение"/>
+              <MediaField icon={<Image size={18}/>} label="Миниатюра" file={draft.thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(draft.thumbnail)} onPick={file => set({ thumbnailFile: file })} onClear={clearThumbnail} inputRef={thumbnailInput} clearLabel="Удалить миниатюру"/>
             </div>
           </div>
           <div className="event-buttons-grid">

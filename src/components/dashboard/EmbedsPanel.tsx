@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Image, Trash2, User } from "lucide-react";
 import { safeJson } from "../../../src/lib/json.ts";
 import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, useAsyncAction, useObjectUrl, useSessionDraft } from "./ui.tsx";
-import { apiGet, apiMutate, apiSend } from "./api.ts";
+import { apiMutate, apiSend } from "./api.ts";
 import { DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type SavedEmbed } from "./types.ts";
 
 const INHERIT_CHANNEL = "Использовать исходный канал";
@@ -84,17 +84,24 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
     thumbnail: { url: form.thumbnail },
   };
 
-  const load = async (verify = false) => {
-    const data = await apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds${verify ? "?verify=1" : ""}`, { embeds: [], sendings: [] });
-    setItems(data.embeds);
-    setSendings(data.sendings);
+  const load = async (verify = false, signal?: AbortSignal): Promise<boolean> => {
+    const sent = await apiSend<EmbedsGet>(`/api/guilds/${guildId}/embeds${verify ? "?verify=1" : ""}`, signal ? { signal } : {}, "Не удалось загрузить сохранённые сообщения.");
+    if (!sent.ok || signal?.aborted) return false;
+    setItems(sent.data.embeds);
+    setSendings(sent.data.sendings);
+    return true;
   };
-  useEffect(() => { if (!guildId) return; load(); }, [guildId]);
+  useEffect(() => {
+    if (!guildId) return;
+    const controller = new AbortController();
+    void load(false, controller.signal);
+    return () => controller.abort();
+  }, [guildId]);
 
   function verifySendings() {
     if (verifying) return;
     runVerify(async () => {
-      await load(true);
+      if (!(await load(true))) return onError("Не удалось проверить отправления.");
       onDone("Список отправлений проверен.");
     });
   }
@@ -125,7 +132,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
   }
 
   function reset() {
-    setForm(emptyEmbedForm());
+    setFormState(emptyEmbedForm());
     setImageFile(null); setThumbnailFile(null); setAuthorFile(null);
     try { sessionStorage.removeItem(draftKey); } catch {}
     if (imageInput.current) imageInput.current.value = "";
@@ -173,6 +180,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
     await run(async () => {
       const result = await apiMutate(`/api/guilds/${guildId}/embeds?id=${item.id}`, { method: "DELETE" }, "Не удалось удалить сообщение.");
       if (!result.ok) return onError(result.error);
+      if (form.id === item.id) reset();
       onDone("Embed-сообщение удалено."); load();
     });
   }

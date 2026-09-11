@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cleanupTargets } from "../../../src/lib/labels.ts";
 import { apiGet, apiSend } from "./api.ts";
 import { CardHeader, confirmAction, formatTime, Select, useAsyncAction } from "./ui.tsx";
@@ -11,11 +11,15 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [total, setTotal] = useState(0);
   const [section, setSection] = useState("all");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const genRef = useRef(0);
   const load = async (nextOffset: number, append: boolean, signal?: AbortSignal) => {
+    const gen = genRef.current;
     const params = new URLSearchParams({ limit: "50", offset: String(nextOffset) });
     if (section !== "all") params.set("section", section);
     const data = await apiGet<AuditListGet>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 }, signal);
-    if (signal?.aborted) return;
+    // Устаревший append (сменилась гильдия/секция) не должен дописываться в новый список.
+    if (signal?.aborted || gen !== genRef.current) return;
     if (append) setEntries(value => [...(value ?? []), ...data.entries]);
     else setEntries(data.entries);
     setTotal(data.total);
@@ -23,8 +27,10 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
   useEffect(() => {
     if (!guildId) return;
     const controller = new AbortController();
+    genRef.current++;
     setEntries(null);
     setTotal(0);
+    setLoadingMore(false);
     load(0, false, controller.signal);
     return () => controller.abort();
   }, [guildId, section]);
@@ -35,7 +41,7 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
           <Select value={section} onChange={setSection} ariaLabel="Раздел журнала"
             options={[{ value: "all", label: "Все разделы" }, ...auditSections.map(s => ({ value: s, label: s }))]}/>
         </label></div>}/>
-    </article><article className="card audit-list">{entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.created_at).toISOString()}>{formatTime(entry.created_at)}</time><span className="audit-user">{entry.user_name}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" onClick={() => load(entries.length, true)}>Показать ещё ({entries.length} из {total})</button>}</article></section>;
+    </article><article className="card audit-list">{entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.created_at).toISOString()}>{formatTime(entry.created_at)}</time><span className="audit-user">{entry.user_name}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => { if (loadingMore) return; setLoadingMore(true); void load(entries.length, true).finally(() => setLoadingMore(false)); }}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
 }
 
 export function ServerDataCleanup({ guildId, onDone, onError }: { guildId: string; onDone: PanelNotify; onError: PanelFail }) {

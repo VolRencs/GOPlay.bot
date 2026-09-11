@@ -31,6 +31,7 @@ import { logTr } from "../lib/i18n/bot/logs.ts";
 import { wipeGuildData } from "../lib/server-cleanup.ts";
 import { deleteGuildFiles } from "../lib/uploads.ts";
 const langUpdate = db.prepare("UPDATE guilds SET lang=? WHERE id=?");
+const guildRefresh = db.prepare("UPDATE guilds SET name=?,icon=?,updated_at=? WHERE id=?");
 const automodRuleTitles = { ru: automodRulesFor("ru"), en: automodRulesFor("en") } as const;
 const token = process.env.DISCORD_TOKEN; if (!token) throw new Error("DISCORD_TOKEN is required");
 process.on("unhandledRejection", (reason) => { logger.error("[PROCESS] Unhandled rejection:", reason); });
@@ -83,6 +84,9 @@ function reportRoleHierarchy(guild: Guild) {
 function onboardGuild(guild: Guild): void {
   const isNew = stmt.guildInsert.run(guild.id, guild.name, guild.iconURL(), Date.now()).changes > 0;
   if (isNew) langUpdate.run(localeFromDiscord(guild.preferredLocale), guild.id);
+  // Существующие строки не обновлялись с момента добавления бота — имя/иконка
+  // в админке и DM-фолбэках оставались устаревшими после переименования сервера.
+  else guildRefresh.run(guild.name, guild.iconURL(), Date.now(), guild.id);
   cachedRules(guild.id);
   reportRoleHierarchy(guild);
 }
@@ -233,6 +237,9 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   const ruleName = automodRuleTitles[lang][row.kind]?.title ?? row.kind, reason = automodTr(lang, "reason", { rule: ruleName });
   const rule: Rule = { kind: row.kind, threshold, window: row.window_seconds };
   const burstKind = ["spam", "duplicate", "emoji"].includes(row.kind);
+  // Сообщение в уже обработанном burst-окне: удаляем, но не выдаём наказание
+  // повторно (timeout/kick/ban/warn — один раз на окно, см. markWarned ниже).
+  const repeatBurst = burstKind && !shouldWarn(rule, data);
   let burst: { id: string; channelId: string }[] = [];
   let deletedCount = 0;
   const applied: string[] = [];
@@ -242,16 +249,16 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
     if (deletedCount > 0) applied.push("delete");
   }
   const member = message.member;
-  if (actions.includes("timeout") && member?.moderatable) {
+  if (actions.includes("timeout") && member?.moderatable && !repeatBurst) {
     markBotAction(guild.id, "member_timeout", author.id);
     const base = Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, Number(threshold.durationSeconds ?? DEFAULT_TIMEOUT_SECONDS)));
     if (await member.timeout(automodDuration(guild.id, author.id, base, Boolean(row.escalation)) * 1000, reason).then(() => true, () => false)) applied.push("timeout");
   }
-  if (actions.includes("kick") && member?.kickable) { markBotAction(guild.id, "member_kick", author.id); if (await member.kick(reason).then(() => true, () => false)) applied.push("kick"); }
-  if (actions.includes("ban") && member?.bannable) { markBotAction(guild.id, "member_ban", author.id); if (await member.ban({ reason }).then(() => true, () => false)) applied.push("ban"); }
+  if (actions.includes("kick") && member?.kickable && !repeatBurst) { markBotAction(guild.id, "member_kick", author.id); if (await member.kick(reason).then(() => true, () => false)) applied.push("kick"); }
+  if (actions.includes("ban") && member?.bannable && !repeatBurst) { markBotAction(guild.id, "member_ban", author.id); if (await member.ban({ reason }).then(() => true, () => false)) applied.push("ban"); }
   // Предупреждение видно в /warnings: строка type='warn', как у ручного /warn.
   let warnPunishmentId: number | null = null;
-  if (actions.includes("warn")) {
+  if (actions.includes("warn") && !repeatBurst) {
     try {
       warnPunishmentId = Number(stmt.moderationInsert.run(guild.id, author.id, "automod", "warn", reason, Date.now()).lastInsertRowid);
       addMetric(guild.id, "moderation");
@@ -276,8 +283,10 @@ async function enforceAutoMod(message: Message, row: CachedRule, threshold: Reco
   if (appealType && (!burstKind || shouldWarn(rule, data))) {
     const appealTarget = appealType === "warn" ? warnPunishmentId : punishmentId;
     if (appealTarget !== null) void offerAppeal(client, { punishmentId: appealTarget, guildId: guild.id, guildName: guild.name, userId: author.id, type: "automod", appealType, reason });
-    if (burstKind) markWarned(rule, data);
   }
+  // Наказание выдано — следующее сообщение burst-окна не наказывается повторно.
+  // kick не входит в appealType, поэтому проверяем applied целиком.
+  if (burstKind && (banApplied || timeoutApplied || applied.includes("kick") || applied.includes("warn"))) markWarned(rule, data);
   logAction({ guildId: guild.id, type: "automod", targetId: author.id, moderatorId: "automod", details: `${logTr(lang, "reason", { reason: ruleName })}\n${applied.length ? logTr(lang, "actionsLine", { list: applied.join(", ") }) : logTr(lang, "actionsFailedLine")}${deletedCount > 0 ? logTr(lang, "deletedFromBurst", { n: String(deletedCount) }) : ""}` });
   time("automod.enforce", performance.now() - started);
 }

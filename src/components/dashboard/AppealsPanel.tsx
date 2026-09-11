@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { appealStatusMeta, punishmentLabels } from "../../../src/lib/labels.ts";
 import type { AppealsListGet, AppealView } from "../../../src/lib/appeals.ts";
 import { formatTime, CardHeader, Select, useAsyncAction } from "./ui.tsx";
@@ -12,6 +12,8 @@ const APPEAL_TONE: Record<string, string> = { pending: "pill-info", reviewing: "
 export function AppealsPanel({guildId,onDone,onError}:{guildId:string;onDone:PanelNotify;onError:PanelFail}) {
   const [appeals,setAppeals]=useState<AppealView[]|null>(null),[filters,setFilters]=useState({status:"all",userId:"",moderatorId:"",from:"",to:""}),[offset,setOffset]=useState(0),[expanded,setExpanded]=useState<number|null>(null),[comment,setComment]=useState("");
   const [refresh, setRefresh] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const loadGen = useRef(0);
   // Дебаунс текстовых фильтров: каждый кейстрок не должен DDoSить собственный API.
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
   useEffect(() => {
@@ -19,10 +21,13 @@ export function AppealsPanel({guildId,onDone,onError}:{guildId:string;onDone:Pan
     return () => clearTimeout(timer);
   }, [filters]);
   const { busy, run } = useAsyncAction();
+  const { busy: moreBusy, run: runMore } = useAsyncAction();
   const query=(nextOffset:number, f = debouncedFilters)=>{const params=new URLSearchParams({status:f.status,limit:"100",offset:String(nextOffset)});if(f.userId.trim())params.set("userId",f.userId.trim());if(f.moderatorId.trim())params.set("moderatorId",f.moderatorId.trim());if(f.from)params.set("from",String(new Date(`${f.from}T00:00:00`).getTime()));if(f.to)params.set("to",String(new Date(`${f.to}T23:59:59`).getTime()));return params;};
   const loadPage=(nextOffset:number)=>apiGet<AppealsListGet>(`/api/guilds/${guildId}/appeals?${query(nextOffset)}`,{appeals:[]});
-  useEffect(()=>{if(!guildId)return;let active=true;setAppeals(null);setOffset(0);setExpanded(null);void loadPage(0).then(data=>{if(!active)return;const rows=data.appeals;setAppeals(rows);setOffset(rows.length);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
-  const more=()=>{void loadPage(offset).then(data=>{const rows=data.appeals;if(!rows.length)return;setAppeals(value=>[...(value??[]),...rows]);setOffset(value=>value+rows.length);});};
+  useEffect(()=>{if(!guildId)return;let active=true;const gen=++loadGen.current;setAppeals(null);setOffset(0);setExpanded(null);setComment("");setHasMore(false);void loadPage(0).then(data=>{if(!active||gen!==loadGen.current)return;const rows=data.appeals;setAppeals(rows);setOffset(rows.length);setHasMore(rows.length>=100);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
+  // Пагинация защищена от повторного клика и от смены фильтров в полёте:
+  // иначе устаревшая страница дописывается в уже перезагруженный список.
+  const more=()=>{if(moreBusy)return;const gen=loadGen.current;void runMore(async()=>{const data=await loadPage(offset);if(gen!==loadGen.current)return;const rows=data.appeals;if(!rows.length){setHasMore(false);return;}setAppeals(value=>[...(value??[]),...rows]);setOffset(value=>value+rows.length);setHasMore(rows.length>=100);});};
   const review=async(row:AppealView,action:string)=>{if(busy)return;
   await run(async()=>{const sent=await apiSend<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,comment:comment.trim()||undefined})},"Не удалось изменить статус апелляции.");if(!sent.ok)return onError(sent.error);const data=sent.data;const label=appealStatusMeta[data.appeal?.status ?? ""]?.label??action;const dmNote=data.notified===false?" · личное сообщение пользователю не доставлено":"";const revNote=data.reversal?` · ${data.reversal.failed?"Снять не удалось":"Снят"}: ${data.reversal.label}.`:"";const failed = Boolean(data.reversal?.failed);
       onDone(data.reversal
@@ -65,7 +70,7 @@ export function AppealsPanel({guildId,onDone,onError}:{guildId:string;onDone:Pan
           const meta=appealStatusMeta[row.status]??{label:row.status},activeAppeal=row.status==="pending"||row.status==="reviewing";
           return (
             <div className="appeal-item" key={row.id}>
-              <button type="button" className="appeal-toggle" onClick={()=>setExpanded(expanded===row.id?null:row.id)} aria-expanded={expanded===row.id}>
+              <button type="button" className="appeal-toggle" onClick={()=>{setExpanded(expanded===row.id?null:row.id);setComment("");}} aria-expanded={expanded===row.id}>
                 <span className="appeal-head">
                   <strong>#{row.number}</strong>
                   <span className={`pill ${APPEAL_TONE[row.status] ?? ""}`}>{meta.label}</span>
@@ -111,7 +116,7 @@ export function AppealsPanel({guildId,onDone,onError}:{guildId:string;onDone:Pan
         }) : (
           <p className="muted">Апелляций не найдено. Попробуйте изменить фильтры.</p>
         )}
-        {appeals&&appeals.length>=100&&<button type="button" className="btn secondary" onClick={more}>Показать ещё</button>}
+        {appeals&&hasMore&&<button type="button" className="btn secondary" disabled={moreBusy} onClick={more}>{moreBusy?"Загружаем…":"Показать ещё"}</button>}
       </article>
     </section>
   );

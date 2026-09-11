@@ -23,6 +23,7 @@ export default function AdminPage() {
   const { busy, run } = useAsyncAction();
 
   function refresh() {
+    setError("");
     void Promise.all([
       apiGet<Overview | null>("/api/admin/overview", null),
       apiGet<{ guilds?: AdminGuild[] } | null>("/api/admin/guilds", null),
@@ -38,6 +39,7 @@ export default function AdminPage() {
     if (!leaveTarget) return;
     const id = leaveTarget.id;
     run(async () => {
+      setError(""); setNotice("");
       const sent = await apiSend<{ leftOnDiscord?: boolean }>(`/api/admin/guilds/${id}/leave`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ wipe }) }, "Не удалось выполнить выход.");
       if (!sent.ok) return setError(sent.error);
       const result = sent.data;

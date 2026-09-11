@@ -57,8 +57,15 @@ async function handleOwnerLeave(guild: Guild, userId: string) {
   const channel = await fetchTempChannel(guild, row.channel_id);
   if (channel === undefined) return;
   if (!channel) { stmt.tempDelete.run(row.channel_id); return; }
-  const nextOwner = channel.members.find(m => !m.user.bot)?.id;
+  const nextOwner = channel.members.find(m => !m.user.bot && !stmt.tempByOwner.get(guild.id, m.id))?.id;
   if (!nextOwner) {
+    // Пустой канал удаляем; если все оставшиеся уже владеют своими каналами,
+    // передать владение нельзя (UNIQUE guild_id+owner_id) — канал дочистится,
+    // когда опустеет.
+    if (channel.members.some(m => !m.user.bot)) {
+      logger.warn("[TEMP] Владелец ушёл, свободного получателя владения нет", guild.id, channel.id);
+      return;
+    }
     stmt.tempDelete.run(channel.id);
     await channel.delete().catch((error) => logger.warn("[TEMP] Удаление канала ушедшего владельца не удалось", guild.id, error));
     return;
@@ -195,7 +202,7 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
     await channel.delete().catch((deleteError) => logger.warn("[TEMP] Не удалось удалить дубликат канала", guild.id, deleteError));
     const winner = stmt.tempByOwner.get(guild.id, member.id) as TempRow | undefined;
     if (winner) {
-      const target = winner.channel_id === channel.id ? undefined : guild.channels.cache.get(winner.channel_id);
+      const target = guild.channels.cache.get(winner.channel_id);
       if (target?.type === ChannelType.GuildVoice && member.voice.channelId !== winner.channel_id) await member.voice.setChannel(target as VoiceChannel).catch(() => null);
     }
     logger.warn("[TEMP] Не удалось записать временный канал", guild.id, error);
