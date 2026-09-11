@@ -187,7 +187,9 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
     const payload: LevelsPutBody = buildLevelsPutBody(levels.settings, levels.rewards);
     return apiPut<LevelsPutBody>(`/api/guilds/${guildId}/levels`, payload, () => { setLevels(payload); setSavedLevels(payload); }, "Настройки уровней сохранены.", report);
   }
-  async function saveDirtyRules():Promise<boolean>{let ok=true;for(const k of Object.keys(rules)) if(dirty(savedRules?.[k]??null,rules[k])) ok=(await saveRule(k,false))&&ok;return ok;}
+  // Правило без сохранённой пары (новая БД или впервые включаемый вид) — уже изменение.
+  const ruleDirty=(kind:string):boolean=>{if(!savedRules)return false;const saved=savedRules[kind];return saved===undefined||stableStringify(saved)!==stableStringify(rules[kind]);};
+  async function saveDirtyRules():Promise<boolean>{let ok=true;for(const k of Object.keys(rules)) if(ruleDirty(k)) ok=(await saveRule(k,false))&&ok;return ok;}
   async function saveAutoMod(): Promise<void>{let ok=true;if(securityDirty)ok=await saveSecurity(false);if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(ok) notify("Настройки автомодерации сохранены.");}
 
   function updateRule(kind: string, change: Partial<Rule>) {
