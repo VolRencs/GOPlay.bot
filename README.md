@@ -79,7 +79,7 @@ pnpm migrate:auth && pnpm dev
 Pre-commit checks:
 
 ```bash
-pnpm check   # tsc --noEmit
+pnpm check   # next typegen && tsc --noEmit
 pnpm test    # node --test test/*.test.ts
 ```
 
@@ -114,7 +114,7 @@ Detailed instructions are in the [`.env.example`](.env.example) header.
 | `pnpm migrate:auth` | better-auth table migrations in the same SQLite |
 | `pnpm logs:rotate` | moves `data/logs/bot.log` to `.1` when it exceeds 5 MB |
 | `pnpm test` | `node --test test/*.test.ts` |
-| `pnpm check` | `tsc --noEmit` |
+| `pnpm check` | `next typegen` + `tsc --noEmit` |
 
 ## Project structure
 

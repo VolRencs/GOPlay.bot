@@ -81,7 +81,7 @@ pnpm migrate:auth && pnpm dev
 Проверка перед коммитом:
 
 ```bash
-pnpm check   # tsc --noEmit
+pnpm check   # next typegen && tsc --noEmit
 pnpm test    # node --test test/*.test.ts
 ```
 
@@ -116,7 +116,7 @@ pnpm test    # node --test test/*.test.ts
 | `pnpm migrate:auth` | Миграции таблиц better-auth в той же SQLite |
 | `pnpm logs:rotate` | Переносит `data/logs/bot.log` в `.1` при превышении 5 МБ |
 | `pnpm test` | `node --test test/*.test.ts` |
-| `pnpm check` | `tsc --noEmit` |
+| `pnpm check` | `next typegen` + `tsc --noEmit` |
 
 ## Структура проекта
 

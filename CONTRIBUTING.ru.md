@@ -11,7 +11,7 @@
 - `cp .env.example .env` — заполнить `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).
 - `pnpm migrate:auth && pnpm dev` — запуск (бот + веб, `http://localhost:3000`).
-- `pnpm check` (`tsc --noEmit`) и `pnpm test` (`node --test test/*.test.ts`) —
+- `pnpm check` (`next typegen && tsc --noEmit`) и `pnpm test` (`node --test test/*.test.ts`) —
   обязательны перед каждым PR. CI выполняет то же самое плюс `pnpm build`.
 
 ## Как оформлять изменения

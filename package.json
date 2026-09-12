@@ -13,7 +13,7 @@
     "logs:rotate": "mkdir -p data/logs && find data/logs -maxdepth 1 -name bot.log -size +5M -exec mv {} {}.1 \\;",
     "migrate:auth": "node --env-file=.env scripts/migrate-auth.ts",
     "test": "node --test test/*.test.ts",
-    "check": "tsc --noEmit"
+    "check": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.2",
