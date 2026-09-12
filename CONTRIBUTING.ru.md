@@ -6,7 +6,7 @@
 
 ## Стек и команды
 
-- Node ≥ 22.12, pnpm 12.3.4, ffmpeg с libopus, yt-dlp в PATH.
+- Node ≥ 26, pnpm 12.4.1, ffmpeg с libopus, yt-dlp в PATH.
 - `pnpm i --frozen-lockfile` — установка.
 - `cp .env.example .env` — заполнить `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).

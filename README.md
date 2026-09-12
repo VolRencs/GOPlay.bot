@@ -3,12 +3,15 @@
 **Language: English | [Русский](README.ru.md)**
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
-![Node](https://img.shields.io/badge/node-%3E%3D22.12-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.3.4-orange)
+![Node](https://img.shields.io/badge/node-%3E%3D26-green)
+![pnpm](https://img.shields.io/badge/pnpm-12.4.1-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord bot and server-management web dashboard in a single repository and a
 single process: a `discord.js` bot + a `Next.js` dashboard with Discord OAuth login.
+Stack (pinned in `package.json`): Node **≥ 26**, pnpm **12.4.1**, Next.js **16.3.4**,
+React **19.3.0**, TypeScript **7.0.2**, Node's native TypeScript type stripping and
+`node:sqlite` (no separate DB driver).
 
 ## Features
 
@@ -45,7 +48,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Node ≥ 22.12**, **pnpm 12.3.4**, **ffmpeg with libopus**,
+Requirements: **Node ≥ 26**, **pnpm 12.4.1**, **ffmpeg with libopus**,
 **yt-dlp** in PATH.
 
 ```bash
@@ -105,10 +108,11 @@ Detailed instructions are in the [`.env.example`](.env.example) header.
 
 | Command | What it does |
 |---|---|
-| `pnpm dev` | `migrate:auth` + `next dev` and the bot (`src/bot/index.ts`) via `concurrently`, log at `data/logs/bot.log` |
+| `pnpm dev` | `migrate:auth` + `next dev` and the bot (`src/bot/index.ts`) via `scripts/run-both.ts`, log at `data/logs/bot.log` |
 | `pnpm build` | `next build` |
-| `pnpm start` | `migrate:auth` + `next start` and the bot, log at `data/logs/bot.log` |
+| `pnpm start` | `migrate:auth` + `next start` and the bot via `scripts/run-both.ts`, log at `data/logs/bot.log` |
 | `pnpm migrate:auth` | better-auth table migrations in the same SQLite |
+| `pnpm logs:rotate` | moves `data/logs/bot.log` to `.1` when it exceeds 5 MB |
 | `pnpm test` | `node --test test/*.test.ts` |
 | `pnpm check` | `tsc --noEmit` |
 
@@ -125,7 +129,7 @@ src/db/               database.ts (node:sqlite, WAL) + migrations/*.sql
 src/lib/              Shared logic: auth, guild-access, automod, welcome,
                       appeals, levels, uploads, player/* (yt-dlp/ffmpeg stack), i18n
 src/components/       React: user-menu + dashboard/* (tab panels)
-scripts/              migrate-auth.ts, rotate-log.mjs (bot.log rotation > 5 MB)
+scripts/              migrate-auth.ts, run-both.ts (bot + web supervisor)
 deploy/               nginx-ip-https.conf (reverse-proxy example)
 test/                 *.test.ts (node --test)
 data/                 SQLite, logs, uploads (not in git, except .gitkeep)
@@ -146,7 +150,7 @@ pnpm start
   (example: [`deploy/nginx-ip-https.conf`](deploy/nginx-ip-https.conf),
   `client_max_body_size 8m`).
 - Back up `data/bot.sqlite` (plus `-wal`/`-shm` alongside while running).
-- `data/logs/bot.log` rotation happens automatically on start (`scripts/rotate-log.mjs`).
+- `data/logs/bot.log` rotation happens automatically on start via `pnpm logs:rotate`.
 
 ## FAQ
 

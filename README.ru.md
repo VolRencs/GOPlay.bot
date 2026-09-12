@@ -3,12 +3,15 @@
 **Язык: [English](README.md) | Русский**
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
-![Node](https://img.shields.io/badge/node-%3E%3D22.12-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.3.4-orange)
+![Node](https://img.shields.io/badge/node-%3E%3D26-green)
+![pnpm](https://img.shields.io/badge/pnpm-12.4.1-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord-бот и веб-панель управления сервером в одном репозитории и одном процессе:
 бот на `discord.js` + дашборд на `Next.js` с входом через Discord OAuth.
+Стек (зафиксирован в `package.json`): Node **≥ 26**, pnpm **12.4.1**,
+Next.js **16.3.4**, React **19.3.0**, TypeScript **7.0.2**, нативное
+снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
 
 > Полная английская версия: [README.md](README.md).
 
@@ -47,7 +50,7 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Быстрый старт (локально)
 
-Требования: **Node ≥ 22.12**, **pnpm 12.3.4**, **ffmpeg с libopus**,
+Требования: **Node ≥ 26**, **pnpm 12.4.1**, **ffmpeg с libopus**,
 **yt-dlp** в PATH.
 
 ```bash
@@ -107,10 +110,11 @@ pnpm test    # node --test test/*.test.ts
 
 | Команда | Что делает |
 |---|---|
-| `pnpm dev` | `migrate:auth` + `next dev` и бот (`src/bot/index.ts`) через `concurrently`, лог в `data/logs/bot.log` |
+| `pnpm dev` | `migrate:auth` + `next dev` и бот (`src/bot/index.ts`) через `scripts/run-both.ts`, лог в `data/logs/bot.log` |
 | `pnpm build` | `next build` |
-| `pnpm start` | `migrate:auth` + `next start` и бот, лог в `data/logs/bot.log` |
+| `pnpm start` | `migrate:auth` + `next start` и бот через `scripts/run-both.ts`, лог в `data/logs/bot.log` |
 | `pnpm migrate:auth` | Миграции таблиц better-auth в той же SQLite |
+| `pnpm logs:rotate` | Переносит `data/logs/bot.log` в `.1` при превышении 5 МБ |
 | `pnpm test` | `node --test test/*.test.ts` |
 | `pnpm check` | `tsc --noEmit` |
 
@@ -127,7 +131,7 @@ src/db/               database.ts (node:sqlite, WAL) + migrations/*.sql
 src/lib/              Общая логика: auth, guild-access, automod, welcome,
                       appeals, levels, uploads, player/* (yt-dlp/ffmpeg стек), i18n
 src/components/       React: user-menu + dashboard/* (панели вкладок)
-scripts/              migrate-auth.ts, rotate-log.mjs (ротация bot.log > 5 МБ)
+scripts/              migrate-auth.ts, run-both.ts (супервизор бота и веба)
 deploy/               nginx-ip-https.conf (пример reverse-proxy)
 test/                 *.test.ts (node --test)
 data/                 SQLite, логи, загрузки (не в git, кроме .gitkeep)
@@ -148,7 +152,7 @@ pnpm start
   (пример: [`deploy/nginx-ip-https.conf`](deploy/nginx-ip-https.conf),
   `client_max_body_size 8m`).
 - Бекапьте `data/bot.sqlite` (и `-wal`/`-shm` рядом при работе).
-- Ротация `data/logs/bot.log` — автоматически при старте (`scripts/rotate-log.mjs`).
+- Ротация `data/logs/bot.log` — автоматически при старте (`pnpm logs:rotate`).
 
 ## FAQ
 
