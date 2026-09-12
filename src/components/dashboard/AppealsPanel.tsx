@@ -5,12 +5,13 @@ import { appealStatusMeta, punishmentLabels } from "../../../src/lib/labels.ts";
 import type { AppealsListGet, AppealView } from "../../../src/lib/appeals.ts";
 import { formatTime, CardHeader, Select, useAsyncAction } from "./ui.tsx";
 import { apiGet, apiSend } from "./api.ts";
+import { usePanelAction } from "./hooks.ts";
 import type { PanelFail, PanelNotify } from "./types.ts";
 
 const APPEAL_TONE: Record<string, string> = { pending: "pill-info", reviewing: "pill-accent", approved: "pill-ok", rejected: "pill-err", closed: "", declined: "pill-dim" };
 
 export function AppealsPanel({guildId,onDone,onError}:{guildId:string;onDone:PanelNotify;onError:PanelFail}) {
-  const [appeals,setAppeals]=useState<AppealView[]|null>(null),[filters,setFilters]=useState({status:"all",userId:"",moderatorId:"",from:"",to:""}),[offset,setOffset]=useState(0),[expanded,setExpanded]=useState<number|null>(null),[comment,setComment]=useState("");
+  const [appeals,setAppeals]=useState<AppealView[]|null>(null),[filters,setFilters]=useState({status:"all",userId:"",moderatorId:"",from:"",to:""}),[expanded,setExpanded]=useState<number|null>(null),[comment,setComment]=useState("");
   const [refresh, setRefresh] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const loadGen = useRef(0);
@@ -20,24 +21,26 @@ export function AppealsPanel({guildId,onDone,onError}:{guildId:string;onDone:Pan
     const timer = setTimeout(() => setDebouncedFilters(filters), 300);
     return () => clearTimeout(timer);
   }, [filters]);
-  const { busy, run } = useAsyncAction();
+  const { busy, run } = usePanelAction({ onDone, onError });
   const { busy: moreBusy, run: runMore } = useAsyncAction();
   const query=(nextOffset:number, f = debouncedFilters)=>{const params=new URLSearchParams({status:f.status,limit:"100",offset:String(nextOffset)});if(f.userId.trim())params.set("userId",f.userId.trim());if(f.moderatorId.trim())params.set("moderatorId",f.moderatorId.trim());if(f.from)params.set("from",String(new Date(`${f.from}T00:00:00`).getTime()));if(f.to)params.set("to",String(new Date(`${f.to}T23:59:59`).getTime()));return params;};
   const loadPage=(nextOffset:number)=>apiGet<AppealsListGet>(`/api/guilds/${guildId}/appeals?${query(nextOffset)}`,{appeals:[]});
-  useEffect(()=>{if(!guildId)return;let active=true;const gen=++loadGen.current;setAppeals(null);setOffset(0);setExpanded(null);setComment("");setHasMore(false);void loadPage(0).then(data=>{if(!active||gen!==loadGen.current)return;const rows=data.appeals;setAppeals(rows);setOffset(rows.length);setHasMore(rows.length>=100);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
+  useEffect(()=>{if(!guildId)return;let active=true;const gen=++loadGen.current;setAppeals(null);setExpanded(null);setComment("");setHasMore(false);void loadPage(0).then(data=>{if(!active||gen!==loadGen.current)return;const rows=data.appeals;setAppeals(rows);setHasMore(rows.length>=100);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
   // Пагинация защищена от повторного клика и от смены фильтров в полёте:
   // иначе устаревшая страница дописывается в уже перезагруженный список.
-  const more=()=>{if(moreBusy)return;const gen=loadGen.current;void runMore(async()=>{const data=await loadPage(offset);if(gen!==loadGen.current)return;const rows=data.appeals;if(!rows.length){setHasMore(false);return;}setAppeals(value=>[...(value??[]),...rows]);setOffset(value=>value+rows.length);setHasMore(rows.length>=100);});};
-  const review=async(row:AppealView,action:string)=>{if(busy)return;
-  await run(async()=>{const sent=await apiSend<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,comment:comment.trim()||undefined})},"Не удалось изменить статус апелляции.");if(!sent.ok)return onError(sent.error);const data=sent.data;const label=appealStatusMeta[data.appeal?.status ?? ""]?.label??action;const dmNote=data.notified===false?" · личное сообщение пользователю не доставлено":"";const revNote=data.reversal?` · ${data.reversal.failed?"Снять не удалось":"Снят"}: ${data.reversal.label}.`:"";const failed = Boolean(data.reversal?.failed);
-      onDone(data.reversal
-        ? `Апелляция #${row.number}: «${label}».${revNote}${dmNote}`
-        : `Апелляция #${row.number} переведена в «${label}».${dmNote}`, failed ? "warn" : undefined);
+  const more=()=>{const gen=loadGen.current;void runMore(async()=>{const data=await loadPage(appeals?.length ?? 0);if(gen!==loadGen.current)return;const rows=data.appeals;if(!rows.length){setHasMore(false);return;}setAppeals(value=>[...(value??[]),...rows]);setHasMore(rows.length>=100);});};
+  const review=(row:AppealView,action:string)=>run(
+    () => apiSend<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,comment:comment.trim()||undefined})},"Не удалось изменить статус апелляции."),
+    data => {
+      const label=appealStatusMeta[data.appeal?.status ?? ""]?.label??action;const dmNote=data.notified===false?" · личное сообщение пользователю не доставлено":"";const revNote=data.reversal?` · ${data.reversal.failed?"Снять не удалось":"Снят"}: ${data.reversal.label}.`:"";const failed = Boolean(data.reversal?.failed);
       setComment("");
       setExpanded(null);
-      setRefresh(value => value + 1);
-    });
-  }
+      return { message: data.reversal
+        ? `Апелляция #${row.number}: «${label}».${revNote}${dmNote}`
+        : `Апелляция #${row.number} переведена в «${label}».${dmNote}`, ...(failed ? { tone: "warn" as const } : {}) };
+    },
+    () => setRefresh(value => value + 1),
+  );
 
   return (
     <section className="panel-stack">

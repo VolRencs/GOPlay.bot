@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { musicSettingsFor } from "../../../../../src/lib/music-settings.ts";
+import { musicSettingsFor, type MusicSettings } from "../../../../../src/lib/music-settings.ts";
 import { clampMusicSeconds } from "../../../../../src/lib/labels.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { safeJson } from "../../../../../src/lib/json.ts";
 import { db } from "../../../../../src/db/database.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
-import type { MusicPutBody } from "../../../../../src/components/dashboard/types.ts";
 
 const channelRef = (id: string) => `<#${id}>`;
 const roleRef = (id: string) => `<@&${id}>`;
@@ -27,7 +26,7 @@ const isValidCommandChannel = (value: unknown): boolean =>
   value === undefined || value === null || (typeof value === "string" && (value === "" || isSnowflake(value)));
 
 export const PUT = guildRoute(async (request, { guildId, user }) => {
-  const body = await readJson<MusicPutBody>(request);
+  const body = await readJson<MusicSettings>(request);
   if (!body) return jsonError("Некорректное тело запроса.");
 
   // Валидация: snowflake-формат для всех id; 0 = автовыход выключен,

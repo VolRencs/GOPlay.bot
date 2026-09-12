@@ -1,6 +1,6 @@
 import { ChannelType, MessageFlags, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type NewsChannel, type TextChannel, type ThreadChannel } from "discord.js";
 import { stmt } from "../db/statements.ts";
-import { sleep } from "../../db/database.ts";
+import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "../utils/logger.ts";
 import { addMetric } from "../metrics.ts";
 import { time } from "../perf.ts";

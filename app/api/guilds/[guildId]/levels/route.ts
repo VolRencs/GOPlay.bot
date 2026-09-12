@@ -29,8 +29,8 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     }
     numbers[key] = value;
   }
-  if (!notifyModes.includes(s.notify_mode as NotifyMode)) return jsonError("Некорректный режим уведомлений.");
-  const notifyMode = s.notify_mode as NotifyMode;
+  const notifyMode = notifyModes.find(value => value === s.notify_mode);
+  if (!notifyMode) return jsonError("Некорректный режим уведомлений.");
   const notifyChannelId = s.notify_channel_id ?? null;
   if (notifyChannelId !== null && (typeof notifyChannelId !== "string" || !isSnowflake(notifyChannelId))) return jsonError("Некорректный канал уведомлений.");
   if (s.enabled && notifyMode === "channel" && !notifyChannelId) return jsonError("Выберите канал для уведомлений о новом уровне.");

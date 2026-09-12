@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { auth } from "./auth.ts";
 import { db } from "../db/database.ts";
 import { logger } from "../bot/utils/logger.ts";
+import { setTimeout as delay } from "node:timers/promises";
 import { ttlCacheAsync } from "./cache.ts";
 import { DAY_MS } from "./constants.ts";
 type DiscordGuild = { id:string; permissions:string; owner:boolean; name:string; icon:string|null };
@@ -48,7 +49,7 @@ async function withRateLimitRetry<T>(response: Response, retry: boolean, parse: 
   const body = await response.clone().json().catch(() => null) as { retry_after?: unknown } | null;
   const raw = Number(body?.retry_after ?? response.headers.get("retry-after") ?? 1);
   const retryAfterMs = Math.max(250, Math.min(60_000, (Number.isFinite(raw) ? raw : 1) * 1000));
-  if (retry && retryAfterMs <= 3_000) { await new Promise<void>((resolve) => setTimeout(resolve, retryAfterMs)); return redo(); }
+  if (retry && retryAfterMs <= 3_000) { await delay(retryAfterMs); return redo(); }
   throw new DiscordRateLimitError(retryAfterMs);
 }
 
@@ -137,7 +138,7 @@ export function guildRoute<P extends { guildId: string } = { guildId: string }>(
     const { guildId, ...rest } = await context.params;
     const access = await withGuild(guildId);
     if (access instanceof Response) return access;
-    return handler(request, { guildId, user: access.user, params: rest as Omit<P, "guildId"> });
+    return handler(request, { guildId, user: access.user, params: rest });
   };
 }
 

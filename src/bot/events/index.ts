@@ -2,7 +2,6 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, typ
 import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { logger } from "../utils/logger.ts";
-import { unrefInterval } from "../utils/timers.ts";
 import { guard, isMissingDiscordResource } from "../../lib/errors.ts";
 import { count } from "../perf.ts";
 import { buttonStyleId } from "../../lib/constants.ts";
@@ -39,7 +38,7 @@ export function registerEvents(client: Client) {
       void refreshMessage(member.guild.id, result.eventId);
     }
   });
-  unrefInterval(() => void tick(), 30_000);
+  setInterval(() => void tick(), 30_000).unref();
 }
 
 async function handleInteraction(i: Interaction) {

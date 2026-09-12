@@ -1,6 +1,5 @@
 import { withTransaction } from "../../db/database.ts";
 import { logger } from "../utils/logger.ts";
-import { unrefInterval } from "../utils/timers.ts";
 import { stmt } from "./statements.ts";
 
 // Сколько новейших сообщений на гильдию держим для логов правок/удалений.
@@ -33,7 +32,7 @@ function rememberPending(messageId: string, entry: PendingEntry): void {
 
 function ensureFlushTimer(): void {
   if (!flushTimer) {
-    flushTimer = unrefInterval(flushMessageCache, 5_000);
+    flushTimer = setInterval(flushMessageCache, 5_000).unref();
   }
 }
 

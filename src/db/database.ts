@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readdirSync, readFileSync, mkdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const configuredPath = process.env.DATABASE_PATH ?? "data/bot.sqlite";
@@ -11,7 +12,6 @@ export const db = new DatabaseSync(path);
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -8192;");
 db.exec("CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)");
 const migrations = join(dirname(fileURLToPath(import.meta.url)), "migrations");
-export const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 let txDepth = 0;
 for (const name of readdirSync(migrations).filter((file) => /^\d+_.+\.sql$/.test(file)).sort()) {
   for (let attempt = 0; attempt < 4; attempt++) {

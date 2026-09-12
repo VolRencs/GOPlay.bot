@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ServerStats, StatsGet } from "./types.ts";
 import { apiGet } from "./api.ts";
+import { useApiResource } from "./hooks.ts";
 import { CardHeader, formatNumber } from "./ui.tsx";
 
 
@@ -32,16 +33,12 @@ function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] |
 
 export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guildId: string }) {
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("7d");
-  const [data, setData] = useState<StatsGet | null | undefined>(undefined);
-
-  useEffect(() => {
-    if (!guildId) return;
-    const controller = new AbortController();
-    setData(undefined);
-    void apiGet<StatsGet | null>(`/api/guilds/${guildId}/stats?period=${period}`, null, controller.signal)
-      .then(value => { if (!controller.signal.aborted) setData(value); });
-    return () => controller.abort();
-  }, [guildId, period]);
+  const { data } = useApiResource<StatsGet | null | undefined>(
+    Boolean(guildId),
+    signal => apiGet<StatsGet | null>(`/api/guilds/${guildId}/stats?period=${period}`, null, signal),
+    [guildId, period],
+    undefined,
+  );
   const loading = data === undefined;
 
   const totals = data?.totals ?? { joins: 0, leaves: 0, messages: 0, moderation: 0 };

@@ -6,12 +6,7 @@ import { MessageFlags, type Interaction, type RepliableInteraction } from "disco
  *  чтобы стать uncaughtException/unhandledRejection. Для «выстрелил и забыл»
  *  путей, у которых нет собственной обёртки try/catch. */
 export function guard(scope: string, fn: () => unknown): void {
-  try {
-    const result = fn();
-    if (result instanceof Promise) result.catch((error: unknown) => logger.error(`[${scope}]`, error));
-  } catch (error) {
-    logger.error(`[${scope}]`, error);
-  }
+  void Promise.try(fn).catch((error: unknown) => logger.error(`[${scope}]`, error));
 }
 
 type RestLike = { code?: unknown; status?: unknown; rawError?: { code?: unknown } };

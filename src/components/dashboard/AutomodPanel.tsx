@@ -4,9 +4,9 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { automodRules } from "../../../src/lib/labels.ts";
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
-import { automodDefaultActions, automodThresholdDefaults, automodThresholdRanges, automodWindowRange, type AutomodThresholdKey } from "../../../src/lib/automod.ts";
+import { automodDefaultActions, automodThresholdDefaults, automodThresholdRanges, automodWindowRange, type AutomodRuleRow, type AutomodThresholdKey } from "../../../src/lib/automod.ts";
 import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../src/lib/constants.ts";
-import type { Channel, Role, Rule } from "./types.ts";
+import type { Channel, Role } from "./types.ts";
 import { CardHeader, CheckList, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
 
 const punishmentPresets = [
@@ -23,7 +23,7 @@ const WINDOW_KINDS = ["spam", "duplicate", "emoji"];
 
 // Новые правила сидируются теми же дефолтами, что и детекторы в рантайме:
 // несохранённое правило ведёт себя как сохранённое.
-export function defaultRule(kind: string): Rule {
+export function defaultRule(kind: string): AutomodRuleRow {
   return { kind, enabled: 0, action_json: JSON.stringify([...automodDefaultActions]), threshold_json: JSON.stringify({ ...(automodThresholdDefaults as Record<string, Record<string, unknown>>)[kind] ?? {}, durationSeconds: DEFAULT_TIMEOUT_SECONDS }), window_seconds: 10, escalation: 0 };
 }
 
@@ -99,7 +99,7 @@ function DomainListEditor({ domains, onChange }: { domains: string[]; onChange: 
 
 type RuleMeta = { title: string; description: string };
 
-function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Rule; channels: Channel[]; onChange: (kind: string, change: Partial<Rule>) => void }) {
+function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: AutomodRuleRow; channels: Channel[]; onChange: (kind: string, change: Partial<AutomodRuleRow>) => void }) {
   const kind = rule.kind;
   const threshold = { ...safeJson<Record<string, unknown>>(defaultRule(kind).threshold_json, {}), ...safeJson<Record<string, unknown>>(rule.threshold_json, {}) };
   const actions = parseActions(rule.action_json);
@@ -167,7 +167,7 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Ru
   );
 }
 
-export function AutoModSettings({ channels, roles, rules, ignoredRoleIds, protectedChannelId, onGlobalChange, onSaveAll, onChange }: { channels: Channel[]; roles: Role[]; rules: Record<string, Rule>; ignoredRoleIds: string[]; protectedChannelId: string | null; onGlobalChange: (roles: string[], channel: string | null) => void; onSaveAll: () => unknown; onChange: (kind: string, change: Partial<Rule>) => void }) {
+export function AutoModSettings({ channels, roles, rules, ignoredRoleIds, protectedChannelId, onGlobalChange, onSaveAll, onChange }: { channels: Channel[]; roles: Role[]; rules: Record<string, AutomodRuleRow>; ignoredRoleIds: string[]; protectedChannelId: string | null; onGlobalChange: (roles: string[], channel: string | null) => void; onSaveAll: () => unknown; onChange: (kind: string, change: Partial<AutomodRuleRow>) => void }) {
   const { busy: saving, run } = useAsyncAction();
   const enabledCount = Object.keys(automodRules).filter(kind => Boolean(rules[kind]?.enabled)).length;
   return (

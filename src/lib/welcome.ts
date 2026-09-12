@@ -90,16 +90,7 @@ export type WelcomePutBody = {
   goodbyeMessage: string;
 };
 
-export function buildWelcomePutBody(w: {
-  enabled: number | boolean;
-  channel_id: string | null;
-  message: string;
-  image_enabled: number | boolean;
-  image_config_json: string;
-  goodbye_enabled: number | boolean;
-  goodbye_channel_id: string | null;
-  goodbye_message: string;
-}): WelcomePutBody {
+export function buildWelcomePutBody(w: WelcomeGet): WelcomePutBody {
   return {
     enabled: Boolean(w.enabled),
     channelId: w.channel_id,

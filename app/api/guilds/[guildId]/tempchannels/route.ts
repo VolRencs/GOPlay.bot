@@ -2,8 +2,7 @@ import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { parseStringArray, stableJson } from "../../../../../src/lib/json.ts";
-import { DEFAULT_SETTINGS, clampUserLimit, type TempPutBody, type TempchannelsGet } from "../../../../../src/lib/tempchannels.ts";
-import type { TempChannelConfig, TempPresetApi } from "../../../../../src/components/dashboard/types.ts";
+import { DEFAULT_SETTINGS, clampUserLimit, type TempChannelConfig, type TempPreset, type TempPutBody, type TempchannelsGet } from "../../../../../src/lib/tempchannels.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 
@@ -24,8 +23,8 @@ function parseConfig(value: unknown): ConfigPayload {
   };
 }
 
-function toJson(row: PresetRow): TempPresetApi {
-  return { id: row.id, name: row.name, triggerChannelIds: parseStringArray(row.trigger_channel_ids_json), categoryId: row.category_id, nameTemplate: row.name_template, userLimit: row.user_limit, canRename: Boolean(row.can_rename), canManageAccess: Boolean(row.can_manage_access), canClose: Boolean(row.can_close) };
+function toJson(row: PresetRow): TempPreset {
+  return { id: row.id, name: row.name, triggerChannelIds: parseStringArray(row.trigger_channel_ids_json), config: { categoryId: row.category_id, nameTemplate: row.name_template, userLimit: row.user_limit, canRename: Boolean(row.can_rename), canManageAccess: Boolean(row.can_manage_access), canClose: Boolean(row.can_close) } };
 }
 
 export const GET = guildRoute(async (_, { guildId }) => {

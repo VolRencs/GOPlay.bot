@@ -2,7 +2,7 @@ import { EmbedBuilder, type Client, type Guild, type GuildAuditLogsEntry, type S
 import { stmt } from "../db/statements.ts";
 import { logger } from "../utils/logger.ts";
 import { count, time } from "../perf.ts";
-import { sleep } from "../../db/database.ts";
+import { setTimeout as sleep } from "node:timers/promises";
 import { safeJson } from "../../lib/json.ts";
 import { ttlCacheAsync, ttlCacheSync } from "../../lib/cache.ts";
 import { isMissingDiscordResource } from "../../lib/errors.ts";

@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
-import { defaultTempConfig, type Channel, type TempChannelConfig, type TempChannelsState, type TempPreset } from "./types.ts";
-import { clampUserLimit } from "../../../src/lib/tempchannels.ts";
+import type { Channel } from "./types.ts";
+import { clampUserLimit, defaultTempConfig, type TempChannelConfig, type TempchannelsGet, type TempPreset } from "../../../src/lib/tempchannels.ts";
 import { CardHeader, CheckList, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, useAsyncAction } from "./ui.tsx";
 
 function TempChannelConfigForm({ categories, value, onChange }: { categories: Channel[]; value: TempChannelConfig; onChange: (value: TempChannelConfig) => void }) {
@@ -23,7 +23,7 @@ function TempChannelConfigForm({ categories, value, onChange }: { categories: Ch
 
 const channelLabel = (count: number) => count === 1 ? "1 канал" : count >= 2 && count <= 4 ? `${count} канала` : `${count} каналов`;
 
-export function TemporaryChannelsSettings({ voiceChannels, categories, value, saved, onChange, onSave }: { voiceChannels: Channel[]; categories: Channel[]; value: TempChannelsState; saved: TempChannelsState | null; onChange: (value: TempChannelsState) => void; onSave: () => unknown }) {
+export function TemporaryChannelsSettings({ voiceChannels, categories, value, saved, onChange, onSave }: { voiceChannels: Channel[]; categories: Channel[]; value: TempchannelsGet; saved: TempchannelsGet | null; onChange: (value: TempchannelsGet) => void; onSave: () => unknown }) {
   const { busy: saving, run } = useAsyncAction();
   const [editingId, setEditingId] = useState<number | null>(null);
   const editing = value.presets.find(p => p.id === editingId) ?? null;

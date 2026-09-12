@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server.js";
 import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
-import { db, sleep, withTransaction } from "../../../../../src/db/database.ts";
+import { setTimeout as sleep } from "node:timers/promises";
+import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { cleanupOrphanedFiles, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "../../../../../src/lib/uploads.ts";

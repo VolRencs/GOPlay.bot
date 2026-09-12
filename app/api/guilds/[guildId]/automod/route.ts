@@ -95,7 +95,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const duration=Number(r.threshold.durationSeconds??DEFAULT_TIMEOUT_SECONDS); if(!Number.isFinite(duration)||duration<1||duration>MAX_TIMEOUT_SECONDS)return jsonError("Тайм-аут может длиться от 1 секунды до 28 дней.");
   const existingRule=ruleGetStmt.get(guildId,r.kind) as {enabled:number;action_json:string;threshold_json:string;window_seconds:number;escalation:number}|undefined;
   const storedActions=safeJson<unknown>(existingRule?.action_json,[]);
-  const cleanStoredActions=Array.isArray(storedActions)?storedActions.filter((x):x is string=>typeof x==="string"):[];
+  const cleanStoredActions=Array.isArray(storedActions)?storedActions.filter(x=>typeof x==="string"):[];
   const beforeThreshold=existingRule?safeJson<Record<string,unknown>>(existingRule.threshold_json,{}):{};
   if(existingRule){
     const unchangedRule=existingRule.enabled===+r.enabled&&existingRule.window_seconds===r.window&&existingRule.escalation===+r.escalation&&stableJson(cleanStoredActions)===stableJson(r.actions)&&stableJson(beforeThreshold)===stableJson(r.threshold);

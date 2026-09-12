@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
-import { buttonColorOptions, type Channel, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
-import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatTime, useAsyncAction } from "./ui.tsx";
+import { buttonColorOptionsList, type Channel, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
+import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatTime } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
+import { useApiResource, usePanelAction } from "./hooks.ts";
 
 type PanelOptionInput = { roleId: string; label: string; emoji: string; buttonColor: string };
 const defaultPanelOption = { roleId: "", label: "", emoji: "", buttonColor: "primary" };
@@ -37,7 +38,7 @@ function RoleOptionRow({ option, index, roles, emojis, style, onChange, onRemove
         <label>
           Цвет кнопки
           <Select value={option.buttonColor} onChange={buttonColor => onChange({ buttonColor })} ariaLabel="Цвет кнопки"
-            options={Object.entries(buttonColorOptions).map(([value, label]) => ({ value, label }))}/>
+            options={buttonColorOptionsList}/>
         </label>
       )}
       <button type="button" className="btn danger" disabled={!removable} onClick={onRemove} aria-label={`Удалить роль ${index + 1}`}>Удалить</button>
@@ -46,10 +47,28 @@ function RoleOptionRow({ option, index, roles, emojis, style, onChange, onRemove
 }
 
 export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError }: { guildId: string; roles: Role[]; emojis: ServerEmoji[]; channels: Channel[]; onDone: PanelNotify; onError: PanelFail }) {
-  const { busy, run } = useAsyncAction();
-  const [embeds, setEmbeds] = useState<SavedEmbed[]>([]);
-  const [sendings, setSendings] = useState<EmbedSending[]>([]);
-  const [panels, setPanels] = useState<SavedRolePanel[]>([]);
+  const { data: { embeds, sendings, panels }, reload } = useApiResource(
+    Boolean(guildId),
+    async (signal) => {
+      const [embedData, rows] = await Promise.all([
+        apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
+        apiGet<RolePanelRow[]>(`/api/guilds/${guildId}/roles`, [], signal),
+      ]);
+      const map = new Map<number, SavedRolePanel>();
+      for (const row of rows) {
+        let panel = map.get(row.id);
+        if (!panel) {
+          panel = { id: row.id, channel_id: row.channel_id ?? "", message_id: row.message_id ?? "", title: row.title ?? "", style: row.style === "reaction" || row.style === "select" ? row.style : "buttons", role_limit: row.role_limit, role_mode: row.role_mode, notify_enabled: row.notify_enabled, notify_template: row.notify_template ?? "", options: [] };
+          map.set(row.id, panel);
+        }
+        if (row.role_id) panel.options.push({ role_id: row.role_id, label: row.label ?? null, emoji: row.emoji ?? null, button_color: row.button_color ?? "primary" });
+      }
+      return { embeds: embedData.embeds, sendings: embedData.sendings, panels: [...map.values()] };
+    },
+    [guildId],
+    { embeds: [] as SavedEmbed[], sendings: [] as EmbedSending[], panels: [] as SavedRolePanel[] },
+  );
+  const { busy, run } = usePanelAction({ onDone, onError });
   const [panelId, setPanelId] = useState<number | undefined>();
   const [sendingId, setSendingId] = useState("");
   const [options, setOptions] = useState<PanelOptionInput[]>([defaultPanelOption]);
@@ -58,32 +77,6 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
   const [mode, setMode] = useState("toggle");
   const [notify, setNotify] = useState(true);
   const [template, setTemplate] = useState("✅ Выдана роль **{role}**");
-
-  const load = async (signal?: AbortSignal) => {
-    const [embedData, rows] = await Promise.all([
-      apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
-      apiGet<RolePanelRow[]>(`/api/guilds/${guildId}/roles`, [], signal),
-    ]);
-    if (signal?.aborted) return;
-    setEmbeds(embedData.embeds);
-    setSendings(embedData.sendings);
-    const map = new Map<number, SavedRolePanel>();
-    for (const row of rows) {
-      let panel = map.get(row.id);
-      if (!panel) {
-        panel = { id: row.id, channel_id: row.channel_id ?? "", message_id: row.message_id ?? "", title: row.title ?? "", style: row.style === "reaction" || row.style === "select" ? row.style : "buttons", role_limit: row.role_limit, role_mode: row.role_mode, notify_enabled: row.notify_enabled, notify_template: row.notify_template ?? "", options: [] };
-        map.set(row.id, panel);
-      }
-      if (row.role_id) panel.options.push({ role_id: row.role_id, label: row.label ?? null, emoji: row.emoji ?? null, button_color: row.button_color ?? "primary" });
-    }
-    setPanels([...map.values()]);
-  };
-  useEffect(() => {
-    if (!guildId) return;
-    const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
-  }, [guildId]);
 
   const updateOption = (index: number, change: Partial<PanelOptionInput>) => setOptions(options.map((o, n) => n === index ? { ...o, ...change } : o));
 
@@ -111,32 +104,34 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
   }
 
   async function remove(panel: SavedRolePanel) {
-    if (busy) return;
     if (!(await confirmAction(`Удалить панель «${panel.title}»? Бот постарается снять кнопки и реакции с сообщения в Discord.`, "Удалить"))) return;
-    await run(async () => {
-      const sent = await apiSend<{ warning?: string }>(`/api/guilds/${guildId}/roles?id=${panel.id}`, { method: "DELETE" }, "Не удалось удалить панель.");
-      if (!sent.ok) return onError(sent.error);
-      onDone(sent.data.warning ?? "Панель самовыдачи удалена.", sent.data.warning ? "warn" : undefined);
-      if (panelId === panel.id) reset();
-      load();
-    });
+    await run(
+      () => apiSend<{ warning?: string }>(`/api/guilds/${guildId}/roles?id=${panel.id}`, { method: "DELETE" }, "Не удалось удалить панель."),
+      data => {
+        if (panelId === panel.id) reset();
+        return { message: data.warning ?? "Панель самовыдачи удалена.", ...(data.warning ? { tone: "warn" as const } : {}) };
+      },
+      reload,
+    );
   }
 
   async function publish() {
     const sending = sendings.find(x => x.id === Number(sendingId));
     if (!sending) return onError("Выберите отправленное сообщение.");
     if (!options.some(o => o.roleId)) return onError("Добавьте хотя бы одну роль.");
-    await run(async () => {
-      const result = await apiMutate(`/api/guilds/${guildId}/roles`, {
+    await run(
+      () => apiMutate(`/api/guilds/${guildId}/roles`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ panelId, embedId: sending.embed_id, channelId: sending.channel_id, messageId: sending.message_id, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }),
-      }, "Не удалось сохранить панель.");
-      if (!result.ok) return onError(result.error);
-      onDone(panelId ? "Панель самовыдачи обновлена." : "Панель самовыдачи сохранена.");
-      load();
-      reset();
-    });
+      }, "Не удалось сохранить панель."),
+      () => {
+        const message = panelId ? "Панель самовыдачи обновлена." : "Панель самовыдачи сохранена.";
+        reset();
+        return { message };
+      },
+      reload,
+    );
   }
 
   return (

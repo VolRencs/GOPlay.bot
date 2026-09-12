@@ -3,15 +3,15 @@ import { guildRoute, discordAccountOf, jsonError, readJson } from "../../../../.
 import { recordDashboardChange } from "../../../../../../src/lib/dashboard-audit.ts";
 import { appealStatusMeta } from "../../../../../../src/lib/labels.ts";
 import { guildLang } from "../../../../../../src/lib/i18n/bot.ts";
-import { applyAppealReversal, notifyAppealStatus, reviewActions, reviewAppeal, type ReviewAction } from "../../../../../../src/lib/appeals.ts";
+import { applyAppealReversal, notifyAppealStatus, reviewActions, reviewAppeal } from "../../../../../../src/lib/appeals.ts";
 
 export const POST = guildRoute<{ guildId: string; appealId: string }>(async (request, { guildId, user, params }) => {
   const appealId = Number(params.appealId);
   if (!Number.isInteger(appealId) || appealId <= 0) return jsonError("Некорректный номер апелляции.");
   const body = await readJson<{ action?: unknown; comment?: unknown }>(request);
   const rawAction = body?.action;
-  if (typeof rawAction !== "string" || !reviewActions.includes(rawAction as ReviewAction)) return jsonError("Некорректное действие.");
-  const action = rawAction as ReviewAction;
+  const action = typeof rawAction === "string" ? reviewActions.find(candidate => candidate === rawAction) : undefined;
+  if (!action) return jsonError("Некорректное действие.");
   const comment = typeof body?.comment === "string" ? body.comment.trim().slice(0, 500) || null : null;
   const discordAccount = discordAccountOf(user.id);
 

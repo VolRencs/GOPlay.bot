@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { Image, Trash2 } from "lucide-react";
 import { eventStatusMeta } from "../../../src/lib/labels.ts";
 import { safeJson } from "../../../src/lib/json.ts";
-import type { EventListGet, EventListItem } from "../../../src/lib/events.ts";
-import { buttonColorOptions, DEFAULT_ACCENT, type Channel, type EmbedField, type PanelFail, type PanelNotify, type Role, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, useAsyncAction, useObjectUrl, useSessionDraft } from "./ui.tsx";
+import type { EventButtonStyle, EventListGet, EventListItem, EventStatus, RecurrenceFrequency } from "../../../src/lib/events.ts";
+import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type Channel, type EmbedField, type PanelFail, type PanelNotify, type Role, type ServerEmoji } from "./types.ts";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, useObjectUrl, useSessionDraft } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
+import { useApiResource, usePanelAction } from "./hooks.ts";
 
 const EVENT_TONE: Record<string, string> = { scheduled: "pill-info", live: "pill-ok", completed: "pill-accent", cancelled: "pill-err" };
-type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: string; eventRoleId: string; reminders: string; recurrenceFreq: string; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; thumbnailFile: File | null; imageFile: File | null; fields: EmbedField[]; joinLabel: string; joinEmoji: string; joinStyle: string; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: string; leaveEnabled: boolean };
+type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: EventStatus; eventRoleId: string; reminders: string; recurrenceFreq: RecurrenceFrequency; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; thumbnailFile: File | null; imageFile: File | null; fields: EmbedField[]; joinLabel: string; joinEmoji: string; joinStyle: EventButtonStyle; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: EventButtonStyle; leaveEnabled: boolean };
 const toLocalInput = (ts: number) => new Date(ts - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const defaultEventDraft = (): EventDraft => ({ channelId: "", scheduledAt: toLocalInput(Date.now() + 3_600_000), maxParticipants: 0, registrationEnabled: true, waitlistEnabled: true, status: "scheduled", eventRoleId: "", reminders: "", recurrenceFreq: "none", recurrenceInterval: 7, title: "", description: "", color: DEFAULT_ACCENT, footer: "", timestamp: true, thumbnail: "", image: "", thumbnailFile: null, imageFile: null, fields: [], joinLabel: "Участвовать", joinEmoji: "✅", joinStyle: "primary", joinEnabled: true, leaveLabel: "Отказаться", leaveEmoji: "❌", leaveStyle: "danger", leaveEnabled: true });
 
@@ -29,7 +30,7 @@ function ButtonEditor({ title, label, emoji, style, enabled, emojis, onChange }:
       <label>
         Цвет
         <Select value={style} onChange={style => onChange({ style })} ariaLabel="Цвет кнопки"
-          options={Object.entries(buttonColorOptions).map(([value, colorLabel]) => ({ value, label: colorLabel }))}/>
+          options={buttonColorOptionsList}/>
       </label>
       <label className="check-row"><input type="checkbox" checked={enabled} onChange={e => onChange({ enabled: e.target.checked })}/> Кнопка видна</label>
     </div>
@@ -37,10 +38,15 @@ function ButtonEditor({ title, label, emoji, style, enabled, emojis, onChange }:
 }
 
 export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError }: { guildId: string; channels: Channel[]; roles: Role[]; emojis: ServerEmoji[]; onDone: PanelNotify; onError: PanelFail }) {
-  const [events, setEvents] = useState<EventListItem[] | null>(null);
+  const { data: events, reload } = useApiResource<EventListItem[] | null>(
+    Boolean(guildId),
+    signal => apiGet<EventListGet>(`/api/guilds/${guildId}/events`, { events: [] }, signal).then(data => data.events),
+    [guildId],
+    null,
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventDraft>(defaultEventDraft);
-  const { busy, run } = useAsyncAction();
+  const { busy, run } = usePanelAction({ onDone, onError });
   const imageInput = useRef<HTMLInputElement>(null);
   const thumbnailInput = useRef<HTMLInputElement>(null);
   const thumbnailPreview = useObjectUrl(draft.thumbnailFile) || draft.thumbnail;
@@ -64,10 +70,10 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
         maxParticipants: typeof saved.maxParticipants === "number" ? saved.maxParticipants : d.maxParticipants,
         registrationEnabled: Boolean(saved.registrationEnabled ?? d.registrationEnabled),
         waitlistEnabled: Boolean(saved.waitlistEnabled ?? d.waitlistEnabled),
-        status: typeof saved.status === "string" ? saved.status : d.status,
+        status: typeof saved.status === "string" ? saved.status as EventStatus : d.status,
         eventRoleId: typeof saved.eventRoleId === "string" ? saved.eventRoleId : "",
         reminders: typeof saved.reminders === "string" ? saved.reminders : "",
-        recurrenceFreq: typeof saved.recurrenceFreq === "string" ? saved.recurrenceFreq : d.recurrenceFreq,
+        recurrenceFreq: typeof saved.recurrenceFreq === "string" ? saved.recurrenceFreq as RecurrenceFrequency : d.recurrenceFreq,
         recurrenceInterval: typeof saved.recurrenceInterval === "number" ? saved.recurrenceInterval : d.recurrenceInterval,
         title: String(saved.title ?? ""),
         description: String(saved.description ?? ""),
@@ -80,23 +86,16 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
         fields: Array.isArray(saved.fields) ? (saved.fields as { name?: unknown; value?: unknown; inline?: unknown }[]).map(f => ({ name: String(f?.name ?? ""), value: String(f?.value ?? ""), inline: Boolean(f?.inline) })) : [],
         joinLabel: typeof saved.joinLabel === "string" ? saved.joinLabel : d.joinLabel,
         joinEmoji: typeof saved.joinEmoji === "string" ? saved.joinEmoji : d.joinEmoji,
-        joinStyle: typeof saved.joinStyle === "string" ? saved.joinStyle : d.joinStyle,
+        joinStyle: typeof saved.joinStyle === "string" ? saved.joinStyle as EventButtonStyle : d.joinStyle,
         joinEnabled: Boolean(saved.joinEnabled ?? true),
         leaveLabel: typeof saved.leaveLabel === "string" ? saved.leaveLabel : d.leaveLabel,
         leaveEmoji: typeof saved.leaveEmoji === "string" ? saved.leaveEmoji : d.leaveEmoji,
-        leaveStyle: typeof saved.leaveStyle === "string" ? saved.leaveStyle : d.leaveStyle,
+        leaveStyle: typeof saved.leaveStyle === "string" ? saved.leaveStyle as EventButtonStyle : d.leaveStyle,
         leaveEnabled: Boolean(saved.leaveEnabled ?? true),
       }));
     } catch { /* malformed draft */ }
   }, [guildId]);
 
-  const load = (signal?: AbortSignal) => void apiGet<EventListGet>(`/api/guilds/${guildId}/events`, { events: [] }, signal).then(data => { if (!signal?.aborted) setEvents(data.events); });
-  useEffect(() => {
-    if (!guildId) return;
-    const controller = new AbortController();
-    load(controller.signal);
-    return () => controller.abort();
-  }, [guildId]);
   const editing = events?.find(e => e.id === editingId) ?? null;
 
   function edit(e: EventListItem) {
@@ -105,7 +104,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
       channelId: e.channelId, scheduledAt: toLocalInput(e.scheduledAt), maxParticipants: e.maxParticipants,
       registrationEnabled: e.registrationEnabled, waitlistEnabled: e.waitlistEnabled, status: e.status, eventRoleId: e.eventRoleId ?? "",
       reminders: e.reminders.join(", "), recurrenceFreq: e.recurrence.freq, recurrenceInterval: e.recurrence.interval,
-      title: e.embed.title ?? "", description: e.embed.description ?? "", color: `#${(e.embed.color ?? 5793266).toString(16).padStart(6, "0")}`, footer: e.embed.footer?.text ?? "", timestamp: Boolean(e.embed.timestamp),
+      title: e.embed.title ?? "", description: e.embed.description ?? "", color: colorNumberToHex(e.embed.color), footer: e.embed.footer?.text ?? "", timestamp: Boolean(e.embed.timestamp),
       thumbnail: e.embed.thumbnail?.url ?? "", image: e.embed.image?.url ?? "", thumbnailFile: null, imageFile: null,
       fields: (e.embed.fields ?? []).map(f => ({ name: f.name, value: f.value, inline: Boolean(f.inline) })),
       joinLabel: join?.label ?? "Участвовать", joinEmoji: join?.emoji ?? "✅", joinStyle: join?.style ?? "primary", joinEnabled: join?.enabled ?? true,
@@ -124,7 +123,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     try { sessionStorage.removeItem(draftKey); } catch { /* unavailable */ }
   };
 
-  async function save(statusOverride?: string) {
+  async function save(statusOverride?: EventStatus) {
     const scheduledMs = new Date(draft.scheduledAt).getTime();
     if (!Number.isFinite(scheduledMs)) return onError("Укажите дату и время события.");
     if (!draft.channelId) return onError("Выберите канал события.");
@@ -133,7 +132,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
       registrationEnabled: draft.registrationEnabled, waitlistEnabled: draft.waitlistEnabled, status: statusOverride ?? draft.status, eventRoleId: draft.eventRoleId || null,
       reminders: draft.reminders.split(",").map(s => Number(s.trim())).filter(v => Number.isInteger(v) && v > 0).slice(0, 10),
       recurrence: { freq: draft.recurrenceFreq, interval: draft.recurrenceInterval },
-      payload: { title: draft.title, description: draft.description, color: parseInt(draft.color.slice(1), 16) || undefined, footer: { text: draft.footer }, thumbnail: { url: draft.thumbnail }, image: { url: draft.image }, fields: draft.fields.filter(f => f.name.trim() && f.value.trim()).map(f => ({ name: f.name, value: f.value, inline: f.inline })), timestamp: draft.timestamp },
+      payload: { title: draft.title, description: draft.description, color: hexToColorNumber(draft.color) || undefined, footer: { text: draft.footer }, thumbnail: { url: draft.thumbnail }, image: { url: draft.image }, fields: draft.fields.filter(f => f.name.trim() && f.value.trim()).map(f => ({ name: f.name, value: f.value, inline: f.inline })), timestamp: draft.timestamp },
       buttons: [
         { key: "join", label: draft.joinLabel, emoji: draft.joinEmoji, style: draft.joinStyle, enabled: draft.joinEnabled, order: 1 },
         { key: "leave", label: draft.leaveLabel, emoji: draft.leaveEmoji, style: draft.leaveStyle, enabled: draft.leaveEnabled, order: 2 },
@@ -143,50 +142,37 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     form.set("data", JSON.stringify(payload));
     if (draft.thumbnailFile) form.set("thumbnailFile", draft.thumbnailFile);
     if (draft.imageFile) form.set("imageFile", draft.imageFile);
-    await run(async () => {
-      const sent = await apiSend<{ warning?: string; id?: string }>(`/api/guilds/${guildId}/events`, { method: "POST", body: form }, "Не удалось сохранить событие.");
-      if (!sent.ok) return onError(sent.error);
-      const result = sent.data;
-      if (!editingId && result.id) setEditingId(result.id);
-      setDraft(d => ({ ...d, status: statusOverride ?? d.status }));
-      const okMessage = statusOverride ? `Событие переведено в «${eventStatusMeta[statusOverride]?.label ?? statusOverride}».` : editingId ? "Событие обновлено." : "Событие создано.";
-      onDone(result.warning ?? okMessage, result.warning ? "warn" : undefined);
-      load();
-    });
+    await run(
+      () => apiSend<{ warning?: string; id?: string }>(`/api/guilds/${guildId}/events`, { method: "POST", body: form }, "Не удалось сохранить событие."),
+      data => {
+        if (!editingId && data.id) setEditingId(data.id);
+        setDraft(d => ({ ...d, status: statusOverride ?? d.status }));
+        const okMessage = statusOverride ? `Событие переведено в «${eventStatusMeta[statusOverride]?.label ?? statusOverride}».` : editingId ? "Событие обновлено." : "Событие создано.";
+        return { message: data.warning ?? okMessage, ...(data.warning ? { tone: "warn" as const } : {}) };
+      },
+      reload,
+    );
   }
 
   async function remove(e: EventListItem) {
-    if (busy) return;
     if (!(await confirmAction(`Удалить событие «${e.embed.title ?? "без названия"}»? Сообщение в Discord тоже будет удалено.`, "Удалить"))) return;
-    await run(async () => {
-      const result = await apiMutate(`/api/guilds/${guildId}/events?id=${e.id}`, { method: "DELETE" }, "Не удалось удалить событие.");
-      if (!result.ok) return onError(result.error);
-      onDone("Событие удалено.");
-      if (editingId === e.id) reset();
-      load();
-    });
+    await run(
+      () => apiMutate(`/api/guilds/${guildId}/events?id=${e.id}`, { method: "DELETE" }, "Не удалось удалить событие."),
+      () => {
+        if (editingId === e.id) reset();
+        return { message: "Событие удалено." };
+      },
+      reload,
+    );
   }
 
   async function removeParticipant(e: EventListItem, userId: string) {
-    if (busy) return;
     if (!(await confirmAction(`Удалить участника ${userId} из события?`, "Удалить"))) return;
-    await run(async () => {
-      const sent = await apiSend<{ promotedUserId?: string }>(`/api/guilds/${guildId}/events?id=${e.id}&participant=${userId}`, { method: "DELETE" }, "Не удалось удалить участника.");
-      if (!sent.ok) return onError(sent.error);
-      const result = sent.data;
-      onDone(result.promotedUserId ? `Участник удалён, <@${result.promotedUserId}> переведён из очереди.` : "Участник удалён.");
-      setEvents(list => (list ?? []).map(item => {
-        if (item.id !== e.id) return item;
-        const removed = item.participants.find(p => p.userId === userId);
-        const wasWaitlist = removed?.waitlist ?? false;
-        const promoted = result.promotedUserId ?? null;
-        return {
-          ...item,
-          counts: { joined: item.counts.joined - (wasWaitlist ? 0 : 1) + (promoted ? 1 : 0), waitlist: item.counts.waitlist - (wasWaitlist ? 1 : 0) - (promoted ? 1 : 0) },
-          participants: item.participants.filter(p => p.userId !== userId).map(p => p.userId === promoted ? { ...p, waitlist: false } : p),
-        };
-      }));
-    });
+    await run(
+      () => apiSend<{ promotedUserId?: string }>(`/api/guilds/${guildId}/events?id=${e.id}&participant=${userId}`, { method: "DELETE" }, "Не удалось удалить участника."),
+      data => ({ message: data.promotedUserId ? `Участник удалён, <@${data.promotedUserId}> переведён из очереди.` : "Участник удалён." }),
+      reload,
+    );
   }
 
   const set = (change: Partial<EventDraft>) => setDraft(d => ({ ...d, ...change }));
@@ -241,7 +227,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
             <label>Напоминания, минуты через запятую<input value={draft.reminders} placeholder="60, 1440, 10080" onChange={e => set({ reminders: e.target.value })}/></label>
             <label>Повторение<Select
               value={draft.recurrenceFreq}
-              onChange={recurrenceFreq => set({ recurrenceFreq })}
+              onChange={recurrenceFreq => set({ recurrenceFreq: recurrenceFreq as RecurrenceFrequency })}
               ariaLabel="Повторение"
               options={[
                 { value: "none", label: "Без повторения" },

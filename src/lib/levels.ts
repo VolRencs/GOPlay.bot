@@ -23,7 +23,6 @@ export type LevelSettings = {
 
 export type LevelReward = { level: number; role_id: string };
 export type LevelsGet = { settings: LevelSettings; rewards: LevelReward[] };
-export type LevelsPutBody = LevelsGet;
 
 export const levelRanges = {
   xp_per_message: { min: 0, max: 100 },
@@ -84,7 +83,7 @@ export function levelProgress(xp: number, baseXp: number, growthPercent: number)
   return { level, current: xp - floor, needed: need };
 }
 
-export function buildLevelsPutBody(settings: LevelSettings, rewards: LevelReward[]): LevelsPutBody {
+export function buildLevelsPutBody(settings: LevelSettings, rewards: LevelReward[]): LevelsGet {
   return {
     settings: {
       ...settings,

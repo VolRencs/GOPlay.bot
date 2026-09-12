@@ -1,8 +1,7 @@
-import { EmbedBuilder, Events, MessageFlags, type Client, type Guild, type Interaction, type Message, type VoiceChannel, type VoiceState } from "discord.js";
+import { EmbedBuilder, Events, MessageFlags, type Client, type Guild, type Interaction, type Message, type VoiceState } from "discord.js";
 import { withTransaction } from "../../db/database.ts";
 import { aliveGuildIds, isForeignKeyError, stmt } from "../db/statements.ts";
 import { logger } from "../utils/logger.ts";
-import { unrefInterval } from "../utils/timers.ts";
 import { failInteraction, guard } from "../../lib/errors.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { levelFromXp, levelProgress, type LevelReward, type LevelSettings } from "../../lib/levels.ts";
@@ -102,7 +101,7 @@ function tickVoice(client: Client): void {
   for (const [key, session] of voiceSessions) {
     const guild = client.guilds.cache.get(session.guildId);
     const member = guild?.members.cache.get(session.userId);
-    const channel = guild?.channels.cache.get(session.channelId) as VoiceChannel | undefined;
+    const channel = guild?.channels.cache.get(session.channelId);
     if (!guild || !member || !channel?.isVoiceBased()) { voiceSessions.delete(key); continue; }
     if (guild.afkChannelId === channel.id) continue;
     if (member.voice.selfMute || member.voice.selfDeaf || member.voice.serverMute || member.voice.serverDeaf) continue;
@@ -187,11 +186,11 @@ export function registerLevels(client: Client): void {
   client.on(Events.VoiceStateUpdate, (oldState, newState) => handleVoiceState(oldState, newState));
   client.on(Events.GuildDelete, guild => purgeLevelsGuild(guild.id));
   client.once(Events.ClientReady, () => seedVoiceSessions(client));
-  unrefInterval(() => {
+  setInterval(() => {
     const levelUps = flushLevels();
     if (levelUps.length) guard("LEVELS", () => applyLevelUps(client, levelUps));
-  }, FLUSH_INTERVAL);
-  unrefInterval(() => tickVoice(client), VOICE_INTERVAL);
+  }, FLUSH_INTERVAL).unref();
+  setInterval(() => tickVoice(client), VOICE_INTERVAL).unref();
 }
 
 function progressBar(current: number, needed: number): string {

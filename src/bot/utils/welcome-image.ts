@@ -1,6 +1,7 @@
 import { Resvg } from "@resvg/resvg-js";
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
+import { setImmediate as immediate } from "node:timers/promises";
 import { join, resolve } from "node:path";
 import { buildWelcomeSvg, imageSize, parseImageConfig, renderWelcomeTemplate, WELCOME_DESIGN, type WelcomeImageConfig } from "../../lib/welcome.ts";
 const PUBLIC_ROOT = resolve(process.cwd(), "public");
@@ -52,7 +53,7 @@ async function withWelcomeSlot<T>(fn: () => Promise<T> | T): Promise<T> {
   if (welcomeActive >= MAX_WELCOME_CONCURRENCY) await new Promise<void>((r) => welcomeQueue.push(r));
   welcomeActive++;
   try {
-    await new Promise<void>((r) => setImmediate(r));
+    await immediate();
     return await fn();
   } finally {
     welcomeActive--;

@@ -1,6 +1,5 @@
 import { aliveGuildIds, isForeignKeyError, stmt } from "./db/statements.ts";
 import { logger } from "./utils/logger.ts";
-import { unrefInterval } from "./utils/timers.ts";
 import { db, withTransaction } from "../db/database.ts";
 import { time } from "./perf.ts";
 import { pruneOldEvents } from "../lib/server-cleanup.ts";
@@ -21,15 +20,11 @@ const CLEANUP_INTERVAL = 10 * 60_000;
 const today = () => new Date().toISOString().slice(0, 10);
 
 function countsFor(guildId: string, day: string): Counts {
-  let days = pending.get(guildId);
-  if (!days) { days = new Map(); pending.set(guildId, days); }
-  let counts = days.get(day);
-  if (!counts) { counts = { joins: 0, leaves: 0, messages: 0, moderation: 0 }; days.set(day, counts); }
-  return counts;
+  return pending.getOrInsertComputed(guildId, () => new Map()).getOrInsertComputed(day, () => ({ joins: 0, leaves: 0, messages: 0, moderation: 0 }));
 }
 
 function ensureTimer() {
-  if (!timer) { timer = unrefInterval(flushMetrics, FLUSH_INTERVAL); }
+  if (!timer) { timer = setInterval(flushMetrics, FLUSH_INTERVAL).unref(); }
 }
 
 export function addMetric(guildId: string, metric: MetricKey) {
@@ -43,15 +38,12 @@ export function addMessage(guildId: string, channelId: string, userId: string, a
   const hour = date.getUTCHours();
   const key = `${guildId}:${day}`;
   countsFor(guildId, day).messages += 1;
-  const channels = channelCounts.get(key) ?? new Map<string, number>();
+  const channels = channelCounts.getOrInsertComputed(key, () => new Map<string, number>());
   channels.set(channelId, (channels.get(channelId) ?? 0) + 1);
-  channelCounts.set(key, channels);
-  const byUser = userCounts.get(key) ?? new Map<string, number>();
+  const byUser = userCounts.getOrInsertComputed(key, () => new Map<string, number>());
   byUser.set(userId, (byUser.get(userId) ?? 0) + 1);
-  userCounts.set(key, byUser);
-  const hours = hourlyCounts.get(key) ?? new Map<number, number>();
+  const hours = hourlyCounts.getOrInsertComputed(key, () => new Map<number, number>());
   hours.set(hour, (hours.get(hour) ?? 0) + 1);
-  hourlyCounts.set(key, hours);
   ensureTimer();
 }
 
@@ -123,7 +115,7 @@ function evictDeadGuildKeys(): Set<string> | null {
 }
 
 // Ретеншн агрегатов: детальные таблицы не растут бесконечно. Дневные строки
-unrefInterval(() => {
+setInterval(() => {
   try {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
     for (const cleanup of [stmt.cleanupChannelStats, stmt.cleanupUserStats, stmt.cleanupHourlyStats, stmt.cleanupDailyStats]) cleanup.run(cutoff);
@@ -132,4 +124,4 @@ unrefInterval(() => {
   } catch (error) {
     logger.warn("Очистка статистики не удалась", error);
   }
-}, CLEANUP_INTERVAL);
+}, CLEANUP_INTERVAL).unref();

@@ -11,7 +11,6 @@ import { renderWelcomeTemplate } from "../lib/welcome.ts";
 import { stmt } from "./db/statements.ts";
 import { forgetMessage, flushMessageCache, messageContent, rememberMessage } from "./db/message-cache.ts";
 import { logger } from "./utils/logger.ts";
-import { unrefInterval } from "./utils/timers.ts";
 import { failInteraction, guard } from "../lib/errors.ts";
 import { addMessage, addMetric, flushMetrics } from "./metrics.ts";
 import { auditActor, auditFind, initLogging, isBotAction, logAction, markBotAction, resolveChannel } from "./logging/index.ts";
@@ -30,6 +29,7 @@ import { trModeration } from "../lib/i18n/bot/moderation.ts";
 import { logTr } from "../lib/i18n/bot/logs.ts";
 import { wipeGuildData } from "../lib/server-cleanup.ts";
 import { deleteGuildFiles } from "../lib/uploads.ts";
+import { setTimeout as delay } from "node:timers/promises";
 const langUpdate = db.prepare("UPDATE guilds SET lang=? WHERE id=?");
 const guildRefresh = db.prepare("UPDATE guilds SET name=?,icon=?,updated_at=? WHERE id=?");
 const automodRuleTitles = { ru: automodRulesFor("ru"), en: automodRulesFor("en") } as const;
@@ -179,31 +179,19 @@ client.on(Events.GuildMemberRemove, member => {
 });
 const roleLocks = new Map<string, Promise<void>>();
 const ROLE_LOCK_TIMEOUT_MS = 10_000;
-/** Таймаут с возможностью отмены: завершённый запрос не должен держать
- *  event loop и оставлять висящий таймер до 10 секунд. */
-function lockTimeout(ms: number): { promise: Promise<never>; cancel: () => void } {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const promise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("role lock timeout")), ms);
-    timer.unref();
-  });
-  return { promise, cancel: () => { if (timer) clearTimeout(timer); } };
-}
+// unref-таймер: просрочка отклоняет гонку, но не держит процесс живым.
+// Поздний rejection поглощён Promise.race и не становится unhandledRejection.
+const lockTimeout = () => delay(ROLE_LOCK_TIMEOUT_MS, undefined, { ref: false }).then<never>(() => { throw new Error("role lock timeout"); });
 async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = roleLocks.get(key) ?? Promise.resolve();
-  let release: () => void;
-  const cur = new Promise<void>((res) => (release = res));
+  const { promise: cur, resolve: release } = Promise.withResolvers<void>();
   roleLocks.set(key, cur);
   // Зависший предшественник не должен держать очередь вечно.
-  const wait = lockTimeout(ROLE_LOCK_TIMEOUT_MS);
-  await Promise.race([prev, wait.promise]).catch(() => null);
-  wait.cancel();
-  const own = lockTimeout(ROLE_LOCK_TIMEOUT_MS);
+  await Promise.race([prev, lockTimeout()]).catch(() => null);
   try {
-    return await Promise.race([fn(), own.promise]);
+    return await Promise.race([fn(), lockTimeout()]);
   } finally {
-    own.cancel();
-    release!();
+    release();
     if (roleLocks.get(key) === cur) roleLocks.delete(key);
   }
 }
@@ -518,8 +506,8 @@ client.on(Events.ChannelDelete, async channel => {
   const actor = await auditActor(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
   logAction({ guildId: channel.guild.id, type: "channel_delete", targetId: channel.id, moderatorId: actor, details: logTr(guildLang(channel.guild.id), "channelDeleted", { name: channel.name }) });
 });
-unrefInterval(pruneDetectors, 10 * 60_000);
-unrefInterval(sweepRecentBans, 60_000);
+setInterval(pruneDetectors, 10 * 60_000).unref();
+setInterval(sweepRecentBans, 60_000).unref();
 registerTempChannels(client);
 registerMusic(client);
 registerLevels(client);

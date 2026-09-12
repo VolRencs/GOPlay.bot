@@ -1,6 +1,5 @@
 import { stmt } from "./db/statements.ts";
 import { logger } from "./utils/logger.ts";
-import { unrefInterval } from "./utils/timers.ts";
 import { safeJson, parseStringArray } from "../lib/json.ts";
 import { ttlCacheSync } from "../lib/cache.ts";
 import { guildLang } from "../lib/i18n/bot.ts";
@@ -50,7 +49,7 @@ export function stopTimer() {
 }
 
 function ensureTimer() {
-  if (!timer) { timer = unrefInterval(refreshLoop, REFRESH_INTERVAL); }
+  if (!timer) { timer = setInterval(refreshLoop, REFRESH_INTERVAL).unref(); }
 }
 
 function refreshLoop() {

@@ -2,14 +2,14 @@
   "name": "goplaybot",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
+  "packageManager": "pnpm@12.4.1+sha512.2e81e399d73fe8390dab25e06aa788ab7a5908248d2f5a370f82b481147a6a7a367bf8048f9a6fdb6460f21a66f0542dedb8b94ca2c8723596741920b1656d4c",
   "engines": {
-    "node": ">=22.18.0"
+    "node": ">=26.0.0"
   },
   "scripts": {
-    "dev": "pnpm logs:rotate && { pnpm migrate:auth && concurrently -k \"next dev\" \"node --env-file=.env src/bot/index.ts\"; } 2>&1 | tee -a data/logs/bot.log",
+    "dev": "pnpm logs:rotate && { pnpm migrate:auth && node scripts/run-both.ts dev; } 2>&1 | tee -a data/logs/bot.log",
     "build": "next build",
-    "start": "pnpm logs:rotate && { pnpm migrate:auth && concurrently -k \"next start\" \"node --env-file=.env src/bot/index.ts\"; } >> data/logs/bot.log 2>&1",
+    "start": "pnpm logs:rotate && { pnpm migrate:auth && node scripts/run-both.ts start; } >> data/logs/bot.log 2>&1",
     "logs:rotate": "mkdir -p data/logs && find data/logs -maxdepth 1 -name bot.log -size +5M -exec mv {} {}.1 \\;",
     "migrate:auth": "node --env-file=.env scripts/migrate-auth.ts",
     "test": "node --test test/*.test.ts",
@@ -18,7 +18,7 @@
   "dependencies": {
     "@discordjs/voice": "^0.19.2",
     "@resvg/resvg-js": "2.6.2",
-    "better-auth": "^1.7.3",
+    "better-auth": "^1.7.4",
     "discord.js": "^14.27.0",
     "frimousse": "^0.3.0",
     "libsodium-wrappers": "^0.8.4",
@@ -31,7 +31,6 @@
     "@types/node": "^26.5.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "concurrently": "^10.0.5",
     "typescript": "^7.0.2"
   }
 }

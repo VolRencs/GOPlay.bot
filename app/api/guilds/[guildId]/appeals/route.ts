@@ -5,7 +5,7 @@ import { appealStatuses, listAppeals, type AppealListQuery, type AppealsListGet,
 export const GET = guildRoute(async (request, { guildId }) => {
   const url = new URL(request.url);
   const rawStatus = url.searchParams.get("status") ?? "all";
-  const status: AppealStatus | "all" = appealStatuses.includes(rawStatus as AppealStatus) ? rawStatus as AppealStatus : "all";
+  const status: AppealStatus | "all" = appealStatuses.find(value => value === rawStatus) ?? "all";
   const userId = url.searchParams.get("userId")?.trim() || undefined;
   const moderatorId = url.searchParams.get("moderatorId")?.trim() || undefined;
   if ((userId !== undefined && !isSnowflake(userId)) || (moderatorId !== undefined && !isSnowflake(moderatorId)))

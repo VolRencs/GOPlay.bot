@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, ArrowRight, Check, ChevronDown } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
@@ -74,16 +74,21 @@ export function useAsyncAction() {
   return { busy, run };
 }
 
-/** Debounce-запись черновика в sessionStorage; File-объекты отбрасываются. */
+const writeSessionDraft = (key: string, value: unknown) => {
+  try { sessionStorage.setItem(key, JSON.stringify(value, (_key, item) => item instanceof File ? undefined : item)); } catch { /* storage full or unavailable */ }
+};
+
+/** Debounce-запись черновика в sessionStorage; File-объекты отбрасываются.
+ *  Effect Event читает свежие key/value в таймере и cleanup: последние правки
+ *  дописываются при размонтировании, а не теряются за 400 мс. */
 export function useSessionDraft(key: string, enabled: boolean, deps: readonly unknown[], value: () => unknown): void {
+  const write = useEffectEvent(() => { if (enabled) writeSessionDraft(key, value()); });
   useEffect(() => {
     if (!enabled) return;
-    const timer = setTimeout(() => {
-      try { sessionStorage.setItem(key, JSON.stringify(value(), (_key, item) => item instanceof File ? undefined : item)); } catch { /* storage full or unavailable */ }
-    }, 400);
+    const timer = setTimeout(write, 400);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps перезапускают debounce, как прежние локальные эффекты.
   }, [key, enabled, ...deps]);
+  useEffect(() => () => write(), []);
 }
 
 /** Кнопка сохранения карточки: единый вид «Сохраняем…» на время busy. */
@@ -219,14 +224,15 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
 
 /** Закрытие поповера по клику вне него и Escape. */
 export function useDismissOnOutside<T extends HTMLElement>(ref: RefObject<T | null>, open: boolean, onClose: () => void, eventType: "mousedown" | "pointerdown" = "pointerdown"): void {
+  const close = useEffectEvent(onClose);
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (event: Event) => { if (!ref.current?.contains(event.target as Node)) onClose(); };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const onPointerDown = (event: Event) => { if (!ref.current?.contains(event.target as Node)) close(); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
     document.addEventListener(eventType, onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => { document.removeEventListener(eventType, onPointerDown); document.removeEventListener("keydown", onKeyDown); };
-  }, [ref, open, onClose, eventType]);
+  }, [ref, open, eventType]);
 }
 
 export function useObjectUrl(file: File | null) {
@@ -391,15 +397,14 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
 export function ModalShell({ labelledBy, onClose, children }: { labelledBy: string; onClose?: () => void; children: ReactNode }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  useEffect(() => { onCloseRef.current = onClose; });
+  const close = useEffectEvent(() => onClose?.());
   useEffect(() => {
     restoreRef.current = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current?.(); return; }
+      if (event.key === "Escape") { event.preventDefault(); close(); return; }
       if (event.key !== "Tab") return;
       const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button") ?? [])];
       if (!focusable.length) return;

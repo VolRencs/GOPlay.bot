@@ -3,6 +3,7 @@
 
 import { type Guild } from "discord.js";
 import { AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, createAudioPlayer, entersState, joinVoiceChannel, type VoiceConnection } from "@discordjs/voice";
+import { setTimeout as delay } from "node:timers/promises";
 import { logger } from "../../bot/utils/logger.ts";
 import { count } from "../../bot/perf.ts";
 import { ACTIVE_STREAM_LIMIT, activeStreamCount, startAudioStream, type StreamHandle } from "./streamer.ts";
@@ -296,7 +297,7 @@ async function handleIdle(s: Session, playedMs: number): Promise<void> {
   const playedSec = s.lastResumeSec + playedMs / 1000;
   // Исход обычно успевает придти вместе с close процессов; кап страховочный.
   const outcome: StreamOutcome | null = s.handle
-    ? await Promise.race([s.handle.outcome, new Promise<null>(r => setTimeout(r, OUTCOME_RACE_MS))])
+    ? await Promise.race([s.handle.outcome, delay(OUTCOME_RACE_MS, null)])
     : null;
   if (sessions.get(s.guildId) !== s || s.current !== finished) return;
   // Скип не возвращает трек в луп очереди, естественное завершение — возвращает.

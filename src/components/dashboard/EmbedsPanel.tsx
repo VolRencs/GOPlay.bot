@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Image, Trash2, User } from "lucide-react";
 import { safeJson } from "../../../src/lib/json.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, useAsyncAction, useObjectUrl, useSessionDraft } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, useObjectUrl, useSessionDraft } from "./ui.tsx";
 import { apiMutate, apiSend } from "./api.ts";
-import { DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type SavedEmbed } from "./types.ts";
+import { useApiResource, usePanelAction } from "./hooks.ts";
+import { colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type SavedEmbed } from "./types.ts";
 
 const INHERIT_CHANNEL = "Использовать исходный канал";
 
@@ -28,16 +29,25 @@ type EmbedForm = {
 const emptyEmbedForm = (): EmbedForm => ({ published: false, name: "", mode: "embed", title: "", description: "", footer: "", author: "", authorUrl: "", authorIcon: "", color: DEFAULT_ACCENT, fields: [], image: "", thumbnail: "" });
 
 export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: string; channels: Channel[]; onDone: PanelNotify; onError: PanelFail }) {
-  const [items, setItems] = useState<SavedEmbed[]>([]);
-  const [sendings, setSendings] = useState<EmbedSending[]>([]);
+  const { data, setData, reload } = useApiResource<EmbedsGet>(
+    Boolean(guildId),
+    async signal => {
+      const sent = await apiSend<EmbedsGet>(`/api/guilds/${guildId}/embeds`, { signal }, "Не удалось загрузить сохранённые сообщения.");
+      if (!sent.ok) throw new Error(sent.error);
+      return sent.data;
+    },
+    [guildId],
+    { embeds: [], sendings: [] },
+  );
+  const { embeds: items, sendings } = data;
   const [channel, setChannel] = useState("");
   const [form, setFormState] = useState<EmbedForm>(emptyEmbedForm);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [authorFile, setAuthorFile] = useState<File | null>(null);
   const setForm = (patch: Partial<EmbedForm>) => setFormState(current => ({ ...current, ...patch }));
-  const { busy, run } = useAsyncAction();
-  const { busy: verifying, run: runVerify } = useAsyncAction();
+  const { busy, run } = usePanelAction({ onDone, onError });
+  const { busy: verifying, run: runVerify } = usePanelAction({ onDone, onError });
   const composerRef = useRef<HTMLDivElement>(null);
   const imageInput = useRef<HTMLInputElement>(null);
   const thumbnailInput = useRef<HTMLInputElement>(null);
@@ -76,7 +86,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
   const payload: EmbedPayload = {
     title: form.title,
     description: form.description,
-    color: parseInt(form.color.slice(1), 16),
+    color: hexToColorNumber(form.color),
     footer: { text: form.footer },
     ...(form.author.trim() ? { author: { name: form.author, ...(form.authorUrl.trim() ? { url: form.authorUrl.trim() } : {}), ...(form.authorIcon ? { icon_url: form.authorIcon } : {}) } } : {}),
     fields: form.fields,
@@ -84,33 +94,18 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
     thumbnail: { url: form.thumbnail },
   };
 
-  const load = async (verify = false, signal?: AbortSignal): Promise<boolean> => {
-    const sent = await apiSend<EmbedsGet>(`/api/guilds/${guildId}/embeds${verify ? "?verify=1" : ""}`, signal ? { signal } : {}, "Не удалось загрузить сохранённые сообщения.");
-    if (!sent.ok || signal?.aborted) return false;
-    setItems(sent.data.embeds);
-    setSendings(sent.data.sendings);
-    return true;
-  };
-  useEffect(() => {
-    if (!guildId) return;
-    const controller = new AbortController();
-    void load(false, controller.signal);
-    return () => controller.abort();
-  }, [guildId]);
-
   function verifySendings() {
-    if (verifying) return;
-    runVerify(async () => {
-      if (!(await load(true))) return onError("Не удалось проверить отправления.");
-      onDone("Список отправлений проверен.");
-    });
+    void runVerify(
+      () => apiSend<EmbedsGet>(`/api/guilds/${guildId}/embeds?verify=1`, {}, "Не удалось проверить отправления."),
+      next => { setData(next); return { message: "Список отправлений проверен." }; },
+    );
   }
 
   function editTemplate(item: SavedEmbed) {
       const parsed = safeJson<Partial<EmbedPayload>>(item.payload_json, {});
       // safeJson пропускает JSON-null: строка 'null' в БД не должна дойти до чтения полей.
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return onError("Шаблон повреждён и не может быть загружен в редактор.");
-    const p = parsed as EmbedPayload;
+    const p = parsed;
     setForm({
       id: item.id,
       published: Boolean(item.message_id),
@@ -122,7 +117,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
       author: p.author?.name ?? "",
       authorUrl: p.author?.url ?? "",
       authorIcon: p.author?.icon_url ?? "",
-      color: `#${(p.color ?? 5793266).toString(16).padStart(6, "0")}`,
+      color: colorNumberToHex(p.color),
       fields: (p.fields ?? []).map(field => ({ ...field, inline: Boolean(field.inline) })),
       image: p.image?.url ?? "",
       thumbnail: p.thumbnail?.url ?? "",
@@ -146,52 +141,55 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
 
   async function submit(action: "save" | "update") {
     if (!form.name.trim()) return onError("Укажите название шаблона.");
-    await run(async () => {
-      const upload = new FormData();
-      upload.set("data", JSON.stringify({ id: form.id, name: form.name, mode: form.mode, saveOnly: action === "save", updateMessage: action === "update", payload }));
-      if (imageFile) upload.set("imageFile", imageFile);
-      if (thumbnailFile) upload.set("thumbnailFile", thumbnailFile);
-      if (authorFile) upload.set("authorFile", authorFile);
-      const sent = await apiSend<{ id?: number }>(`/api/guilds/${guildId}/embeds`, { method: "POST", body: upload }, "Не удалось сохранить сообщение.");
-      if (!sent.ok) return onError(sent.error);
-      if (action === "save" && sent.data.id) setForm({ id: sent.data.id });
-      onDone(action === "save" ? "Шаблон сохранён. Его можно отправить из списка выше." : "Опубликованное сообщение обновлено.");
-      sessionStorage.removeItem(draftKey);
-      load();
-    });
+    const upload = new FormData();
+    upload.set("data", JSON.stringify({ id: form.id, name: form.name, mode: form.mode, saveOnly: action === "save", updateMessage: action === "update", payload }));
+    if (imageFile) upload.set("imageFile", imageFile);
+    if (thumbnailFile) upload.set("thumbnailFile", thumbnailFile);
+    if (authorFile) upload.set("authorFile", authorFile);
+    await run(
+      () => apiSend<{ id?: number }>(`/api/guilds/${guildId}/embeds`, { method: "POST", body: upload }, "Не удалось сохранить сообщение."),
+      data => {
+        if (action === "save" && data.id) setForm({ id: data.id });
+        sessionStorage.removeItem(draftKey);
+        return { message: action === "save" ? "Шаблон сохранён. Его можно отправить из списка выше." : "Опубликованное сообщение обновлено." };
+      },
+      reload,
+    );
   }
 
   async function resend(item: SavedEmbed) {
     const targetChannel = channel || item.channel_id;
     if (!targetChannel) return onError("Выберите канал для первого отправления шаблона.");
-    await run(async () => {
-      const result = await apiMutate(`/api/guilds/${guildId}/embeds`, {
+    await run(
+      () => apiMutate(`/api/guilds/${guildId}/embeds`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: item.id, name: item.name, channelId: targetChannel, mode: item.mode, payload: safeJson<Partial<EmbedPayload>>(item.payload_json, {}) as EmbedPayload }),
-      }, "Не удалось отправить шаблон.");
-      if (!result.ok) return onError(result.error);
-      onDone("Шаблон отправлен."); load();
-    });
+        body: JSON.stringify({ id: item.id, name: item.name, channelId: targetChannel, mode: item.mode, payload: safeJson<Partial<EmbedPayload>>(item.payload_json, {}) }),
+      }, "Не удалось отправить шаблон."),
+      () => ({ message: "Шаблон отправлен." }),
+      reload,
+    );
   }
 
   async function remove(item: SavedEmbed) {
     if (!(await confirmAction(`Удалить «${item.name}» из Discord и списка шаблонов?`, "Удалить"))) return;
-    await run(async () => {
-      const result = await apiMutate(`/api/guilds/${guildId}/embeds?id=${item.id}`, { method: "DELETE" }, "Не удалось удалить сообщение.");
-      if (!result.ok) return onError(result.error);
-      if (form.id === item.id) reset();
-      onDone("Embed-сообщение удалено."); load();
-    });
+    await run(
+      () => apiMutate(`/api/guilds/${guildId}/embeds?id=${item.id}`, { method: "DELETE" }, "Не удалось удалить сообщение."),
+      () => {
+        if (form.id === item.id) reset();
+        return { message: "Embed-сообщение удалено." };
+      },
+      reload,
+    );
   }
 
   async function removeSending(s: EmbedSending) {
     if (!(await confirmAction("Удалить это отправленное сообщение из Discord?", "Удалить"))) return;
-    await run(async () => {
-      const result = await apiMutate(`/api/guilds/${guildId}/embeds?sendingId=${s.id}`, { method: "DELETE" }, "Не удалось удалить сообщение.");
-      if (!result.ok) return onError(result.error);
-      onDone("Отправленное сообщение удалено."); load();
-    });
+    await run(
+      () => apiMutate(`/api/guilds/${guildId}/embeds?sendingId=${s.id}`, { method: "DELETE" }, "Не удалось удалить сообщение."),
+      () => ({ message: "Отправленное сообщение удалено." }),
+      reload,
+    );
   }
 
   return (

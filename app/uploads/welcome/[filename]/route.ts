@@ -7,7 +7,7 @@ const contentTypes: Record<string, string> = { png: "image/png", jpg: "image/jpe
 // production отдаёт из public только файлы, перечисленные на старте сервера.
 // Этот роут читает файл с диска в рантайме (статический public по-прежнему в
 // приоритете для файлов, попавших в сборку).
-export async function GET(_: Request, context: { params: Promise<{ filename: string }> }) {
+export async function GET(_: Request, context: RouteContext<"/uploads/welcome/[filename]">) {
   const { filename } = await context.params;
   const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
   const type = contentTypes[ext];

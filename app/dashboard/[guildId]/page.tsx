@@ -3,16 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Bot, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, X } from "lucide-react";
 import { buildWelcomePutBody, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../src/lib/welcome.ts";
-import { automodRules, buildLoggingPutBody, type LoggingGet, type LoggingPutBody } from "../../../src/lib/labels.ts";
-import { buildRulePutBody, type AutomodGet, type AutomodRulePutBody, type AutomodSecurityPutBody } from "../../../src/lib/automod.ts";
-import { buildTempPutBody, type TempchannelsGet, type TempPutBody } from "../../../src/lib/tempchannels.ts";
-import { buildLevelsPutBody, levelDefaults, type LevelsGet, type LevelsPutBody } from "../../../src/lib/levels.ts";
+import { automodRules, buildLoggingPutBody, type LangGet, type LoggingGet, type LoggingPutBody } from "../../../src/lib/labels.ts";
+import type { AutomodGet, AutomodRulePutBody, AutomodRuleRow, AutomodSecurityPutBody } from "../../../src/lib/automod.ts";
+import type { TempchannelsGet, TempPutBody } from "../../../src/lib/tempchannels.ts";
+import { buildLevelsPutBody, levelDefaults, type LevelsGet } from "../../../src/lib/levels.ts";
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
 import { SERVER_FALLBACK_NAME } from "../../../src/lib/constants.ts";
 import type { MusicSettings } from "../../../src/lib/music-settings.ts";
-import type { Channel, LoggingState, Role, Rule, ServerEmoji, ServerIdentity, ServerStats, TempChannelsState, TempPresetApi, Welcome } from "../../../src/components/dashboard/types.ts";
-import { buildMusicPutBody, defaultTempChannels, tempPresetFromApi, type LangGet, type LangPutBody, type MusicPutBody, type ResourcesGet } from "../../../src/components/dashboard/types.ts";
+import { buildMusicPutBody, type Channel, type LoggingState, type ResourcesGet, type Role, type ServerEmoji, type ServerIdentity, type ServerStats } from "../../../src/components/dashboard/types.ts";
 import { ConfirmHost, ModalShell, stableStringify } from "../../../src/components/dashboard/ui.tsx";
+import { useConfigDraft } from "../../../src/components/dashboard/hooks.ts";
 import { apiSend } from "../../../src/components/dashboard/api.ts";
 import { ServerStatistics } from "../../../src/components/dashboard/StatsPanel.tsx";
 import { TemporaryChannelsSettings } from "../../../src/components/dashboard/TempChannelsPanel.tsx";
@@ -44,13 +44,13 @@ type Toast = { id: number; text: string; tone: "ok" | "warn" | "error" };
 let toastSeq = 0;
 const dirty = (a: unknown, b: unknown) => a !== null && stableStringify(a) !== stableStringify(b);
 
-export default function GuildSettings({ params }: { params: Promise<{ guildId: string }> }) {
+export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId]">) {
   const [guildId, setGuildId] = useState("");
   const [tab, setTab] = useState<TabKey>("stats");
-  const [serverLang, setServerLang] = useState<"ru" | "en">("ru");
-  const [savedServerLang, setSavedServerLang] = useState<"ru" | "en">("ru");
-  const [music, setMusic] = useState<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: 300 });
-  const [savedMusic, setSavedMusic] = useState<MusicSettings | null>(null);
+  const langDraft = useConfigDraft<"ru" | "en">("ru");
+  const musicDraft = useConfigDraft<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: 300 });
+  const serverLang = langDraft.value, setServerLang = langDraft.setValue;
+  const music = musicDraft.value, setMusic = musicDraft.setValue;
   const [channels, setChannels] = useState<Channel[]>([]);
   const [voiceChannels, setVoiceChannels] = useState<Channel[]>([]);
   const [categories, setCategories] = useState<Channel[]>([]);
@@ -58,21 +58,21 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
   const [emojis, setEmojis] = useState<ServerEmoji[]>([]);
   const [stats, setStats] = useState<ServerStats>({ members: null, online: null });
   const [server, setServer] = useState<ServerIdentity>({ name: SERVER_FALLBACK_NAME, icon: null });
-  const [welcome, setWelcome] = useState<Welcome>({ ...welcomeDefaults });
+  const welcomeDraft = useConfigDraft<WelcomeGet>({ ...welcomeDefaults });
+  const welcome = welcomeDraft.value, setWelcome = welcomeDraft.setValue;
   const [bgTimestamp, setBgTimestamp] = useState(0);
-  const [rules, setRules] = useState<Record<string, Rule>>({});
+  const [rules, setRules] = useState<Record<string, AutomodRuleRow>>({});
   const [ignoredRoleIds,setIgnoredRoleIds]=useState<string[]>([]);
   const [protectedChannelId,setProtectedChannelId]=useState<string|null>(null);
-  const [savedWelcome, setSavedWelcome] = useState<Welcome | null>(null);
-  const [savedRules, setSavedRules] = useState<Record<string, Rule> | null>(null);
+  const [savedRules, setSavedRules] = useState<Record<string, AutomodRuleRow> | null>(null);
   const [savedSecurity, setSavedSecurity] = useState<{ roles: string[]; channel: string | null } | null>(null);
-  const [logging, setLogging] = useState<LoggingState>({ channelId: "", categories: {} });
-  const [savedLogging, setSavedLogging] = useState<LoggingState | null>(null);
-  const [temp, setTemp] = useState<TempChannelsState>(defaultTempChannels);
-  const [savedTemp, setSavedTemp] = useState<TempChannelsState | null>(null);
-  const [levels, setLevels] = useState<LevelsGet>({ settings: { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] }, rewards: [] });
-  const [savedLevels, setSavedLevels] = useState<LevelsGet | null>(null);
-  const [pendingNav, setPendingNav] = useState<{ tab: string } | { href: string } | null>(null);
+  const loggingDraft = useConfigDraft<LoggingState>({ channelId: "", categories: {} });
+  const logging = loggingDraft.value, setLogging = loggingDraft.setValue;
+  const tempDraft = useConfigDraft<TempchannelsGet>({ presets: [] });
+  const temp = tempDraft.value, setTemp = tempDraft.setValue;
+  const levelsDraft = useConfigDraft<LevelsGet>({ settings: { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] }, rewards: [] });
+  const levels = levelsDraft.value, setLevels = levelsDraft.setValue;
+  const [pendingNav, setPendingNav] = useState<{ tab: TabKey } | { href: string } | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const [loading, setLoading] = useState(true);
@@ -133,8 +133,8 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       }
       const resourceData = resourcesRes.data, welcomeData = welcomeRes.data, automodData = rulesRes.data, loggingData = loggingRes.data, tempData = tempRes.data, langData = langRes.data, musicData = musicRes.data, levelsData = levelsRes.data;
       if(!active) return;
-      setServerLang(langData.lang); setSavedServerLang(langData.lang);
-      setMusic(musicData); setSavedMusic(musicData);
+      langDraft.commit(langData.lang);
+      musicDraft.commit(musicData);
       setChannels(resourceData.channels);
       setVoiceChannels(resourceData.voiceChannels);
       setCategories(resourceData.categories);
@@ -143,13 +143,13 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       setStats(resourceData.stats);
       setServer(resourceData.server);
       const rulesData = Object.fromEntries(automodData.rules.map((rule) => [rule.kind, rule]));
-      setWelcome(welcomeData); setSavedWelcome(welcomeData);
+      welcomeDraft.commit(welcomeData);
       setRules(rulesData); setIgnoredRoleIds(automodData.ignoredRoleIds);setProtectedChannelId(automodData.protectedChannelId);setSavedRules(rulesData);setSavedSecurity({roles:automodData.ignoredRoleIds,channel:automodData.protectedChannelId});
       const loggingCategories = safeJson<Record<string, boolean>>(loggingData.categories_json, {});
-      const loggingValue={channelId:loggingData.channel_id??"",categories:loggingCategories};setLogging(loggingValue);setSavedLogging(loggingValue);
-      const tempValue = { presets: tempData.presets.map(tempPresetFromApi) };
-      setTemp(tempValue); setSavedTemp(tempValue);
-      setLevels(levelsData); setSavedLevels(levelsData);
+      const loggingValue={channelId:loggingData.channel_id??"",categories:loggingCategories};loggingDraft.commit(loggingValue);
+      const tempValue = { presets: tempData.presets };
+      tempDraft.commit(tempValue);
+      levelsDraft.commit(levelsData);
       } catch {
         if(active) fail("Не удалось соединиться с сервером.");
       } finally {
@@ -162,54 +162,49 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
   const apiPut = async <TBody,>(url:string, body:TBody, onOk:()=>void, okMsg:string, report=true): Promise<boolean> => { const sent=await apiSend<{unchanged?:boolean}>(url,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить изменения."); if(!sent.ok){fail(sent.error);return false;} onOk(); if(report) notify(sent.data.unchanged?"Изменений нет.":okMsg); return true; };
   async function saveWelcome(report=true): Promise<boolean> {
     if ((welcome.enabled && !welcome.channel_id) || (welcome.goodbye_enabled && !welcome.goodbye_channel_id)) return fail("Выберите канал для каждого включённого события."), false;
-    return apiPut<WelcomePutBody>(`/api/guilds/${guildId}/welcome`, buildWelcomePutBody(welcome), ()=>setSavedWelcome(welcome), "Настройки приветствия и прощания сохранены.", report);
+    return apiPut<WelcomePutBody>(`/api/guilds/${guildId}/welcome`, buildWelcomePutBody(welcome), ()=>welcomeDraft.markSaved(welcome), "Настройки приветствия и прощания сохранены.", report);
   }
   async function saveRule(kind:string, report=true): Promise<boolean> {
     const c=rules[kind]??defaultRule(kind);
-    return apiPut<AutomodRulePutBody>(`/api/guilds/${guildId}/automod`, buildRulePutBody(kind, c, parseActions, (raw) => safeJson<Record<string, unknown>>(raw, {})), ()=>{setRules(v=>({...v,[kind]:c})); setSavedRules(v=>v?{...v,[kind]:c}:{[kind]:c});}, `Правило «${automodRules[kind]?.title ?? kind}» сохранено.`, report);
+    const body: AutomodRulePutBody = { kind, enabled: Boolean(c.enabled), actions: parseActions(c.action_json), threshold: safeJson<Record<string, unknown>>(c.threshold_json, {}), window: c.window_seconds, escalation: Boolean(c.escalation) };
+    return apiPut<AutomodRulePutBody>(`/api/guilds/${guildId}/automod`, body, ()=>{setRules(v=>({...v,[kind]:c})); setSavedRules(v=>v?{...v,[kind]:c}:{[kind]:c});}, `Правило «${automodRules[kind]?.title ?? kind}» сохранено.`, report);
   }
   async function saveSecurity(report=true): Promise<boolean>{ return apiPut<AutomodSecurityPutBody>(`/api/guilds/${guildId}/automod`, { kind:"security", ignoredRoleIds, protectedChannelId }, ()=>setSavedSecurity({roles:ignoredRoleIds,channel:protectedChannelId}), "Общие исключения сохранены.", report); }
-  async function saveLogging(report=true): Promise<boolean>{ return apiPut<LoggingPutBody>(`/api/guilds/${guildId}/logging`, buildLoggingPutBody(logging), ()=>setSavedLogging(logging), "Настройки логов сохранены.", report); }
+  async function saveLogging(report=true): Promise<boolean>{ return apiPut<LoggingPutBody>(`/api/guilds/${guildId}/logging`, buildLoggingPutBody(logging), ()=>loggingDraft.markSaved(logging), "Настройки логов сохранены.", report); }
   async function saveTemp(report=true): Promise<boolean>{
-    const body: TempPutBody = buildTempPutBody(temp.presets);
-    const sent=await apiSend<{presets:TempPresetApi[];unchanged?:boolean}>(`/api/guilds/${guildId}/tempchannels`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить временные каналы.");
+    const body: TempPutBody = { presets: temp.presets };
+    const sent=await apiSend<{presets:TempchannelsGet["presets"];unchanged?:boolean}>(`/api/guilds/${guildId}/tempchannels`,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить временные каналы.");
     if(!sent.ok){fail(sent.error);return false;}
-    const n={presets:sent.data.presets.map(tempPresetFromApi)}; setTemp(n); setSavedTemp(n); if(report) notify(sent.data.unchanged?"Изменений нет.":"Настройки временных каналов сохранены."); return true;
+    tempDraft.commit({presets:sent.data.presets}); if(report) notify(sent.data.unchanged?"Изменений нет.":"Настройки временных каналов сохранены."); return true;
   }
   async function saveLang(report=true): Promise<boolean> {
-    return apiPut<LangPutBody>(`/api/guilds/${guildId}/lang`, { lang: serverLang }, () => setSavedServerLang(serverLang), "Язык сообщений бота сохранён.", report);
+    return apiPut<LangGet>(`/api/guilds/${guildId}/lang`, { lang: serverLang }, () => langDraft.markSaved(serverLang), "Язык сообщений бота сохранён.", report);
   }
   async function saveMusic(report=true): Promise<boolean> {
-    const payload: MusicPutBody = buildMusicPutBody(music);
-    return apiPut<MusicPutBody>(`/api/guilds/${guildId}/music`, payload, () => { setMusic(payload); setSavedMusic(payload); }, "Настройки музыки сохранены.", report);
+    const payload: MusicSettings = buildMusicPutBody(music);
+    return apiPut<MusicSettings>(`/api/guilds/${guildId}/music`, payload, () => musicDraft.commit(payload), "Настройки музыки сохранены.", report);
   }
   async function saveLevels(report=true): Promise<boolean> {
-    const payload: LevelsPutBody = buildLevelsPutBody(levels.settings, levels.rewards);
-    return apiPut<LevelsPutBody>(`/api/guilds/${guildId}/levels`, payload, () => { setLevels(payload); setSavedLevels(payload); }, "Настройки уровней сохранены.", report);
+    const payload: LevelsGet = buildLevelsPutBody(levels.settings, levels.rewards);
+    return apiPut<LevelsGet>(`/api/guilds/${guildId}/levels`, payload, () => levelsDraft.commit(payload), "Настройки уровней сохранены.", report);
   }
   // Правило без сохранённой пары (новая БД или впервые включаемый вид) — уже изменение.
   const ruleDirty=(kind:string):boolean=>{if(!savedRules)return false;const saved=savedRules[kind];return saved===undefined||stableStringify(saved)!==stableStringify(rules[kind]);};
   async function saveDirtyRules():Promise<boolean>{let ok=true;for(const k of Object.keys(rules)) if(ruleDirty(k)) ok=(await saveRule(k,false))&&ok;return ok;}
   async function saveAutoMod(): Promise<void>{let ok=true;if(securityDirty)ok=await saveSecurity(false);if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(ok) notify("Настройки автомодерации сохранены.");}
 
-  function updateRule(kind: string, change: Partial<Rule>) {
+  function updateRule(kind: string, change: Partial<AutomodRuleRow>) {
     const current = rules[kind] ?? defaultRule(kind);
     setRules((value) => ({ ...value, [kind]: { ...current, ...change } }));
   }
 
-  async function uploadWelcomeBackground(file: File) { const body=new FormData(); body.set("background",file); const sent=await apiSend<{backgroundPath:string}>(`/api/guilds/${guildId}/welcome`,{method:"POST",body},"Не удалось загрузить фон."); if(sent.ok){const data=sent.data;setWelcome(v=>({...v,background_path:data.backgroundPath}));setSavedWelcome(p=>p?{...p,background_path:data.backgroundPath}:p);setBgTimestamp(Date.now());notify("Фон загружен.");}else fail(sent.error); }
-  const welcomeDirty=useMemo(()=>dirty(savedWelcome,welcome),[savedWelcome,welcome]);
+  async function uploadWelcomeBackground(file: File) { const body=new FormData(); body.set("background",file); const sent=await apiSend<{backgroundPath:string}>(`/api/guilds/${guildId}/welcome`,{method:"POST",body},"Не удалось загрузить фон."); if(sent.ok){const data=sent.data;welcomeDraft.patch(v=>({...v,background_path:data.backgroundPath}));setBgTimestamp(Date.now());notify("Фон загружен.");}else fail(sent.error); }
   const rulesDirty=useMemo(()=>dirty(savedRules,rules),[savedRules,rules]);
   const securityDirty=useMemo(()=>dirty(savedSecurity,{roles:ignoredRoleIds,channel:protectedChannelId}),[savedSecurity,ignoredRoleIds,protectedChannelId]);
-  const loggingDirty=useMemo(()=>dirty(savedLogging,logging),[savedLogging,logging]);
-  const tempDirty=useMemo(()=>dirty(savedTemp,temp),[savedTemp,temp]);
-  const langDirty=useMemo(()=>dirty(savedServerLang,serverLang),[savedServerLang,serverLang]);
-  const musicDirty=useMemo(()=>dirty(savedMusic,music),[savedMusic,music]);
-  const levelsDirty=useMemo(()=>dirty(savedLevels,levels),[savedLevels,levels]);
-  const isDirty=Boolean(guildId)&&(welcomeDirty||rulesDirty||securityDirty||loggingDirty||tempDirty||langDirty||musicDirty||levelsDirty);
-  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDirty)ok=(await saveLogging(false))&&ok;if(tempDirty)ok=(await saveTemp(false))&&ok;if(langDirty)ok=(await saveLang(false))&&ok;if(musicDirty)ok=(await saveMusic(false))&&ok;if(levelsDirty)ok=(await saveLevels(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
-  function discardChanges(){setServerLang(savedServerLang);if(savedMusic)setMusic(savedMusic);if(savedWelcome)setWelcome(savedWelcome);if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}if(savedLogging)setLogging(savedLogging);if(savedTemp)setTemp(savedTemp);if(savedLevels)setLevels(savedLevels);notify("Несохранённые изменения сброшены.");}
-  function applyNav(nav:NonNullable<typeof pendingNav>){if("tab" in nav)switchTab(nav.tab as TabKey);else window.location.href=nav.href;setPendingNav(null);}
+  const isDirty=Boolean(guildId)&&(welcomeDraft.dirty||rulesDirty||securityDirty||loggingDraft.dirty||tempDraft.dirty||langDraft.dirty||musicDraft.dirty||levelsDraft.dirty);
+  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDraft.dirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDraft.dirty)ok=(await saveLogging(false))&&ok;if(tempDraft.dirty)ok=(await saveTemp(false))&&ok;if(langDraft.dirty)ok=(await saveLang(false))&&ok;if(musicDraft.dirty)ok=(await saveMusic(false))&&ok;if(levelsDraft.dirty)ok=(await saveLevels(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
+  function discardChanges(){welcomeDraft.reset();musicDraft.reset();loggingDraft.reset();tempDraft.reset();langDraft.reset();levelsDraft.reset();if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}notify("Несохранённые изменения сброшены.");}
+  function applyNav(nav:NonNullable<typeof pendingNav>){if("tab" in nav)switchTab(nav.tab);else window.location.href=nav.href;setPendingNav(null);}
   async function saveAndGo(){if(!pendingNav)return;const ok=await saveAllDirty();if(ok)applyNav(pendingNav);else setPendingNav(null);}
   function discardAndGo(){if(!pendingNav)return;discardChanges();applyNav(pendingNav);}
   useEffect(()=>{if(!isDirty)return;const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};const blockLinks=(event:MouseEvent)=>{const target=event.target;if(!(target instanceof Element))return;const link=target.closest("a[href]");if(link&&!event.defaultPrevented&&!event.metaKey&&!event.ctrlKey){event.preventDefault();setPendingNav({href:link.getAttribute("href")??"/"});}};window.addEventListener("beforeunload",beforeUnload);document.addEventListener("click",blockLinks,true);return()=>{window.removeEventListener("beforeunload",beforeUnload);document.removeEventListener("click",blockLinks,true);};},[isDirty]);
@@ -228,7 +223,7 @@ export default function GuildSettings({ params }: { params: Promise<{ guildId: s
       {tab === "music" && <MusicSettingsCard channels={channels} voiceChannels={voiceChannels} roles={roles} value={music} onChange={setMusic} onSave={() => void saveMusic()} />}
       {tab === "logging" && <LoggingSettings channels={channels} value={logging} onChange={setLogging} onSave={() => saveLogging()} />}
       {tab === "stats" && <ServerStatistics stats={stats} guildId={guildId} />}
-      {tab === "tempchannels" && <TemporaryChannelsSettings voiceChannels={voiceChannels} categories={categories} value={temp} saved={savedTemp} onChange={setTemp} onSave={() => saveTemp()} />}
+      {tab === "tempchannels" && <TemporaryChannelsSettings voiceChannels={voiceChannels} categories={categories} value={temp} saved={tempDraft.saved} onChange={setTemp} onSave={() => saveTemp()} />}
       {tab === "appeals" && <AppealsPanel guildId={guildId} onDone={notify} onError={fail} />}
       {tab === "events" && <EventsPanel guildId={guildId} channels={channels} roles={roles} emojis={emojis} onDone={notify} onError={fail} />}
       {tab === "audit" && <DashboardAuditLog guildId={guildId} />}

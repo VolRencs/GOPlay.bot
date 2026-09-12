@@ -3,7 +3,7 @@ import { guildRoute, jsonError, readJson } from "../../../../../src/lib/guild-ac
 import { guildLang, invalidateGuildLang } from "../../../../../src/lib/i18n/bot.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { db } from "../../../../../src/db/database.ts";
-import type { LangGet, LangPutBody } from "../../../../../src/components/dashboard/types.ts";
+import type { LangGet } from "../../../../../src/lib/labels.ts";
 
 const langUpdateStmt = db.prepare("UPDATE guilds SET lang=?, updated_at=? WHERE id=? AND lang<>?");
 
@@ -12,7 +12,7 @@ export const GET = guildRoute(async (_, { guildId }) => {
 });
 
 export const PUT = guildRoute(async (request, { guildId, user }) => {
-  const body = await readJson<LangPutBody>(request);
+  const body = await readJson<LangGet>(request);
   if (body?.lang !== "ru" && body?.lang !== "en") return jsonError("Некорректный язык.");
   const previous = guildLang(guildId);
   const updated = langUpdateStmt.run(body.lang, Date.now(), guildId, body.lang);

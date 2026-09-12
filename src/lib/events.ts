@@ -9,11 +9,11 @@ import type { Locale } from "./i18n/core.ts";
 import { eventsTr, guildLang } from "./i18n/bot.ts";
 
 const eventStatuses = ["scheduled", "live", "completed", "cancelled"] as const;
-type EventStatus = (typeof eventStatuses)[number];
+export type EventStatus = (typeof eventStatuses)[number];
 const eventButtonStyles = ["primary", "secondary", "success", "danger"] as const;
-type EventButtonStyle = (typeof eventButtonStyles)[number];
+export type EventButtonStyle = (typeof eventButtonStyles)[number];
 const recurrenceFrequencies = ["none", "daily", "weekly", "biweekly", "custom"] as const;
-type RecurrenceFrequency = (typeof recurrenceFrequencies)[number];
+export type RecurrenceFrequency = (typeof recurrenceFrequencies)[number];
 
 // Форма embed'а совпадает с тем, что уходит в Discord API: композер панели
 // показывает ровно то, что будет опубликовано.
@@ -103,7 +103,7 @@ function parseEventReminders(raw: string | null | undefined): number[] {
 }
 function parseEventRecurrence(raw: string | null | undefined): EventRecurrence {
   const parsed = safeJson<{ freq?: unknown; interval?: unknown }>(raw, {});
-  const freq = recurrenceFrequencies.includes(parsed.freq as RecurrenceFrequency) ? parsed.freq as RecurrenceFrequency : "none";
+  const freq = recurrenceFrequencies.find(value => value === parsed.freq) ?? "none";
   const interval = Number.isInteger(parsed.interval) ? Math.max(1, Math.min(365, parsed.interval as number)) : 1;
   return { freq, interval };
 }
@@ -415,11 +415,11 @@ export function listEvents(guildId: string): EventView[] {
   if (!rows.length) return [];
   // Пакетная сборка: два запроса на гильдию вместо трёх на событие.
   const counts = new Map<string, EventCounts>();
-  for (const row of countsByGuildStmt.all(guildId) as unknown as { eventId: string; joined: number; waitlist: number }[]) {
+  for (const row of countsByGuildStmt.all(guildId) as { eventId: string; joined: number; waitlist: number }[]) {
     counts.set(row.eventId, { joined: Number(row.joined), waitlist: Number(row.waitlist) });
   }
   const participants = new Map<string, { userId: string; joinedAt: number; waitlist: boolean }[]>();
-  for (const p of participantsByGuildStmt.all(guildId) as unknown as { eventId: string; userId: string; joinedAt: number; waitlist: number }[]) {
+  for (const p of participantsByGuildStmt.all(guildId) as { eventId: string; userId: string; joinedAt: number; waitlist: number }[]) {
     let list = participants.get(p.eventId);
     if (!list) { list = []; participants.set(p.eventId, list); }
     list.push({ userId: p.userId, joinedAt: p.joinedAt, waitlist: Boolean(p.waitlist) });
@@ -464,7 +464,7 @@ export function clampEventInput(input: Record<string, unknown>): EventInput | { 
   if (!isSnowflake(channelId)) return { error: "Выберите канал для события." };
   const scheduledAt = Number(input.scheduledAt);
   if (!Number.isInteger(scheduledAt) || scheduledAt <= 0) return { error: "Укажите дату и время события." };
-  const status: EventStatus = eventStatuses.includes(input.status as EventStatus) ? input.status as EventStatus : "scheduled";
+  const status: EventStatus = eventStatuses.find(value => value === input.status) ?? "scheduled";
   const maxParticipants = clampNumber(input.maxParticipants, 0, 0, MAX_PARTICIPANTS_LIMIT, "integer");
   const eventRoleId = typeof input.eventRoleId === "string" && isSnowflake(input.eventRoleId) ? input.eventRoleId : null;
   const reminders = sanitizeReminders(input.reminders);
@@ -520,7 +520,7 @@ function cleanButtons(value: unknown): EventButton[] {
     if (!key) continue;
     const fallback = defaults[key];
     const label = (typeof v.label === "string" ? v.label.trim() : "") || fallback.label;
-    const style: EventButton["style"] = eventButtonStyles.includes(v.style as EventButton["style"]) ? v.style as EventButton["style"] : fallback.style;
+    const style: EventButton["style"] = eventButtonStyles.find(value => value === v.style) ?? fallback.style;
     const order = Number.isInteger(v.order) ? Math.max(1, Math.min(2, Number(v.order))) : fallback.order;
     result.set(key, { key, label: label.slice(0, 80), emoji: (typeof v.emoji === "string" ? v.emoji.trim() : "").slice(0, 64), style, enabled: v.enabled !== false, order });
   }

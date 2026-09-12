@@ -1,5 +1,6 @@
 
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { logger } from "../../bot/utils/logger.ts";
 import { MAX_DURATION_SECONDS, MAX_PLAYLIST, type Track } from "./types.ts";
 
@@ -18,23 +19,20 @@ const ALLOWED_MEDIA_HOSTS = new Set([
 ]);
 
 export function isAllowedMediaUrl(query: string): boolean {
-  try {
-    const url = new URL(query);
-    return (url.protocol === "https:" || url.protocol === "http:") && ALLOWED_MEDIA_HOSTS.has(url.hostname.toLowerCase());
-  } catch { return false; }
+  if (!URL.canParse(query)) return false;
+  const url = new URL(query);
+  return (url.protocol === "https:" || url.protocol === "http:") && ALLOWED_MEDIA_HOSTS.has(url.hostname.toLowerCase());
 }
 
 /** Не-URL и чужие хосты отклоняются. */
 export const safeYtDlpTarget = (query: string): string | null => (isAllowedMediaUrl(query) ? query : null);
 
-function probeBinary(command: string, args: string[], capture: boolean, verdict: (code: number | null, stdout: string) => boolean): Promise<boolean> {
-  return new Promise(resolve => {
-    const proc = spawn(command, args, { stdio: capture ? ["ignore", "pipe", "ignore"] : "ignore", windowsHide: true, signal: AbortSignal.timeout(5_000) });
-    let stdout = "";
-    if (capture) proc.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
-    proc.once("error", () => resolve(false));
-    proc.once("close", code => resolve(verdict(code, stdout)));
-  });
+async function probeBinary(command: string, args: string[], capture: boolean, verdict: (code: number | null, stdout: string) => boolean): Promise<boolean> {
+  const proc = spawn(command, args, { stdio: capture ? ["ignore", "pipe", "ignore"] : "ignore", windowsHide: true, signal: AbortSignal.timeout(5_000) });
+  let stdout = "";
+  if (capture) proc.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
+  // events.once отклоняет промис при 'error' до 'close' — как прежний resolve(false).
+  try { return verdict((await once(proc, "close"))[0] as number | null, stdout); } catch { return false; }
 }
 
 let ytDlpProbe: Promise<boolean> | null = null;
@@ -66,19 +64,16 @@ function evictOldest<K, V>(map: Map<K, V>): void {
  *  отброшены, shorts/embed/youtu.be/music.youtube свёрнуты в watch?v=. */
 function normalizeTrackKey(query: string): string {
   const trimmed = query.trim();
-  if (!/^https?:\/\//i.test(trimmed)) return `q:${trimmed.toLowerCase()}`;
-  try {
-    const url = new URL(trimmed);
-    url.hostname = url.hostname.replace(/^(?:www|m|music)\./i, "").toLowerCase();
-    for (const junk of ["list", "t", "si", "feature", "pp"]) url.searchParams.delete(junk);
-    const path = url.pathname.replace(/\/+$/, "");
-    const short = path.match(/^\/(shorts|embed)\/([\w-]{5,})$/i);
-    if (url.hostname === "youtu.be") return `https://youtube.com/watch?v=${path.slice(1)}`;
-    if (short) return `https://youtube.com/watch?v=${short[2]}`;
-    return `https://${url.hostname}${path}${url.search}`;
-  } catch {
-    return trimmed.toLowerCase();
-  }
+  // Гейт схемы обязателен: URL.canParse принимает ftp:/file:/data: и свернул бы их в https-ключ.
+  if (!/^https?:\/\//i.test(trimmed) || !URL.canParse(trimmed)) return `q:${trimmed.toLowerCase()}`;
+  const url = new URL(trimmed);
+  url.hostname = url.hostname.replace(/^(?:www|m|music)\./i, "").toLowerCase();
+  for (const junk of ["list", "t", "si", "feature", "pp"]) url.searchParams.delete(junk);
+  const path = url.pathname.replace(/\/+$/, "");
+  const short = path.match(/^\/(shorts|embed)\/([\w-]{5,})$/i);
+  if (url.hostname === "youtu.be") return `https://youtube.com/watch?v=${path.slice(1)}`;
+  if (short) return `https://youtube.com/watch?v=${short[2]}`;
+  return `https://${url.hostname}${path}${url.search}`;
 }
 
 /** Выбор прямого аудио-URL из -J: зеркалирует лестницу форматов yt-dlp.
@@ -88,7 +83,7 @@ export function pickAudioUrl(meta: Record<string, unknown>): string | null {
   const usable = (fmt: Fmt): fmt is Fmt & { url: string } =>
     typeof fmt.url === "string" && /^https:\/\//i.test(fmt.url) && typeof fmt.protocol === "string" && /^https?$/.test(fmt.protocol);
   const rate = (fmt: Fmt) => Math.max(typeof fmt.abr === "number" ? fmt.abr : 0, typeof fmt.tbr === "number" ? fmt.tbr : 0);
-  const formats = (Array.isArray(meta.formats) ? meta.formats : []).filter(usable) as (Fmt & { url: string })[];
+  const formats = (Array.isArray(meta.formats) ? meta.formats : []).filter(usable);
   const audioOnly = formats.filter(f => {
     const v = typeof f.vcodec === "string" ? f.vcodec : "none";
     return v === "none" || v === "";
@@ -176,17 +171,15 @@ const SINGLE_VIDEO_HOSTS = new Set([...ALLOWED_MEDIA_HOSTS].filter(host => host 
 /** Одиночное YouTube-видео (watch/shorts/youtu.be) без list=: достаточно одной
  *  -J экстракции, название и длительность доедут параллельной гидрацией. */
 export function isSingleYouTubeVideoUrl(query: string): boolean {
-  if (!/^https?:\/\//i.test(query)) return false;
-  try {
-    const url = new URL(query);
-    const host = url.hostname.toLowerCase();
-    if (!SINGLE_VIDEO_HOSTS.has(host)) return false;
-    if (url.searchParams.has("list")) return false;
-    if (host === "youtu.be" || host === "www.youtu.be") return url.pathname.slice(1) !== "";
-    const m = url.pathname.match(/^\/(watch|shorts)(?:\/([^/]+))?$/i);
-    if (!m) return false;
-    return (m[2] ?? url.searchParams.get("v") ?? "") !== "";
-  } catch { return false; }
+  if (!/^https?:\/\//i.test(query) || !URL.canParse(query)) return false;
+  const url = new URL(query);
+  const host = url.hostname.toLowerCase();
+  if (!SINGLE_VIDEO_HOSTS.has(host)) return false;
+  if (url.searchParams.has("list")) return false;
+  if (host === "youtu.be" || host === "www.youtu.be") return url.pathname.slice(1) !== "";
+  const m = url.pathname.match(/^\/(watch|shorts)(?:\/([^/]+))?$/i);
+  if (!m) return false;
+  return (m[2] ?? url.searchParams.get("v") ?? "") !== "";
 }
 
 function cacheSingleMeta(key: string, title: string, duration: number, mediaUrl: string | null): void {

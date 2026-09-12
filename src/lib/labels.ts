@@ -87,6 +87,8 @@ export type LoggingPutBody = {
   categories: Record<string, boolean>;
 };
 
+export type LangGet = { lang: "ru" | "en" };
+
 export function buildLoggingPutBody(s: { channelId: string; categories: Record<string, boolean> }): LoggingPutBody {
   return { channelId: s.channelId || null, categories: { ...s.categories } };
 }
