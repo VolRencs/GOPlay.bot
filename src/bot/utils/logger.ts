@@ -22,7 +22,7 @@ function timestamp() {
 
 function safeString(value: unknown): string {
   if (typeof value === "string") return value;
-  if (value instanceof Error) return `${value.name}: ${value.message}${value.stack ? `\n${value.stack}` : ""}`;
+  if (Error.isError(value)) return `${value.name}: ${value.message}${value.stack ? `\n${value.stack}` : ""}`;
   try { return JSON.stringify(value) ?? String(value); } catch { return String(value); }
 }
 

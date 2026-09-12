@@ -57,7 +57,7 @@ export const stmt = {
 };
 
 export function isForeignKeyError(error: unknown): boolean {
-  return error instanceof Error && /FOREIGN KEY/i.test(error.message);
+  return Error.isError(error) && /FOREIGN KEY/i.test(error.message);
 }
 
 /** Гильдии, присутствующие в таблице guilds; null — БД недоступна. */

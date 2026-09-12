@@ -16,7 +16,7 @@ export async function GET() {
   } catch (error) {
     logger.warn("[WARN] Discord guild list failed", error);
     if (error instanceof DiscordRateLimitError) return NextResponse.json({ error: "Discord временно ограничил запросы. Подождите несколько секунд и обновите страницу.", reauth: false }, { status: 429, headers: { "Retry-After": String(Math.ceil(error.retryAfterMs / 1000)) } });
-    const authFailed = error instanceof Error && /\(401\)/.test(error.message);
+    const authFailed = Error.isError(error) && /\(401\)/.test(error.message);
     return NextResponse.json({ error: authFailed ? "Сессия Discord истекла. Войдите через Discord снова." : "Не удалось получить список серверов от Discord. Обновите страницу.", reauth: authFailed }, { status: authFailed ? 403 : 502 });
   }
 }

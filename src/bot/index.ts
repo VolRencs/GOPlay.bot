@@ -425,7 +425,7 @@ function renderEmbed(embed: Message["embeds"][number], lang: "ru" | "en"): strin
 }
 client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
   const before = new Set(oldMember?.roles.cache.keys() ?? []), after = new Set(newMember.roles.cache.keys());
-  const added = [...after].filter(id => !before.has(id) && id !== newMember.guild.id), removed = [...before].filter(id => !after.has(id) && id !== newMember.guild.id);
+  const added = [...after.difference(before)].filter(id => id !== newMember.guild.id), removed = [...before.difference(after)].filter(id => id !== newMember.guild.id);
   const logRoles = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_roles", targetId: newMember.id, moderatorId: actor, details: (() => { const l = guildLang(newMember.guild.id); return logTr(l, "rolesPrefix") + [...added.map(id => logTr(l, "roleGivenPart", { id })), ...removed.map(id => logTr(l, "roleRemovedPart", { id }))].join(", "); })() });
   if (added.length || removed.length) void auditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id, { retries: 0 }).then(logRoles, () => logRoles());
   if (!isBotAction(newMember.guild.id, "member_timeout", newMember.id) && oldMember?.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {

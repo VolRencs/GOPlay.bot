@@ -1,6 +1,6 @@
 import { headers } from "next/headers.js";
 import { NextResponse } from "next/server.js";
-import { createHash } from "node:crypto";
+import { hash } from "node:crypto";
 import { auth } from "./auth.ts";
 import { db } from "../db/database.ts";
 import { logger } from "../bot/utils/logger.ts";
@@ -25,7 +25,7 @@ export function isAllowedAccount(discordAccount: { accountId: string } | undefin
 }
 type GuildCache = { guilds?: DiscordGuild[]; expiresAt: number; staleUntil: number; pending: Promise<DiscordGuild[]> | undefined; lastError?: unknown; errorExpiresAt?: number };
 const guildCache = new Map<string, GuildCache>();
-const cacheKey = (token: string) => createHash("sha256").update(token).digest("hex");
+const cacheKey = (token: string) => hash("sha256", token, "hex");
 // Горячий путь всех API-роутов: prepared один раз на модуль.
 const guildExists = db.prepare("SELECT 1 FROM guilds WHERE id=?");
 // Таблица account создаётся миграциями better-auth (не нашими), поэтому
@@ -98,7 +98,7 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
       catch (error) {
         // Старые аккаунты без expiry: токен возвращается как есть и Discord даёт
         // 401 — обновляем один раз.
-        if (!(error instanceof Error) || !error.message.includes("(401)")) throw error;
+        if (!Error.isError(error) || !error.message.includes("(401)")) throw error;
         const refreshed = await auth.api.refreshToken({ body: { accountId: accountId ?? await discordAccountId(requestHeaders) }, headers: requestHeaders });
         if (!refreshed.accessToken) throw new Error("Discord refresh did not return an access token");
         guilds = await requestGuilds(refreshed.accessToken);
