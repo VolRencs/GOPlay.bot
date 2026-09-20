@@ -9,7 +9,6 @@ import { rejectOversized } from "../../../../../src/lib/uploads.ts";
 import { stmt } from "../../../../../src/bot/db/statements.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 
-// Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
 const welcomeUpsert = db.prepare(`INSERT INTO welcome_settings(guild_id,enabled,channel_id,message,image_enabled,image_config_json,goodbye_enabled,goodbye_channel_id,goodbye_message,updated_at)
   VALUES(?,?,?,?,?,?,?,?,?,?)
   ON CONFLICT(guild_id) DO UPDATE SET enabled=excluded.enabled,channel_id=excluded.channel_id,message=excluded.message,image_enabled=excluded.image_enabled,image_config_json=excluded.image_config_json,goodbye_enabled=excluded.goodbye_enabled,goodbye_channel_id=excluded.goodbye_channel_id,goodbye_message=excluded.goodbye_message,updated_at=excluded.updated_at`);

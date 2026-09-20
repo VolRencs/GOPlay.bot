@@ -65,7 +65,6 @@ export function getQueueSnapshot(guildId: string): { current: Track | null; queu
   return { current: s?.current ?? null, queue: [...s?.queue ?? []] };
 }
 
-/** Состояние для панели управления. */
 export function playbackStateOf(guildId: string) {
   const s = sessions.get(guildId);
   if (!s?.current) return null;
@@ -148,9 +147,14 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
   player.on("error", error => {
     if (sessions.get(guildId)) logger.info("[MUSIC] Ошибка аудиопотока", guildId, error.message);
   });
-  player.on(AudioPlayerStatus.Idle, (_old, next) => {
+  player.on(AudioPlayerStatus.Idle, oldState => {
     if (!sessions.get(guildId)) return; // сессия уничтожена/пересоздана
-    void handleIdle(session, (_old as { playbackDuration?: number }).playbackDuration ?? (next as { resource?: { playbackDuration?: number } }).resource?.playbackDuration ?? 0);
+    // Наигранную позицию знает только предыдущее состояние: у Idle и Buffering
+    // playbackDuration нет.
+    const playedMs = oldState.status === AudioPlayerStatus.Playing || oldState.status === AudioPlayerStatus.Paused || oldState.status === AudioPlayerStatus.AutoPaused
+      ? oldState.playbackDuration
+      : 0;
+    void handleIdle(session, playedMs);
   });
   refreshActivityTimer(session);
 }

@@ -117,6 +117,12 @@ function memberHasAllowedRole(member: GuildMember, roles: string[]): boolean {
   return member.roles.cache.some(role => roles.includes(role.id));
 }
 
+/** Отказ после раннего connectToVoice не должен оставлять бота в канале без
+ *  трека и без панели: уходим, если ничего не играет и очередь пуста. */
+function leaveIfIdle(guildId: string | null): void {
+  if (guildId && !hasCurrent(guildId) && queueSizeOf(guildId) === 0) stopAndLeave(guildId);
+}
+
 /** Обработка музыкальных слэш-команд. Возвращает false, если команда не музыкальная. */
 export async function handleMusicCommand(i: Interaction): Promise<boolean> {
   if (!i.isChatInputCommand() || i.commandName !== "play") return false; // управление — кнопками панели, не командами
@@ -163,9 +169,9 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
     const [ytdlpOk, ffmpegOk, opusOk] = await Promise.all([probeYtDlp(), probeFfmpeg(), probeOpus()]);
     time("music.probes", performance.now() - t0);
-    if (!ytdlpOk) { await i.editReply(t("missingYtDlp")); return true; }
-    if (!ffmpegOk) { await i.editReply(t("missingFfmpeg")); return true; }
-    if (!opusOk) { await i.editReply(t("missingOpus")); return true; }
+    if (!ytdlpOk) { await i.editReply(t("missingYtDlp")); leaveIfIdle(i.guildId); return true; }
+    if (!ffmpegOk) { await i.editReply(t("missingFfmpeg")); leaveIfIdle(i.guildId); return true; }
+    if (!opusOk) { await i.editReply(t("missingOpus")); leaveIfIdle(i.guildId); return true; }
 
     let tracks: Track[];
     let fastPath = false;
@@ -184,6 +190,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
           : resolved.error === "unsupported-url" ? t("unsupportedUrl")
           : t("invalidQuery"),
         );
+        leaveIfIdle(i.guildId);
         return true;
       }
     }
@@ -194,7 +201,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       track.requestedBy = i.user.id;
       if (enqueueTrack(i.guildId!, track)) { added++; if (!firstTitle) firstTitle = track.title; }
     }
-    if (added === 0) { await i.editReply(t("queueFull", { max: String(MAX_QUEUE) })); return true; }
+    if (added === 0) { await i.editReply(t("queueFull", { max: String(MAX_QUEUE) })); leaveIfIdle(i.guildId); return true; }
 
     if (!hasCurrent(i.guildId!)) {
       const started = playNext(i.guildId!);
@@ -215,6 +222,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       : t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }));
     return true;
   } catch (error) {
+    leaveIfIdle(i.guildId);
     failInteraction("[MUSIC] Команда не выполнена", i, error, t("genericError"), i.guildId);
     return true;
   }

@@ -37,7 +37,6 @@ function isValidThreshold(threshold: Record<string, unknown>): boolean {
   return true;
 }
 const securityUpsert=db.prepare("INSERT INTO guild_security_settings(guild_id,ignored_role_ids_json,protected_channel_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET ignored_role_ids_json=excluded.ignored_role_ids_json,protected_channel_id=excluded.protected_channel_id,updated_at=excluded.updated_at");
-// Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
 const rulesAllStmt=db.prepare("SELECT * FROM automod_rules WHERE guild_id=?");
 const ruleGetStmt=db.prepare("SELECT enabled,action_json,threshold_json,window_seconds,escalation FROM automod_rules WHERE guild_id=? AND kind=?");
 const ruleUpsertStmt=db.prepare("INSERT INTO automod_rules(guild_id,kind,enabled,action_json,threshold_json,window_seconds,escalation,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(guild_id,kind) DO UPDATE SET enabled=excluded.enabled,action_json=excluded.action_json,threshold_json=excluded.threshold_json,window_seconds=excluded.window_seconds,escalation=excluded.escalation,updated_at=excluded.updated_at");

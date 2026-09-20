@@ -61,8 +61,8 @@ export function wipeGuildData(guildId: string) {
   });
 }
 
-// Ретеншн завершённых событий (участники и напоминания каскадом): разовая
-// чистка при апгрейде — без рантайм-аналога таблицы росли бы вечно.
+// Ретеншн завершённых событий (участники и напоминания каскадом): вызывается
+// из периодической очистки метрик (src/bot/metrics.ts) — без него таблица росла бы вечно.
 const eventsPrune = db.prepare("DELETE FROM events WHERE status IN ('completed','cancelled') AND scheduled_at < ?");
 export function pruneOldEvents(): number {
   return Number(eventsPrune.run(Date.now() - 90 * 86_400_000).changes);

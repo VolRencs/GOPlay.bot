@@ -1,4 +1,3 @@
-
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { logger } from "../../bot/utils/logger.ts";
@@ -24,14 +23,13 @@ export function isAllowedMediaUrl(query: string): boolean {
   return (url.protocol === "https:" || url.protocol === "http:") && ALLOWED_MEDIA_HOSTS.has(url.hostname.toLowerCase());
 }
 
-/** Не-URL и чужие хосты отклоняются. */
 export const safeYtDlpTarget = (query: string): string | null => (isAllowedMediaUrl(query) ? query : null);
 
 async function probeBinary(command: string, args: string[], capture: boolean, verdict: (code: number | null, stdout: string) => boolean): Promise<boolean> {
   const proc = spawn(command, args, { stdio: capture ? ["ignore", "pipe", "ignore"] : "ignore", windowsHide: true, signal: AbortSignal.timeout(5_000) });
   let stdout = "";
   if (capture) proc.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
-  // events.once отклоняет промис при 'error' до 'close' — как прежний resolve(false).
+  // events.once отклоняет промис при 'error' до 'close'.
   try { return verdict((await once(proc, "close"))[0] as number | null, stdout); } catch { return false; }
 }
 
@@ -165,7 +163,6 @@ function runYtDlpJsonOnce(query: string): Promise<{ meta: Record<string, unknown
 const BOTCHECK_RE = /confirm|sign in|cookies/i;
 export const isBotcheckError = (text: string): boolean => BOTCHECK_RE.test(text);
 
-// Хосты одиночного видео: как в ALLOWED_MEDIA_HOSTS, но без music.youtube.com.
 const SINGLE_VIDEO_HOSTS = new Set([...ALLOWED_MEDIA_HOSTS].filter(host => host !== "music.youtube.com"));
 
 /** Одиночное YouTube-видео (watch/shorts/youtu.be) без list=: достаточно одной

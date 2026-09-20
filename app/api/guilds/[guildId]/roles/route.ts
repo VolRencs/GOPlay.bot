@@ -16,7 +16,6 @@ type DiscordRole = { id: string; managed: boolean; position: number };
 type DiscordMember = { roles: string[] };
 const styleLabels: Record<string, string> = { buttons: "кнопки", select: "список", reaction: "реакции" };
 const roleModeLabels: Record<string, string> = { toggle: "переключение", add: "только выдача", remove: "только снятие" };
-// Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
 const panelListStmt = db.prepare("SELECT p.*,o.role_id,o.label,o.emoji,o.button_color FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? ORDER BY p.updated_at DESC");
 const embedTemplateStmt = db.prepare("SELECT name FROM embeds WHERE id=? AND guild_id=?");
 const panelGetStmt = db.prepare("SELECT title,style,role_limit,role_mode,notify_enabled,notify_template FROM self_role_panels WHERE id=? AND guild_id=?");

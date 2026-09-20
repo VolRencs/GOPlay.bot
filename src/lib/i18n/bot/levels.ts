@@ -1,6 +1,5 @@
 import { makeTr } from "../bot.ts";
 
-// Тексты системы уровней: ответы /lvl и /top, уведомления о новом уровне.
 export const levelsTr = makeTr({
   genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
   notGuild: { ru: "❌ Команда доступна только на сервере.", en: "❌ This command is only available in a server." },

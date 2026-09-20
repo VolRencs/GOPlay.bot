@@ -29,7 +29,6 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const body = await readJson<MusicSettings>(request);
   if (!body) return jsonError("Некорректное тело запроса.");
 
-  // Валидация: snowflake-формат для всех id; 0 = автовыход выключен,
   const ids = Array.isArray(body.voice_channel_ids) ? body.voice_channel_ids : [];
   const roles = Array.isArray(body.allowed_role_ids) ? body.allowed_role_ids : [];
   if (!ids.every(id => isSnowflake(id)) || !roles.every(role => isSnowflake(role)))

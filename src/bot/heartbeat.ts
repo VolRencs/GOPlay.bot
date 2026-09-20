@@ -1,7 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-
 const FILE = join(process.cwd(), "data", "heartbeat");
 const startedAt = Date.now();
 

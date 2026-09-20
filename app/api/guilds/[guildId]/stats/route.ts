@@ -20,7 +20,6 @@ const channelNames = ttlCacheAsync<string, Record<string, string>>(async guildId
   return Object.fromEntries(channels.map(channel => [channel.id, channel.name]));
 }, DAY_MS, true);
 
-// Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
 const dailyStmt = db.prepare("SELECT day,joins,leaves,messages,moderation FROM guild_daily_metrics WHERE guild_id=? AND day>=? ORDER BY day");
 const hourlyStmt = db.prepare("SELECT day,hour,messages FROM guild_hourly_messages WHERE guild_id=? AND day>=? ORDER BY day,hour");
 const moderationStmt = db.prepare("SELECT type,COUNT(*) AS count FROM moderation_actions WHERE guild_id=? AND created_at>? GROUP BY type ORDER BY count DESC");

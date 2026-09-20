@@ -91,7 +91,6 @@ export function useSessionDraft(key: string, enabled: boolean, deps: readonly un
   useEffect(() => () => write(), []);
 }
 
-/** Кнопка сохранения карточки: единый вид «Сохраняем…» на время busy. */
 export function SaveButton({ saving, onClick, label = "Сохранить", disabled = false, savingLabel = "Сохраняем…", variant }: { saving: boolean; onClick: () => void; label?: string; disabled?: boolean; savingLabel?: string; variant?: "secondary" }) {
   return <button type="button" className={variant === "secondary" ? "btn secondary" : "btn"} disabled={disabled || saving} onClick={onClick}>{saving ? savingLabel : label}</button>;
 }
@@ -222,7 +221,6 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
   );
 }
 
-/** Закрытие поповера по клику вне него и Escape. */
 export function useDismissOnOutside<T extends HTMLElement>(ref: RefObject<T | null>, open: boolean, onClose: () => void, eventType: "mousedown" | "pointerdown" = "pointerdown"): void {
   const close = useEffectEvent(onClose);
   useEffect(() => {

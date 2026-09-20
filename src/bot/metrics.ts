@@ -114,7 +114,8 @@ function evictDeadGuildKeys(): Set<string> | null {
   return alive;
 }
 
-// Ретеншн агрегатов: детальные таблицы не растут бесконечно. Дневные строки
+// Ретеншн агрегатов: детальные таблицы не растут бесконечно
+// (дни — 31, модерация — 90, завершённые события — 90).
 setInterval(() => {
   try {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);

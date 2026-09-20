@@ -12,7 +12,6 @@ import type { EmbedPayload, EmbedSending, EmbedsGet, SavedEmbed } from "../../..
 
 type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedPayload };
 
-// Statements готовятся один раз на модуль: SQL статический, параметры через `?`.
 const embedListStmt = db.prepare("SELECT * FROM embeds WHERE guild_id=? ORDER BY updated_at DESC");
 const sendingListStmt = db.prepare("SELECT s.id,s.embed_id,s.channel_id,s.message_id,s.sent_at FROM embed_sendings s WHERE s.guild_id=? ORDER BY s.sent_at DESC LIMIT 50");
 const embedPayloadsStmt = db.prepare("SELECT payload_json FROM embeds WHERE guild_id=?");

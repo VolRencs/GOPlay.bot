@@ -3,7 +3,6 @@ import type { ButtonStyleName } from "../../lib/constants.ts";
 import type { MusicSettings } from "../../lib/music-settings.ts";
 export type Channel = { id: string; name: string };
 export type Role = { id: string; name: string };
-// Единые сигнатуры уведомлений панелей: успех с тоном и ошибка.
 export type PanelNotify = (message: string, tone?: "ok" | "warn") => void;
 export type PanelFail = (message: string) => void;
 export type ServerEmoji = { id: string; name: string; animated: boolean; value: string };

@@ -63,7 +63,6 @@ export function WelcomePreview({ message, config: committed, background, enabled
   useEffect(() => () => {
     if (commitTimer.current !== null) { clearTimeout(commitTimer.current); commitTimer.current = null; }
     flushPending();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- flushPending читает только refs.
   }, []);
 
   // Канва равна реальному размеру фона: фото показывается целиком и сжатым

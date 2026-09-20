@@ -10,7 +10,7 @@ import { trAppeals } from "./i18n/bot/appeals.ts";
 export const appealStatuses = ["pending", "reviewing", "approved", "rejected", "closed", "declined"] as const;
 export type AppealStatus = (typeof appealStatuses)[number];
 export const reviewActions = ["reviewing", "approved", "rejected", "closed"] as const;
-export type ReviewAction = (typeof reviewActions)[number];
+type ReviewAction = (typeof reviewActions)[number];
 
 // Типы наказаний, по которым возможна реальная отмена (см. reversalFor).
 export const appealPunishmentTypes = ["warn", "timeout", "ban"] as const;

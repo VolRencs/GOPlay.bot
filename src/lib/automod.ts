@@ -1,7 +1,8 @@
 export type RuleKind = "spam" | "duplicate" | "caps" | "emoji" | "mentions" | "links" | "invites" | "links_only" | "media_only";
 // Общий для бота и панели валидации: оба слоя не могут разойтись во множестве
 export const automodActions: readonly string[] = ["delete", "warn", "timeout", "kick", "ban"];
-// Нейтральный дефолт правила без явного набора мер: парсер (json.ts),
+// Нейтральный дефолт правила без явного набора мер: его же подставляет
+// парсер (json.ts) и бот при пустом или битом action_json.
 export const automodDefaultActions: readonly string[] = ["delete", "warn"];
 export const automodThresholdDefaults: Record<RuleKind, Record<string, unknown>> = {
   spam: { messages: 5 },
