@@ -18,6 +18,7 @@ import { cachedRules, invalidateReactionPanels, purgeConfigCaches, reactionPanel
 import { registerTempChannels, cleanupTempChannels } from "./tempchannels/index.ts";
 import { offerAppeal, registerAppeals } from "./appeals/index.ts";
 import { registerEvents } from "./events/index.ts";
+import { normalizeEmojiText, sameEmojiValue } from "goemoji/discord";
 import { handleMusicCommand, registerMusic } from "./music/index.ts";
 import { flushLevels, handleLevelCommand, registerLevels } from "./levels/index.ts";
 import { destroyAllSessions, stopAndLeave } from "../lib/player/index.ts";
@@ -381,8 +382,7 @@ async function routeInteraction(i: Interaction) {
     failInteraction("[INTERACTION] Обработка взаимодействия не удалась", i, error, automodTr(guildLang(i.guildId ?? ""), "genericError"), i.guildId ?? "dm");
   }
 }
-function normalizeEmoji(value: string) { return value.replace(/\uFE0F/g, "").replace(/\u200D/g, ""); }
-function samePanelEmoji(saved: string | null, name: string | null, identifier: string) { if (!saved) return normalizeEmoji(name ?? "") === "✅"; const custom = saved.match(/^<(?:a)?:[^:]+:(\d+)>$/); return custom ? identifier.endsWith(custom[1]!) : normalizeEmoji(saved) === normalizeEmoji(name ?? ""); }
+function samePanelEmoji(saved: string | null, name: string | null, identifier: string) { if (!saved) return normalizeEmojiText(name ?? "") === "✅"; return sameEmojiValue(saved, name, identifier); }
 function resolveMember(guild: Guild, userId: string): Promise<GuildMember | null> {
   return guild.members.fetch(userId).catch(() => null);
 }

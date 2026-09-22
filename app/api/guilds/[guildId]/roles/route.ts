@@ -5,6 +5,7 @@ import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/l
 import { logger } from "../../../../../src/bot/utils/logger.ts";
 import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId, type ButtonStyleName } from "../../../../../src/lib/constants.ts";
 import type { RolePanelRow } from "../../../../../src/components/dashboard/types.ts";
+import { parseCustomEmoji } from "goemoji/discord";
 
 type PanelPayload = {
   panelId?: number; embedId: number; style: "buttons" | "select" | "reaction";
@@ -30,10 +31,10 @@ const panelForDeleteStmt = db.prepare("SELECT p.channel_id,p.message_id,p.style,
 const panelEmojisStmt = db.prepare("SELECT emoji FROM self_role_options WHERE panel_id=?");
 function discordEmoji(value?: string) {
   if (!value) return undefined;
-  const custom = value.match(/^<(a?):([\w~]+):(\d+)>$/);
-  return custom ? { name: custom[2], id: custom[3], animated: Boolean(custom[1]) } : { name: value };
+  const custom = parseCustomEmoji(value);
+  return custom ? { id: custom.id, name: custom.name, animated: custom.animated } : { name: value };
 }
-function reactionEmoji(value?: string) { const emoji=discordEmoji(value); return emoji?.id ? `${emoji.name}:${emoji.id}` : emoji?.name ?? "✅"; }
+function reactionEmoji(value?: string) { const custom = value ? parseCustomEmoji(value) : null; return custom ? `${custom.name}:${custom.id}` : value ?? "✅"; }
 
 const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value === "string" && Object.hasOwn(BUTTON_STYLE_IDS, value);
 

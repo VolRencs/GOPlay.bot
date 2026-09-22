@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { Suspense, lazy, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDown, ArrowRight, Check, ChevronDown } from "lucide-react";
+import { ArrowDown, ArrowRight, Check, ChevronDown, Smile } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
 import { stableJson } from "../../lib/json.ts";
-import { EmojiPicker as FrimoussePicker, type EmojiPickerListCategoryHeaderProps, type EmojiPickerListEmojiProps, type EmojiPickerListRowProps } from "frimousse";
 
 export function channelOptions(channels: Channel[], emptyLabel: string) {
   return [{ value: "", label: emptyLabel }, ...channels.map(c => ({ value: c.id, label: `# ${c.name}` }))];
@@ -145,51 +144,7 @@ export function CheckList({ items, selected, onChange, channel = false, label }:
   );
 }
 
-function PickerRow({ children, ...props }: EmojiPickerListRowProps) {
-  return <div {...props} className="ep-row">{children}</div>;
-}
-
-function PickerEmoji({ emoji, ...props }: EmojiPickerListEmojiProps) {
-  return <button {...props} className="ep-emoji">{emoji.emoji}</button>;
-}
-
-function PickerHeader({ category, ...props }: EmojiPickerListCategoryHeaderProps) {
-  return <div {...props} className="ep-header">{category.label}</div>;
-}
-
-function ServerEmojiGrid({ serverEmojis, onSelect }: { serverEmojis: ServerEmoji[]; onSelect: (emoji: string) => void }) {
-  if (!serverEmojis.length) return null;
-  return (
-    <div className="ep-server">
-      <div className="ep-header">Сервер</div>
-      <div className="ep-server-grid">
-        {serverEmojis.map(emoji => (
-          <button key={emoji.id} type="button" className="ep-server-emoji" title={emoji.name} aria-label={emoji.name}
-            onClick={() => onSelect(emoji.value)}>
-            <img src={`https://cdn.discordapp.com/emojis/${emoji.id}.${emoji.animated ? "gif" : "png"}?size=48`} alt="" loading="lazy"/>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function UnicodeEmojiPicker({ onSelect, serverEmojis }: { onSelect: (emoji: string) => void; serverEmojis: ServerEmoji[] }) {
-  return (
-    <FrimoussePicker.Root className="ep-root" columns={8} onEmojiSelect={emoji => onSelect(emoji.emoji)}>
-      <div className="ep-search-row">
-        <FrimoussePicker.Search className="ep-search" placeholder="Найти эмодзи…"/>
-        <FrimoussePicker.SkinToneSelector className="ep-tone" aria-label="Тон эмодзи"/>
-      </div>
-      <ServerEmojiGrid serverEmojis={serverEmojis} onSelect={onSelect}/>
-      <FrimoussePicker.Viewport className="ep-viewport">
-        <FrimoussePicker.Loading className="ep-note">Загружаем эмодзи…</FrimoussePicker.Loading>
-        <FrimoussePicker.Empty className="ep-note">Ничего не найдено</FrimoussePicker.Empty>
-        <FrimoussePicker.List components={{ Row: PickerRow, Emoji: PickerEmoji, CategoryHeader: PickerHeader }}/>
-      </FrimoussePicker.Viewport>
-    </FrimoussePicker.Root>
-  );
-}
+const EmojiPickerBody = lazy(() => import("./EmojiPickerBody.tsx"));
 
 export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange:(value:string)=>void;serverEmojis:ServerEmoji[]}) {
   const [open,setOpen]=useState(false);
@@ -200,8 +155,6 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
     const next=!prev;
     if(next){
       const rect=anchorRef.current?.getBoundingClientRect();
-      // Больше места сверху — раскрываем вверх: popover у края страницы иначе
-      // растянул бы документ.
       if(rect)setPlacement(window.innerHeight-rect.bottom>=rect.top?"bottom":"top");
     }
     return next;
@@ -211,10 +164,16 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
   return (
     <div className="emoji-picker" ref={rootRef}>
       <div className="emoji-current">
-        <input value={value} maxLength={96} onChange={e => onChange(e.target.value)} placeholder="Выберите эмодзи" aria-label="Эмодзи"/>
-        <div className="emoji-anchor" ref={anchorRef}>
-          <button type="button" className="btn secondary" onClick={toggle} aria-expanded={open}>Выбрать эмодзи</button>
-          {open && <div className={`emoji-popover emoji-popover-${placement}`}><UnicodeEmojiPicker onSelect={select} serverEmojis={serverEmojis}/></div>}
+        <div className="emoji-input-wrap" ref={anchorRef}>
+          <input value={value} maxLength={96} onChange={e => onChange(e.target.value)} placeholder="Выберите эмодзи" aria-label="Эмодзи"/>
+          <button type="button" className="emoji-trigger" onClick={toggle} aria-expanded={open} aria-label="Выбрать эмодзи" title="Выбрать эмодзи">
+            <Smile size={16}/>
+          </button>
+          {open && <div className={`emoji-popover emoji-popover-${placement}`}>
+            <Suspense fallback={<p className="emoji-note">Загружаем эмодзи…</p>}>
+              <EmojiPickerBody serverEmojis={serverEmojis} onSelect={select} onEscape={() => setOpen(false)}/>
+            </Suspense>
+          </div>}
         </div>
       </div>
     </div>
