@@ -5,9 +5,9 @@ import "goemoji/styles.css";
 import type { ServerEmoji } from "./types.ts";
 
 export default function EmojiPickerBody({ serverEmojis, onSelect, onEscape }: { serverEmojis: ServerEmoji[]; onSelect: (value: string) => void; onEscape: () => void }) {
-  const { data, error } = useEmojiData(() => import("goemoji/data/ru.json"), []);
+  const { data, error, loading } = useEmojiData(() => import("goemoji/data/ru.json"), []);
   if (error) return <p className="emoji-note">Не удалось загрузить эмодзи</p>;
-  if (!data) return <p className="emoji-note">Загружаем эмодзи…</p>;
+  if (loading || !data) return <p className="emoji-note">Загружаем эмодзи…</p>;
   return (
     <GoEmojiPicker
       data={data}
