@@ -14,9 +14,9 @@ const thresholdLabels: Record<string, string> = {
   mode: "Режим", media: "Тип медиа", channels: "Каналы", durationSeconds: "Тайм-аут, с",
 };
 const modeValueLabels: Record<string, string> = {
-  block_all: "блокировать все ссылки", block_domains: "блокировать список доменов",
-  allow_only: "разрешить только список доменов", block: "блокировать приглашения",
-  any: "фото и видео", photo: "только фото", video: "только видео",
+  block_all: "блокировать все ссылки", allowlist: "разрешать только домены из списка", blocklist: "блокировать домены из списка",
+  block: "блокировать приглашения", allow: "разрешать приглашения",
+  any: "фото и видео", image: "только фото", video: "только видео",
 };
 function thresholdDisplay(threshold: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(threshold).filter(([key]) => thresholdLabels[key]).map(([key, value]) => [
@@ -61,7 +61,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     const roles = r.ignoredRoleIds ?? [], channel = r.protectedChannelId ?? null;
     if(!isSnowflakeArray(roles)||(channel!==null&&(typeof channel!=="string"||!isSnowflake(channel))))return jsonError("Некорректные роли или канал.");
     const savedSecurity=stmt.security.get(guildId) as {ignored_role_ids_json:string;protected_channel_id:string|null}|undefined;
-    const storedRoles=(()=>{const parsed=safeJson<unknown>(savedSecurity?.ignored_role_ids_json,[]);return isSnowflakeArray(parsed)?[...parsed].sort():[]})();
+    const storedRoles=(()=>{const parsed=safeJson<unknown>(savedSecurity?.ignored_role_ids_json,[]);return isSnowflakeArray(parsed)?parsed.toSorted():[]})();
     const unchangedSecurity=savedSecurity ? stableJson(storedRoles)===stableJson([...roles].sort())&&(savedSecurity.protected_channel_id??null)===channel : roles.length===0&&channel===null;
     if(unchangedSecurity)return NextResponse.json({ok:true,unchanged:true});
     securityUpsert.run(guildId,JSON.stringify(roles),channel,Date.now());

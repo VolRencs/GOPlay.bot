@@ -1,9 +1,8 @@
 import test from "node:test"; import assert from "node:assert/strict";
-import { tmpdir } from "node:os"; import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { useTempDb } from "./helpers.ts";
 
 // Ядро плеера тянет i18n → базу: изолируем во временную.
-process.env.DATABASE_PATH = join(mkdtempSync(join(tmpdir(), "goplay-player-")), "bot.sqlite");
+useTempDb("goplay-player-");
 const {
   parseYtDlpMeta, pickAudioUrl, safeYtDlpTarget,
   isBotcheckError, isSingleYouTubeVideoUrl, pickFollowTarget,

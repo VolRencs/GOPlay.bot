@@ -58,7 +58,12 @@ export function flushMessageCache(): void {
     return;
   }
   flushFailures = 0;
-  for (const guildId of touchedGuilds) enforceMessageCap(guildId);
+  try {
+    for (const guildId of touchedGuilds) enforceMessageCap(guildId);
+  } catch (error) {
+    // Сбой обрезки не должен вылетать из setInterval в uncaughtException.
+    logger.warn("[CACHE] Не удалось обрезать кэш сообщений", error);
+  }
 }
 
 // Prune не обязан выполняться на каждом сообщении сервера: флеш раз в 5 c
@@ -94,12 +99,7 @@ export function messageContent(messageId: string): string | null {
 export function forgetMessage(messageId: string): string | null {
   const buffered = pending.get(messageId);
   pending.delete(messageId);
-  if (buffered) {
-    // Старая слитая копия тоже удаляется — актуален именно буфер.
-    stmt.messageDelete.run(messageId);
-    return buffered.content;
-  }
-  const row = stmt.messageGet.get(messageId) as { content: string } | undefined;
+  const content = buffered?.content ?? (stmt.messageGet.get(messageId) as { content: string } | undefined)?.content ?? null;
   stmt.messageDelete.run(messageId);
-  return row?.content ?? null;
+  return content;
 }

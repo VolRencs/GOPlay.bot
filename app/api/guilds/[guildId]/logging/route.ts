@@ -21,6 +21,8 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   // Snowflake-валидация: опечатка иначе молча отключила бы доставку логов —
   // бот не разрешил бы канал и терял записи без ошибок.
   if(!body||(body.channelId!==null&&(!isSnowflake(body.channelId))))return jsonError("Некорректный канал");
+  // Не-объект categories раньше молча выключал все категории (Boolean("x"[key]) === false).
+  if(typeof body.categories!=="object"||body.categories===null||Array.isArray(body.categories))return jsonError("Некорректные категории");
   const categories=Object.fromEntries(logKeys.map(key=>[key,Boolean(body.categories?.[key])]));
   const saved=stmt.loggingSettings.get(guildId) as {channel_id:string|null;categories_json:string}|undefined;
   const storedCategories=safeJson<Record<string,boolean>>(saved?.categories_json,{});

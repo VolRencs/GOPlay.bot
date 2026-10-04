@@ -1,3 +1,5 @@
+import { clampNumber } from "./constants.ts";
+
 export type WelcomeImageConfig = {
   avatarWidth: number;
   avatarHeight: number;
@@ -22,8 +24,6 @@ const defaultImageConfig: WelcomeImageConfig = {
   titleSize: 38, subtitleSize: 22,
   titleColor: "#f8fafc", subtitleColor: "#e2e8f0",
 };
-
-import { clampNumber } from "./constants.ts";
 
 const number = (value: unknown, fallback: number, min: number, max: number) => clampNumber(value, fallback, min, max, "round");
 
@@ -70,6 +70,15 @@ export const welcomePreviewValues: Record<string, string> = {
   memberCount: "123",
   userId: "000000000000000000",
 };
+
+/** Значения плейсхолдеров шаблона из базовых данных участника: общий источник
+ *  для текста приветствия (бот) и подписей на картинке (welcome-image). */
+export function welcomeValues(input: { name: string; username?: string; userId?: string; server: string; count: number; avatar: string }): Record<string, string> {
+  return {
+    user: input.name, username: input.username ?? input.name, displayName: input.name, server: input.server,
+    count: String(input.count), memberCount: String(input.count), userId: input.userId ?? "", userAvatar: input.avatar, serverIcon: "",
+  };
+}
 
 export const welcomeDefaults: WelcomeGet = { enabled: 0, channel_id: null, message: "Добро пожаловать, {user}!", image_enabled: 0, background_path: null, image_config_json: "{}", goodbye_enabled: 0, goodbye_channel_id: null, goodbye_message: "До встречи, {username}!" };
 

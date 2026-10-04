@@ -4,12 +4,12 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.4.1-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.9.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord bot and server-management web dashboard in a single repository and a
 single process: a `discord.js` bot + a `Next.js` dashboard with Discord OAuth login.
-Stack (pinned in `package.json`): Node **≥ 26**, pnpm **12.4.1**, Next.js **16.3.4**,
+Stack (pinned in `package.json`): Node **≥ 26**, pnpm **12.9.0**, Next.js **16.3.8**,
 React **19.3.0**, TypeScript **7.0.2**, Node's native TypeScript type stripping and
 `node:sqlite` (no separate DB driver).
 
@@ -48,7 +48,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Node ≥ 26**, **pnpm 12.4.1**, **ffmpeg with libopus**,
+Requirements: **Node ≥ 26**, **pnpm 12.9.0**, **ffmpeg with libopus**,
 **yt-dlp** in PATH.
 
 ```bash

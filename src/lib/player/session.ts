@@ -123,20 +123,22 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
   // старого соединения уничтожил бы уже новую сессию пользователя.
   const alive = () => sessions.get(guildId) === session;
 
-  Promise.any([
-    entersState(connection, VoiceConnectionStatus.Connecting, 10_000),
-    entersState(connection, VoiceConnectionStatus.Signalling, 10_000),
-  ]).catch((error: unknown) => {
+  // Официальный рецепт @discordjs/voice: ждём Ready, на таймауте — destroy.
+  void entersState(connection, VoiceConnectionStatus.Ready, 15_000).catch((error: unknown) => {
     logger.warn("[MUSIC] Не удалось установить голосовое соединение", guildId, error);
     if (alive()) destroySession(guildId);
   });
   // Официальный рецепт Disconnected (кик, 4014): 5 c на самовосстановление.
-  void entersState(connection, VoiceConnectionStatus.Disconnected, 2 ** 31 - 1).then(() => {
+  // once вместо entersState(2**31-1): таймер на 24,8 суток удерживал бы всю
+  // сессию — при destroy события disconnected не бывает.
+  const onDisconnected = () => {
     Promise.race([
       entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
       entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
     ]).catch(() => { if (alive()) destroySession(guildId); });
-  }).catch(() => { /* соединение уничтожено до Disconnected */ });
+  };
+  if (connection.state.status === VoiceConnectionStatus.Disconnected) onDisconnected();
+  else connection.once(VoiceConnectionStatus.Disconnected, onDisconnected);
 
   player.on(AudioPlayerStatus.Playing, () => {
     const s = sessions.get(guildId);

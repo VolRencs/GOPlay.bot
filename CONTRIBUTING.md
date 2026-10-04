@@ -6,7 +6,7 @@ Thanks for your interest in the project! A few short rules to get your PRs merge
 
 ## Stack and commands
 
-- Node ≥ 26, pnpm 12.4.1, ffmpeg with libopus, yt-dlp in PATH.
+- Node ≥ 26, pnpm 12.9.0, ffmpeg with libopus, yt-dlp in PATH.
 - `pnpm i --frozen-lockfile` — install.
 - `cp .env.example .env` — fill in `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).
@@ -33,7 +33,7 @@ Thanks for your interest in the project! A few short rules to get your PRs merge
   (applied automatically via `src/db/database.ts`, `_migrations` table).
   Never touch better-auth tables — they are managed by `scripts/migrate-auth.ts`.
 - Dashboard API: `app/api/guilds/[guildId]/*/route.ts`. Every new endpoint must
-  go through the checks in `src/lib/guild-access.ts` (`requireUser`/`withGuild`)
+  go through the checks in `src/lib/guild-access.ts` (`requireUser`/`guildRoute`)
   and write to the audit log via `src/lib/dashboard-audit.ts` where applicable.
 - Dashboard panels: `src/components/dashboard/*.tsx` + types in `types.ts`.
 - Music (`src/lib/player/`): the resolver never leaves the YouTube domain allowlist;

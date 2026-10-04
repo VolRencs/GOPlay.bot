@@ -34,7 +34,7 @@ export function MusicSettingsCard({ channels, voiceChannels, roles, value, onCha
             onChange={ids => onChange({ ...value, allowed_role_ids: ids })}/>
         </div>
         <NumberField label="Автовыход при бездействии, секунд" hint="(0 — выкл; иначе 30–3600. Бездействие: нет слушателей, тишина или пауза)" min={0} max={3600} value={value.leave_after_seconds}
-          onChange={leave_after_seconds => onChange({ ...value, leave_after_seconds: leave_after_seconds || 0 })}/>
+          onChange={leave_after_seconds => onChange({ ...value, leave_after_seconds: Number.isFinite(leave_after_seconds) ? leave_after_seconds : value.leave_after_seconds })}/>
       </article>
     </section>
   );

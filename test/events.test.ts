@@ -1,15 +1,13 @@
 import test from "node:test"; import assert from "node:assert/strict";
-import { tmpdir } from "node:os"; import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { seedGuilds, useTempDb } from "./helpers.ts";
 
-process.env.DATABASE_PATH = join(mkdtempSync(join(tmpdir(), "goplay-events-test-")), "bot.sqlite");
+useTempDb("goplay-events-test-");
 import type { EventInput } from "../src/lib/events.ts";
 const events = await import("../src/lib/events.ts");
-const { db } = await import("../src/db/database.ts");
 const { parseEventEmbed, parseEventButtons } = events;
 const { insertEvent, updateEvent, getEvent, getEventInGuild, listEvents, deleteEvent, eventCounts, joinEvent, leaveEvent, removeParticipant, removeParticipantFromGuild, claimReminder, dueReminders, transitionDueEvents, renderEventEmbed, renderEventButtons, renderableOf, clampEventInput, updateEventMessage, detachEventMessage } = events;
 
-for (const guildId of ["g1", "g2"]) db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)").run(guildId, guildId, null, Date.now());
+await seedGuilds(["g1", "g2"]);
 
 const now = Date.now();
 const baseInput = (): EventInput => ({

@@ -1,15 +1,14 @@
 import test from "node:test"; import assert from "node:assert/strict";
-import { tmpdir } from "node:os"; import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { seedGuilds, useTempDb } from "./helpers.ts";
 
-process.env.DATABASE_PATH = join(mkdtempSync(join(tmpdir(), "goplay-test-")), "bot.sqlite");
+useTempDb("goplay-test-");
 const { addMessage, flushMetrics } = await import("../src/bot/metrics.ts");
 const { db } = await import("../src/db/database.ts");
 const { renderName, getConfig } = await import("../src/bot/tempchannels/index.ts");
 const { parseStringArray: parseTriggers } = await import("../src/lib/json.ts");
 const { DEFAULT_SETTINGS } = await import("../src/lib/tempchannels.ts");
 
-for (const guildId of ["g1", "g2", "g3"]) db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)").run(guildId, guildId, null, Date.now());
+await seedGuilds(["g1", "g2", "g3"]);
 
 const plain = <T extends object>(rows: T[]): T[] => rows.map(row => ({ ...row }));
 const at = (day: string, hour: number, minute = 0) => new Date(`${day}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`).getTime();

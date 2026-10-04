@@ -33,14 +33,26 @@ async function probeBinary(command: string, args: string[], capture: boolean, ve
   try { return verdict((await once(proc, "close"))[0] as number | null, stdout); } catch { return false; }
 }
 
-let ytDlpProbe: Promise<boolean> | null = null;
-let ffmpegProbe: Promise<boolean> | null = null;
-let opusProbe: Promise<boolean> | null = null;
+// Проба бинарника: успех кэшируется навсегда, неудача — на минуту, чтобы
+// разовый таймаут под нагрузкой не «выключал» музыку до рестарта бота.
+const PROBE_RETRY_MS = 60_000;
+function memoProbe(probe: () => Promise<boolean>): () => Promise<boolean> {
+  let cached: Promise<boolean> | null = null;
+  let retryAt = 0;
+  return () => {
+    if (cached) return cached;
+    if (Date.now() < retryAt) return Promise.resolve(false);
+    const pending = probe();
+    cached = pending;
+    void pending.then(ok => { if (!ok) { cached = null; retryAt = Date.now() + PROBE_RETRY_MS; } });
+    return pending;
+  };
+}
 
-export const probeYtDlp = () => (ytDlpProbe ??= probeBinary(YT_DLP, ytDlpArgs("--version"), false, code => code === 0));
-export const probeFfmpeg = () => (ffmpegProbe ??= probeBinary(FFMPEG, ["-version"], false, code => code === 0));
+export const probeYtDlp = memoProbe(() => probeBinary(YT_DLP, ytDlpArgs("--version"), false, code => code === 0));
+export const probeFfmpeg = memoProbe(() => probeBinary(FFMPEG, ["-version"], false, code => code === 0));
 // Сборка ffmpeg обязана содержать libopus: Opus кодирует сам ffmpeg.
-export const probeOpus = () => (opusProbe ??= probeBinary(FFMPEG, ["-hide_banner", "-encoders"], true, (code, out) => code === 0 && /libopus/i.test(out)));
+export const probeOpus = memoProbe(() => probeBinary(FFMPEG, ["-hide_banner", "-encoders"], true, (code, out) => code === 0 && /libopus/i.test(out)));
 
 // Кэш метаданных: стабильные поля; форматы не кэшируются (ротация YouTube).
 type SingleMeta = { at: number; title: string; duration: number; mediaUrl?: string; mediaUrlExpiresAt?: number };

@@ -4,12 +4,7 @@ import { useState } from "react";
 import type { ServerStats, StatsGet } from "./types.ts";
 import { apiGet } from "./api.ts";
 import { useApiResource } from "./hooks.ts";
-import { CardHeader, formatNumber } from "./ui.tsx";
-
-
-function StatCard({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return <article className="card stat-card"><span>{label}</span><strong>{value}</strong><small>{hint}</small></article>;
-}
+import { CardHeader, StatCard, formatNumber } from "./ui.tsx";
 
 type TopRow = { key: string; name: string; value: number };
 function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] | undefined; empty: string; rank?: boolean }) {

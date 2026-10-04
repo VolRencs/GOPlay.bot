@@ -96,6 +96,8 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   if(!data||typeof data!=="object")return jsonError("Некорректные данные сообщения.");
   if(!data.payload||typeof data.payload!=="object")return jsonError("Некорректные данные сообщения.");
+  // id приходит из JSON: без проверки строка/дробное число создали бы дубликат шаблона.
+  if(data.id!==undefined&&(!Number.isInteger(data.id)||data.id<1))return jsonError("Некорректный идентификатор шаблона.");
   if(typeof data.name!=="string"||!data.name.trim()||(!data.saveOnly&&!data.updateMessage&&!data.channelId)) return jsonError(data.saveOnly?"Укажите название шаблона":"Укажите название и канал");
   // channelId интерполируется в путь Discord REST — только snowflake.
   if(data.channelId&&!isSnowflake(data.channelId))return jsonError("Некорректный канал.");

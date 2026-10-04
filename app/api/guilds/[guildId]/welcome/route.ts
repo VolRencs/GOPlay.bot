@@ -23,16 +23,20 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const value = await readJson<WelcomePutBody>(request);
   if (!value || typeof value !== "object") return jsonError("Некорректный запрос.");
   if (typeof value.message !== "string" || typeof value.goodbyeMessage !== "string" || value.message.length > 2000 || value.goodbyeMessage.length > 2000) return jsonError("Текст сообщения не должен превышать 2000 символов.");
+  if (typeof value.enabled !== "boolean" || typeof value.goodbyeEnabled !== "boolean" || typeof value.imageEnabled !== "boolean") return jsonError("Некорректный запрос.");
   if ((value.enabled && !value.channelId) || (value.goodbyeEnabled && !value.goodbyeChannelId)) return jsonError("Для включённого события выберите канал.");
   if ((value.channelId && !isSnowflake(value.channelId)) || (value.goodbyeChannelId && !isSnowflake(value.goodbyeChannelId))) return jsonError("Некорректный канал.");
+  // Пустая строка — «канал не выбран»: без нормализации в БД попадал "" и
+  // сравнение с null не срабатывало (лишний upsert + мусор в channel_id).
+  const channelId = value.channelId || null, goodbyeChannelId = value.goodbyeChannelId || null;
   const saved = stmt.welcomeSettings.get(guildId) as Record<string, unknown> | undefined;
   const nextImageConfig = parseImageConfig(value.imageConfig);
   const currentImageConfig = parseImageConfig(saved?.image_config_json);
-  const next = stableJson({ enabled: Number(Boolean(value.enabled)), channelId: value.channelId ?? null, message: value.message, imageEnabled: Number(Boolean(value.imageEnabled)), imageConfig: nextImageConfig, goodbyeEnabled: Number(Boolean(value.goodbyeEnabled)), goodbyeChannelId: value.goodbyeChannelId ?? null, goodbyeMessage: value.goodbyeMessage });
+  const next = stableJson({ enabled: Number(Boolean(value.enabled)), channelId, message: value.message, imageEnabled: Number(Boolean(value.imageEnabled)), imageConfig: nextImageConfig, goodbyeEnabled: Number(Boolean(value.goodbyeEnabled)), goodbyeChannelId, goodbyeMessage: value.goodbyeMessage });
   const current = saved ? stableJson({ enabled: Number(saved.enabled), channelId: saved.channel_id ?? null, message: saved.message, imageEnabled: Number(saved.image_enabled), imageConfig: currentImageConfig, goodbyeEnabled: Number(saved.goodbye_enabled), goodbyeChannelId: saved.goodbye_channel_id ?? null, goodbyeMessage: saved.goodbye_message }) : null;
   if (current === next) return NextResponse.json({ ok: true, unchanged: true });
   const welcomeConfig = JSON.stringify(nextImageConfig);
-  welcomeUpsert.run(guildId, Number(Boolean(value.enabled)), value.channelId, value.message, Number(Boolean(value.imageEnabled)), welcomeConfig, Number(Boolean(value.goodbyeEnabled)), value.goodbyeChannelId, value.goodbyeMessage, Date.now());
+  welcomeUpsert.run(guildId, Number(Boolean(value.enabled)), channelId, value.message, Number(Boolean(value.imageEnabled)), welcomeConfig, Number(Boolean(value.goodbyeEnabled)), goodbyeChannelId, value.goodbyeMessage, Date.now());
   const src: Record<string, unknown> = saved ?? welcomeDefaults;
   recordDashboardDiff(guildId, user, "Приветствие", "Приветствие: ",
     {
@@ -47,12 +51,12 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     },
     {
       "Режим приветствия": Boolean(value.enabled),
-      "Канал приветствия": value.channelId ? `<#${value.channelId}>` : null,
+      "Канал приветствия": channelId ? `<#${channelId}>` : null,
       "Текст приветствия": value.message,
       "Персональная картинка": Boolean(value.imageEnabled),
       "Настройки картинки": stableJson(nextImageConfig),
       "Режим прощания": Boolean(value.goodbyeEnabled),
-      "Канал прощания": value.goodbyeChannelId ? `<#${value.goodbyeChannelId}>` : null,
+      "Канал прощания": goodbyeChannelId ? `<#${goodbyeChannelId}>` : null,
       "Текст прощания": value.goodbyeMessage,
     },
     { "Настройки картинки": "изменены" });

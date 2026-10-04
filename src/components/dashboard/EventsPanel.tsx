@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Image, Trash2 } from "lucide-react";
 import { eventStatusMeta } from "../../../src/lib/labels.ts";
-import { safeJson } from "../../../src/lib/json.ts";
 import type { EventButtonStyle, EventListGet, EventListItem, EventStatus, RecurrenceFrequency } from "../../../src/lib/events.ts";
 import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type Channel, type EmbedField, type PanelFail, type PanelNotify, type Role, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, useObjectUrl, useSessionDraft } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, asBoolean, asFields, asNumber, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 
@@ -54,47 +53,40 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
 
   const draftKey = `goplay-draft-event-${guildId}`;
   useSessionDraft(draftKey, Boolean(guildId), [editingId, draft], () => ({ editingId, ...draft }));
-  useEffect(() => {
-    if (!guildId) return;
-    try {
-      const raw = sessionStorage.getItem(draftKey);
-      if (!raw) return;
-      const saved = safeJson<Record<string, unknown>>(raw, {});
-      if (!saved || typeof saved !== "object") return;
-      if (!(typeof saved.title === "string" && saved.title) && !(typeof saved.description === "string" && saved.description)) return;
-      setEditingId(typeof saved.editingId === "string" && saved.editingId ? saved.editingId : null);
-      setDraft(d => ({
-        ...d,
-        channelId: typeof saved.channelId === "string" ? saved.channelId : d.channelId,
-        scheduledAt: typeof saved.scheduledAt === "string" ? saved.scheduledAt : d.scheduledAt,
-        maxParticipants: typeof saved.maxParticipants === "number" ? saved.maxParticipants : d.maxParticipants,
-        registrationEnabled: Boolean(saved.registrationEnabled ?? d.registrationEnabled),
-        waitlistEnabled: Boolean(saved.waitlistEnabled ?? d.waitlistEnabled),
-        status: typeof saved.status === "string" ? saved.status as EventStatus : d.status,
-        eventRoleId: typeof saved.eventRoleId === "string" ? saved.eventRoleId : "",
-        reminders: typeof saved.reminders === "string" ? saved.reminders : "",
-        recurrenceFreq: typeof saved.recurrenceFreq === "string" ? saved.recurrenceFreq as RecurrenceFrequency : d.recurrenceFreq,
-        recurrenceInterval: typeof saved.recurrenceInterval === "number" ? saved.recurrenceInterval : d.recurrenceInterval,
-        title: String(saved.title ?? ""),
-        description: String(saved.description ?? ""),
-        color: typeof saved.color === "string" ? saved.color : DEFAULT_ACCENT,
-        footer: String(saved.footer ?? ""),
-        timestamp: Boolean(saved.timestamp),
-        thumbnail: typeof saved.thumbnail === "string" ? saved.thumbnail : "",
-        image: typeof saved.image === "string" ? saved.image : "",
-        thumbnailFile: null, imageFile: null,
-        fields: Array.isArray(saved.fields) ? (saved.fields as { name?: unknown; value?: unknown; inline?: unknown }[]).map(f => ({ name: String(f?.name ?? ""), value: String(f?.value ?? ""), inline: Boolean(f?.inline) })) : [],
-        joinLabel: typeof saved.joinLabel === "string" ? saved.joinLabel : d.joinLabel,
-        joinEmoji: typeof saved.joinEmoji === "string" ? saved.joinEmoji : d.joinEmoji,
-        joinStyle: typeof saved.joinStyle === "string" ? saved.joinStyle as EventButtonStyle : d.joinStyle,
-        joinEnabled: Boolean(saved.joinEnabled ?? true),
-        leaveLabel: typeof saved.leaveLabel === "string" ? saved.leaveLabel : d.leaveLabel,
-        leaveEmoji: typeof saved.leaveEmoji === "string" ? saved.leaveEmoji : d.leaveEmoji,
-        leaveStyle: typeof saved.leaveStyle === "string" ? saved.leaveStyle as EventButtonStyle : d.leaveStyle,
-        leaveEnabled: Boolean(saved.leaveEnabled ?? true),
-      }));
-    } catch { /* malformed draft */ }
-  }, [guildId]);
+  useSessionDraftRestore(draftKey, Boolean(guildId), saved => {
+    if (!asString(saved.title) && !asString(saved.description)) return;
+    setEditingId(asString(saved.editingId) || null);
+    setDraft(d => ({
+      ...d,
+      channelId: asString(saved.channelId, d.channelId),
+      scheduledAt: asString(saved.scheduledAt, d.scheduledAt),
+      maxParticipants: asNumber(saved.maxParticipants, d.maxParticipants),
+      registrationEnabled: asBoolean(saved.registrationEnabled, d.registrationEnabled),
+      waitlistEnabled: asBoolean(saved.waitlistEnabled, d.waitlistEnabled),
+      status: asString(saved.status, d.status) as EventStatus,
+      eventRoleId: asString(saved.eventRoleId),
+      reminders: asString(saved.reminders),
+      recurrenceFreq: asString(saved.recurrenceFreq, d.recurrenceFreq) as RecurrenceFrequency,
+      recurrenceInterval: asNumber(saved.recurrenceInterval, d.recurrenceInterval),
+      title: asString(saved.title),
+      description: asString(saved.description),
+      color: asString(saved.color, DEFAULT_ACCENT),
+      footer: asString(saved.footer),
+      timestamp: asBoolean(saved.timestamp, false),
+      thumbnail: asString(saved.thumbnail),
+      image: asString(saved.image),
+      thumbnailFile: null, imageFile: null,
+      fields: asFields(saved.fields),
+      joinLabel: asString(saved.joinLabel, d.joinLabel),
+      joinEmoji: asString(saved.joinEmoji, d.joinEmoji),
+      joinStyle: asString(saved.joinStyle, d.joinStyle) as EventButtonStyle,
+      joinEnabled: asBoolean(saved.joinEnabled, true),
+      leaveLabel: asString(saved.leaveLabel, d.leaveLabel),
+      leaveEmoji: asString(saved.leaveEmoji, d.leaveEmoji),
+      leaveStyle: asString(saved.leaveStyle, d.leaveStyle) as EventButtonStyle,
+      leaveEnabled: asBoolean(saved.leaveEnabled, true),
+    }));
+  });
 
   const editing = events?.find(e => e.id === editingId) ?? null;
 
@@ -132,7 +124,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
       registrationEnabled: draft.registrationEnabled, waitlistEnabled: draft.waitlistEnabled, status: statusOverride ?? draft.status, eventRoleId: draft.eventRoleId || null,
       reminders: draft.reminders.split(",").map(s => Number(s.trim())).filter(v => Number.isInteger(v) && v > 0).slice(0, 10),
       recurrence: { freq: draft.recurrenceFreq, interval: draft.recurrenceInterval },
-      payload: { title: draft.title, description: draft.description, color: hexToColorNumber(draft.color) || undefined, footer: { text: draft.footer }, thumbnail: { url: draft.thumbnail }, image: { url: draft.image }, fields: draft.fields.filter(f => f.name.trim() && f.value.trim()).map(f => ({ name: f.name, value: f.value, inline: f.inline })), timestamp: draft.timestamp },
+      payload: { title: draft.title, description: draft.description, color: Number.isFinite(hexToColorNumber(draft.color)) ? hexToColorNumber(draft.color) : undefined, footer: { text: draft.footer }, thumbnail: { url: draft.thumbnail }, image: { url: draft.image }, fields: draft.fields.filter(f => f.name.trim() && f.value.trim()).map(f => ({ name: f.name, value: f.value, inline: f.inline })), timestamp: draft.timestamp },
       buttons: [
         { key: "join", label: draft.joinLabel, emoji: draft.joinEmoji, style: draft.joinStyle, enabled: draft.joinEnabled, order: 1 },
         { key: "leave", label: draft.leaveLabel, emoji: draft.leaveEmoji, style: draft.leaveStyle, enabled: draft.leaveEnabled, order: 2 },
@@ -250,8 +242,8 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
             <FieldsEditor fields={draft.fields} onChange={fields => set({ fields })}/>
             <input className="embed-footer-input" value={draft.footer} maxLength={2048} placeholder="Футер" onChange={e => set({ footer: e.target.value })}/>
             <div className="embed-bottom">
-              <MediaField icon={<Image size={18}/>} label="Основное изображение" file={draft.imageFile} previewUrl={imagePreview} saved={Boolean(draft.image)} onPick={file => set({ imageFile: file })} onClear={clearImage} inputRef={imageInput} clearLabel="Удалить изображение"/>
-              <MediaField icon={<Image size={18}/>} label="Миниатюра" file={draft.thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(draft.thumbnail)} onPick={file => set({ thumbnailFile: file })} onClear={clearThumbnail} inputRef={thumbnailInput} clearLabel="Удалить миниатюру"/>
+              <MediaField icon={<Image size={18}/>} label="Основное изображение" file={draft.imageFile} previewUrl={imagePreview} saved={Boolean(draft.image)} onPick={file => set({ imageFile: file })} onClear={clearImage} ref={imageInput} clearLabel="Удалить изображение"/>
+              <MediaField icon={<Image size={18}/>} label="Миниатюра" file={draft.thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(draft.thumbnail)} onPick={file => set({ thumbnailFile: file })} onClear={clearThumbnail} ref={thumbnailInput} clearLabel="Удалить миниатюру"/>
             </div>
           </div>
           <div className="event-buttons-grid">

@@ -1,9 +1,8 @@
 import test from "node:test"; import assert from "node:assert/strict";
-import { tmpdir } from "node:os"; import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
 import type { Client } from "discord.js";
+import { seedGuilds, useTempDb, withToken } from "./helpers.ts";
 
-process.env.DATABASE_PATH = join(mkdtempSync(join(tmpdir(), "goplay-test-")), "bot.sqlite");
+useTempDb("goplay-test-");
 const { createAppeal, declineAppeal, reviewAppeal, listAppeals, applyAppealReversal, notifyAppealStatus, reversalFor } = await import("../src/lib/appeals.ts");
 const { punishmentLabelsM: punishmentLabels } = await import("../src/lib/labels.ts");
 const { db } = await import("../src/db/database.ts");
@@ -11,7 +10,7 @@ const { recordDashboardChange } = await import("../src/lib/dashboard-audit.ts");
 const { stmt } = await import("../src/bot/db/statements.ts");
 const { recordPunishmentAndOffer } = await import("../src/bot/moderation/index.ts");
 
-for (const guildId of ["g1", "g2"]) db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)").run(guildId, guildId, null, Date.now());
+await seedGuilds(["g1", "g2"]);
 const punishment = (id: number, guildId: string, userId: string, type: string) => db.prepare("INSERT INTO moderation_actions(id,guild_id,user_id,moderator_id,type,reason,created_at) VALUES(?,?,?,?,?,?,?)").run(id, guildId, userId, "mod", type, `${type} reason`, 1_000_000);
 punishment(1, "g1", "u1", "ban");
 punishment(2, "g1", "u1", "timeout");
@@ -26,13 +25,6 @@ punishment(10, "g1", "u1", "ban");
 punishment(13, "g1", "u1", "ban");
 punishment(14, "g1", "u1", "automod");
 
-
-const withToken = async <T>(token: string, run: () => Promise<T>): Promise<T> => {
-  const previous = process.env.DISCORD_TOKEN;
-  process.env.DISCORD_TOKEN = token;
-  try { return await run(); }
-  finally { if (previous === undefined) delete process.env.DISCORD_TOKEN; else process.env.DISCORD_TOKEN = previous; }
-};
 
 test("create appeal: happy path copies the punishment type and starts pending", () => {
   const result = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 1, reason: "Я не отправлял это сообщение." });
@@ -129,58 +121,59 @@ test("listAppeals supports status, user, moderator and date filters", () => {
   assert.ok(viewed && "punishment_reason" in viewed && "punishment_created_at" in viewed, "список содержит данные наказания");
 });
 
-test("punishment reversal talks to Discord REST and swallows failures", async () => {
+test("punishment reversal talks to Discord REST and swallows failures", async t => {
   const calls: { url: string; init: RequestInit }[] = [];
-  const realFetch = globalThis.fetch;
+  let failing = false;
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    if (failing) throw new Error("network down");
+    calls.push({ url: String(url), init: init ?? {} });
+    return new Response(null, { status: 204 });
+  });
   await withToken("test-token", async () => {
-    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => { calls.push({ url: String(url), init: init ?? {} }); return new Response(null, { status: 204 }); };
-    try {
-      const unban = await applyAppealReversal("ru", "g1", "u1", "unban");
-      assert.equal(unban.ok, true);
-      assert.match(calls[0]!.url, /\/guilds\/g1\/bans\/u1$/);
-      assert.equal(calls[0]!.init.method, "DELETE");
-      const unbanHeaders = calls[0]!.init.headers as Record<string, string>;
-      assert.ok(!("content-type" in unbanHeaders) || !unbanHeaders["content-type"], "DELETE без тела не должен нести content-type");
-      const untimeout = await applyAppealReversal("ru", "g1", "u1", "untimeout");
-      assert.equal(untimeout.ok, true);
-      assert.match(calls[1]!.url, /\/guilds\/g1\/members\/u1$/);
-      assert.equal(calls[1]!.init.method, "PATCH");
-      assert.ok(("content-type" in (calls[1]!.init.headers as Record<string, string>)), "PATCH с телом несёт content-type");
-    } finally { globalThis.fetch = realFetch; }
-    globalThis.fetch = async () => { throw new Error("network down"); };
-    try { assert.equal((await applyAppealReversal("ru", "g1", "u1", "unban")).ok, false); }
-    finally { globalThis.fetch = realFetch; }
+    const unban = await applyAppealReversal("ru", "g1", "u1", "unban");
+    assert.equal(unban.ok, true);
+    assert.match(calls[0]!.url, /\/guilds\/g1\/bans\/u1$/);
+    assert.equal(calls[0]!.init.method, "DELETE");
+    const unbanHeaders = calls[0]!.init.headers as Record<string, string>;
+    assert.ok(!("content-type" in unbanHeaders) || !unbanHeaders["content-type"], "DELETE без тела не должен нести content-type");
+    const untimeout = await applyAppealReversal("ru", "g1", "u1", "untimeout");
+    assert.equal(untimeout.ok, true);
+    assert.match(calls[1]!.url, /\/guilds\/g1\/members\/u1$/);
+    assert.equal(calls[1]!.init.method, "PATCH");
+    assert.ok(("content-type" in (calls[1]!.init.headers as Record<string, string>)), "PATCH с телом несёт content-type");
+    failing = true;
+    assert.equal((await applyAppealReversal("ru", "g1", "u1", "unban")).ok, false);
   });
 });
 
-test("status DM: content is sent, failures never change the stored status", async () => {
+test("status DM: content is sent, failures never change the stored status", async t => {
   const created = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 6, reason: "Несколько длинная причина апелляции." });
   assert.ok(created.ok);
   const taken = reviewAppeal({ guildId: "g1", appealId: created.value.id, action: "reviewing", reviewerId: "mod1" });
   assert.ok(taken.ok);
-  const realFetch = globalThis.fetch;
   const bodies: { url: string; body: string }[] = [];
+  let failing = false;
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    if (failing) throw new Error("dm blocked");
+    bodies.push({ url: String(url), body: String(init?.body ?? "") });
+    return new Response(String(url).includes("/messages") ? "{}" : '{"id":"ch1"}', { status: 200 });
+  });
   await withToken("test-token", async () => {
-    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => { bodies.push({ url: String(url), body: String(init?.body ?? "") }); return new Response(String(url).includes("/messages") ? "{}" : '{"id":"ch1"}', { status: 200 }); };
-    try {
-      assert.equal(await notifyAppealStatus(taken.value.appeal), true);
-      assert.match(bodies[0]!.url, /\/users\/u1\/channels$/);
-      assert.match(bodies[0]!.body, /recipient_id/);
-      assert.match(bodies[0]!.body, /"recipient_id":"u1"/);
-      assert.match(bodies[1]!.body, /Апелляция #\d+.*взята в работу/);
-      const rejected = reviewAppeal({ guildId: "g1", appealId: created.value.id, action: "rejected", reviewerId: "mod1", comment: "Причина не подтвердилась." });
-      assert.ok(rejected.ok);
-      assert.equal(await notifyAppealStatus(rejected.value.appeal), true);
-      assert.match(bodies[3]!.body, /Комментарий модератора: Причина не подтвердилась\./);
-    } finally { globalThis.fetch = realFetch; }
-    globalThis.fetch = async () => { throw new Error("dm blocked"); };
-    try {
-      const pending = createAppeal({ guildId: "g1", userId: "u2", punishmentId: 8, reason: "Достаточно длинная причина." });
-      assert.ok(pending.ok);
-      assert.equal(await notifyAppealStatus(pending.value), false);
-      const row = db.prepare("SELECT status FROM appeals WHERE id=?").get(pending.value.id) as { status: string };
-      assert.equal(row.status, "pending", "ошибка DM не меняет состояние");
-    } finally { globalThis.fetch = realFetch; }
+    assert.equal(await notifyAppealStatus(taken.value.appeal), true);
+    assert.match(bodies[0]!.url, /\/users\/u1\/channels$/);
+    assert.match(bodies[0]!.body, /recipient_id/);
+    assert.match(bodies[0]!.body, /"recipient_id":"u1"/);
+    assert.match(bodies[1]!.body, /Апелляция #\d+.*взята в работу/);
+    const rejected = reviewAppeal({ guildId: "g1", appealId: created.value.id, action: "rejected", reviewerId: "mod1", comment: "Причина не подтвердилась." });
+    assert.ok(rejected.ok);
+    assert.equal(await notifyAppealStatus(rejected.value.appeal), true);
+    assert.match(bodies[3]!.body, /Комментарий модератора: Причина не подтвердилась\./);
+    failing = true;
+    const pending = createAppeal({ guildId: "g1", userId: "u2", punishmentId: 8, reason: "Достаточно длинная причина." });
+    assert.ok(pending.ok);
+    assert.equal(await notifyAppealStatus(pending.value), false);
+    const row = db.prepare("SELECT status FROM appeals WHERE id=?").get(pending.value.id) as { status: string };
+    assert.equal(row.status, "pending", "ошибка DM не меняет состояние");
   });
 });
 
@@ -249,24 +242,24 @@ test("recordPunishmentAndOffer writes the row and offers only for punishable typ
   assert.equal((db.prepare("SELECT COUNT(*) AS count FROM moderation_actions WHERE guild_id='g1' AND user_id='u2' AND type='untimeout'").get() as { count: number }).count, 1, "untimeout всё равно записывается");
 });
 
-test("decision DM carries the outcome, punishment info and moderator comment", async () => {
+test("decision DM carries the outcome, punishment info and moderator comment", async t => {
   const appeal = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 13, reason: "Прошу пересмотреть бан." });
   assert.ok(appeal.ok);
   const approved = reviewAppeal({ guildId: "g1", appealId: appeal.value.id, action: "approved", reviewerId: "mod1", comment: "Ошибка модератора, снимаю." });
   assert.ok(approved.ok);
-  const realFetch = globalThis.fetch;
   const bodies: { url: string; body: string }[] = [];
+  t.mock.method(globalThis, "fetch", async (url: string | URL | Request, init?: RequestInit) => {
+    bodies.push({ url: String(url), body: String(init?.body ?? "") });
+    return new Response(String(url).includes("/messages") ? "{}" : '{"id":"ch1"}', { status: 200 });
+  });
   await withToken("test-token", async () => {
-    globalThis.fetch = async (url: string | URL | Request, init?: RequestInit) => { bodies.push({ url: String(url), body: String(init?.body ?? "") }); return new Response(String(url).includes("/messages") ? "{}" : '{"id":"ch1"}', { status: 200 }); };
-    try {
-      assert.equal(await notifyAppealStatus(approved.value.appeal, { ok: true, label: "Бан" }), true);
-      const sent = bodies[1]!.body;
-      assert.match(sent, /одобрена/);
-      assert.match(sent, /Наказание: \*\*Бан\*\*/);
-      assert.match(sent, /Снят: Бан\./);
-      assert.match(sent, /Ваша причина: Прошу пересмотреть бан\./);
-      assert.match(sent, /Комментарий модератора: Ошибка модератора, снимаю\./);
-    } finally { globalThis.fetch = realFetch; }
+    assert.equal(await notifyAppealStatus(approved.value.appeal, { ok: true, label: "Бан" }), true);
+    const sent = bodies[1]!.body;
+    assert.match(sent, /одобрена/);
+    assert.match(sent, /Наказание: \*\*Бан\*\*/);
+    assert.match(sent, /Снят: Бан\./);
+    assert.match(sent, /Ваша причина: Прошу пересмотреть бан\./);
+    assert.match(sent, /Комментарий модератора: Ошибка модератора, снимаю\./);
   });
 });
 

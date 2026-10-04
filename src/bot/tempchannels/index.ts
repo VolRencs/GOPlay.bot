@@ -1,16 +1,17 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, Events, MessageFlags, ModalBuilder, PermissionsBitField, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Guild, type GuildChannelCreateOptions, type GuildMember, type Interaction, type ModalSubmitInteraction, type VoiceChannel, type VoiceState } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, Events, MessageFlags, ModalBuilder, PermissionFlagsBits, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Guild, type GuildChannelCreateOptions, type GuildMember, type Interaction, type ModalSubmitInteraction, type VoiceChannel, type VoiceState } from "discord.js";
 import { stmt } from "../db/statements.ts";
 import { logger } from "../utils/logger.ts";
 import { count } from "../perf.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { parseStringArray } from "../../lib/json.ts";
-import { DEFAULT_SETTINGS, type TempConfig } from "../../lib/tempchannels.ts";
+import { isSnowflake } from "../../lib/ids.ts";
+import { DEFAULT_SETTINGS, type TempConfig, type TempPresetRow } from "../../lib/tempchannels.ts";
 import { stopAndLeave } from "../../lib/player/session.ts";
 import { tempTr, guildTr } from "../../lib/i18n/bot.ts";
 import { failInteraction, isMissingDiscordResource } from "../../lib/errors.ts";
+import { fetchMember } from "../utils/members.ts";
 
 type TempRow = { id: number; guild_id: string; channel_id: string; owner_id: string; panel_message_id: string | null; source_channel_id: string | null; created_at: number };
-type TempPresetRow = TempConfig & { guild_id: string; name: string; trigger_channel_ids_json: string; updated_at: number };
 
 // Короткий кэш: всплеск входящих в триггер-канал не бьёт по SQLite на каждый
 // voice-event. Мапит триггер-канал в настройки пресета, где он указан.
@@ -120,7 +121,7 @@ async function fetchTempChannel(guild: Guild, channelId: string): Promise<VoiceC
     (value) => value as VoiceChannel | null,
     (error: unknown) => {
       if (!isMissingDiscordResource(error, "channel")) { logger.warn("[TEMP] Канал недоступен, строка сохранена", guild.id, channelId, error); return undefined; }
-      return null as VoiceChannel | null;
+      return null;
     },
   );
 }
@@ -155,7 +156,7 @@ function scheduleEmptinessCheck(guild: Guild, channelId: string) {
 }
 
 async function createTempChannel(guild: Guild, member: GuildMember, settings: TempConfig, triggerChannelId: string) {
-  if (!guild.members.me?.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+  if (!guild.members.me?.permissions.has(PermissionFlagsBits.ManageChannels)) {
     logger.warn("[TEMP] Недостаточно прав ManageChannels", guild.id);
     return;
   }
@@ -218,19 +219,21 @@ async function sendPanel(guild: Guild, channel: VoiceChannel) {
     .setColor(0x5865f2)
     .setTitle(t("panelTitle"))
     .setDescription(t("panelDesc"));
-  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("temp:rename").setLabel(t("btnRename")).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("temp:limit").setLabel(t("btnLimit")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("temp:lock").setLabel(t("btnLock")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("temp:allow").setLabel(t("btnAllow")).setStyle(ButtonStyle.Success),
-  );
-  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("temp:deny").setLabel(t("btnDeny")).setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId("temp:transfer").setLabel(t("btnTransfer")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("temp:delete").setLabel(t("btnDelete")).setStyle(ButtonStyle.Danger),
-  );
+  const buttons = (items: readonly (readonly [string, string, ButtonStyle])[]) =>
+    new ActionRowBuilder<ButtonBuilder>().addComponents(items.map(([id, label, style]) => new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style)));
+  const row = buttons([
+    ["temp:rename", t("btnRename"), ButtonStyle.Primary],
+    ["temp:limit", t("btnLimit"), ButtonStyle.Secondary],
+    ["temp:lock", t("btnLock"), ButtonStyle.Secondary],
+    ["temp:allow", t("btnAllow"), ButtonStyle.Success],
+  ]);
+  const row2 = buttons([
+    ["temp:deny", t("btnDeny"), ButtonStyle.Danger],
+    ["temp:transfer", t("btnTransfer"), ButtonStyle.Secondary],
+    ["temp:delete", t("btnDelete"), ButtonStyle.Danger],
+  ]);
   try {
-    return await channel.send({ embeds: [embed], components: [row1, row2] });
+    return await channel.send({ embeds: [embed], components: [row, row2] });
   } catch (error) {
     logger.warn("[TEMP] Панель управления не отправлена", guild.id, error);
     return null;
@@ -253,18 +256,23 @@ function voiceChannel(i: ButtonInteraction | ModalSubmitInteraction): VoiceChann
   return channel as VoiceChannel;
 }
 
+function tempOwner(i: ButtonInteraction | ModalSubmitInteraction) {
+  const guild = i.guild, channel = voiceChannel(i);
+  const row = guild && channel ? stmt.tempByChannel.get(channel.id) as TempRow | undefined : undefined;
+  if (!guild || !channel || !row) return null;
+  return { guild, channel, row, owner: row.owner_id === i.user.id };
+}
+
 async function handlePanelButton(i: ButtonInteraction, action: string) {
   const t = guildTr(tempTr, i.guildId ?? "");
-  const guild = i.guild;
-  const channel = voiceChannel(i);
-  if (!guild || !channel) return;
-  const row = stmt.tempByChannel.get(channel.id) as TempRow | undefined;
-  if (!row) return;
-  if (row.owner_id !== i.user.id) {
+  const context = tempOwner(i);
+  if (!context) return;
+  if (!context.owner) {
     await i.reply({ content: t("notOwner"), flags: MessageFlags.Ephemeral });
     return;
   }
-  const settings = getConfig(guild.id, row.source_channel_id);
+  const { guild, channel } = context;
+  const settings = getConfig(guild.id, context.row.source_channel_id);
   if (action === "rename") {
     if (settings.can_rename === 0) return i.reply({ content: t("renameDisabled"), flags: MessageFlags.Ephemeral });
     await i.showModal(textModal("temp:modal-rename", t("modalRenameTitle"), t("modalNameLabel"), channel.name));
@@ -280,7 +288,7 @@ async function handlePanelButton(i: ButtonInteraction, action: string) {
   } else if (action === "lock") {
     if (settings.can_close === 0) return i.reply({ content: t("closeDisabled"), flags: MessageFlags.Ephemeral });
     const everyone = guild.roles.everyone;
-    const closed = Boolean(channel.permissionOverwrites.cache.get(everyone.id)?.deny.has(PermissionsBitField.Flags.Connect));
+    const closed = Boolean(channel.permissionOverwrites.cache.get(everyone.id)?.deny.has(PermissionFlagsBits.Connect));
     // Сначала отвечаем interaction'у: edit оверрайтов — REST-вызов и может
     // не уложиться в 3-секундное окно Discord.
     await i.reply({ content: closed ? t("channelOpened") : t("channelClosed"), flags: MessageFlags.Ephemeral });
@@ -294,14 +302,12 @@ async function handlePanelButton(i: ButtonInteraction, action: string) {
 
 async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
   const t = guildTr(tempTr, i.guildId ?? "");
-  const guild = i.guild;
-  const channel = voiceChannel(i);
-  if (!guild || !channel) return;
-  const row = stmt.tempByChannel.get(channel.id) as TempRow | undefined;
-  if (!row || row.owner_id !== i.user.id) {
+  const context = tempOwner(i);
+  if (!context?.owner) {
     await i.reply({ content: t("notOwner"), flags: MessageFlags.Ephemeral });
     return;
   }
+  const { guild, channel, row } = context;
   const value = i.fields.getTextInputValue("value").trim();
   if (action === "rename") {
     if (!value.length) return i.reply({ content: t("emptyName"), flags: MessageFlags.Ephemeral });
@@ -315,8 +321,8 @@ async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
     return i.reply({ content: limit ? t("limitSet",{n:String(limit)}) : t("limitOff"), flags: MessageFlags.Ephemeral });
   }
   const targetId = value.replace(/[<@!>]/g, "");
-  if (!/^\d{15,22}$/.test(targetId)) return i.reply({ content: t("badUser"), flags: MessageFlags.Ephemeral });
-  const target = await guild.members.fetch(targetId).catch(() => null);
+  if (!isSnowflake(targetId)) return i.reply({ content: t("badUser"), flags: MessageFlags.Ephemeral });
+  const target = await fetchMember(guild, targetId);
   if (!target) return i.reply({ content: t("userNotFound"), flags: MessageFlags.Ephemeral });
   if (action === "allow" || action === "deny") {
     await channel.permissionOverwrites.edit(target, { Connect: action === "allow", Speak: action === "allow" }).catch((error) => logger.warn("[TEMP] Доступ не изменён", guild.id, error));

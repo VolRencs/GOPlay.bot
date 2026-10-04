@@ -9,6 +9,7 @@ import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import { levelsTr } from "../../lib/i18n/bot/levels.ts";
 import { resolveChannel } from "../logging/index.ts";
+import { fetchMember } from "../utils/members.ts";
 
 // XP-буфер: сообщения и голосовые минуты копятся в памяти и сливаются одной
 // транзакцией раз в 5 c (как метрики и кэш сообщений) — MessageCreate не
@@ -26,6 +27,7 @@ const settingsFor = (guildId: string) => settingsCache.get(guildId);
 const pending = new Map<string, PendingXp>();
 const messageCooldowns = new Map<string, number>();
 const voiceSessions = new Map<string, { guildId: string; userId: string; channelId: string }>();
+let levelFlushFailures = 0;
 
 const keyFor = (guildId: string, userId: string) => `${guildId}:${userId}`;
 
@@ -58,9 +60,11 @@ export function flushLevels(): LevelUp[] {
     // выбрасываем, иначе флеш зациклится на них каждые 5 секунд.
     const missing = isForeignKeyError(error) ? missingGuilds(entries) : null;
     for (const entry of entries) if (!missing?.has(entry.guildId)) addPending(entry.guildId, entry.userId, entry.xp, entry.messages, entry.voiceSeconds);
-    logger.warn("[LEVELS] Не удалось слить XP — повторю позже", error);
+    // Флеш раз в 5 c: без warnEvery сбой БД давал бы 12 предупреждений в минуту.
+    levelFlushFailures = logger.warnEvery(levelFlushFailures, 12, "[LEVELS] Не удалось слить XP — повторю позже", error);
     return [];
   }
+  levelFlushFailures = 0;
   return levelUps;
 }
 
@@ -121,7 +125,7 @@ function targetReward(rewards: LevelReward[], level: number): LevelReward | unde
 // Одна роль на уровень: роль высшей достигнутой награды выдаётся, награды
 // предыдущих уровней снимаются. Ошибки прав/иерархии не ломают level-up.
 async function applyRewards(guild: Guild, userId: string, level: number, rewards: LevelReward[]): Promise<void> {
-  const member = await guild.members.fetch(userId).catch(() => null);
+  const member = await fetchMember(guild, userId);
   if (!member) return;
   const target = targetReward(rewards, level);
   for (const reward of rewards) {
@@ -190,7 +194,7 @@ export function registerLevels(client: Client): void {
     const levelUps = flushLevels();
     if (levelUps.length) guard("LEVELS", () => applyLevelUps(client, levelUps));
   }, FLUSH_INTERVAL).unref();
-  setInterval(() => tickVoice(client), VOICE_INTERVAL).unref();
+  setInterval(() => guard("LEVELS:VOICE", () => tickVoice(client)), VOICE_INTERVAL).unref();
 }
 
 function progressBar(current: number, needed: number): string {
@@ -222,7 +226,7 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
       return true;
     }
     const user = i.options.getUser("user") ?? i.user;
-    const member = await guild.members.fetch(user.id).catch(() => null);
+    const member = await fetchMember(guild, user.id);
     if (!member) {
       await i.reply({ content: t("memberNotFound"), flags: MessageFlags.Ephemeral }).catch(() => null);
       return true;

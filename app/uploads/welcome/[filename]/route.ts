@@ -14,7 +14,7 @@ export async function GET(_: Request, context: RouteContext<"/uploads/welcome/[f
   if (!type || !/^\d{15,22}-welcome\.[a-z0-9]+$/i.test(filename)) return new Response(null, { status: 404 });
   try {
     const bytes = await readFile(join(process.cwd(), "public", "uploads", "welcome", filename));
-    return new Response(bytes, { headers: { "content-type": type, "cache-control": "public, max-age=3600" } });
+    return new Response(bytes, { headers: { "content-type": type, "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } });
   } catch {
     return new Response(null, { status: 404 });
   }

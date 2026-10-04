@@ -1,12 +1,13 @@
 import { db, withTransaction } from "../db/database.ts";
 import { DAY_MS, clampNumber } from "./constants.ts";
-import { discordFetch, isSnowflake, sendDiscordDM } from "./guild-access.ts";
+import { discordFetch, sendDiscordDM } from "./discord-api.ts";
+import { isSnowflake } from "./ids.ts";
 import { stmt } from "../bot/db/statements.ts";
 import { safeJson } from "./json.ts";
 import { eventStatusMetaM } from "./labels.ts";
 import { logger } from "../bot/utils/logger.ts";
 import type { Locale } from "./i18n/core.ts";
-import { eventsTr, guildLang } from "./i18n/bot.ts";
+import { eventsTr, guildLang, trFor } from "./i18n/bot.ts";
 
 const eventStatuses = ["scheduled", "live", "completed", "cancelled"] as const;
 export type EventStatus = (typeof eventStatuses)[number];
@@ -132,7 +133,7 @@ export function renderableOf(row: EventRow): RenderableEvent {
 }
 
 export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: EventEmbed, counts: EventCounts): EventEmbedPayload {
-  const tr = (k: Parameters<typeof eventsTr>[1], v?: Record<string, string | number>) => eventsTr(lang, k, v);
+  const tr = trFor(eventsTr, lang);
   const userFields: { name: string; value: string; inline: boolean }[] = (embed.fields ?? []).map(f => ({ name: f.name, value: f.value, inline: Boolean(f.inline) }));
   const added: typeof userFields = [];
   if (embed.timestamp) {

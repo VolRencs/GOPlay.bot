@@ -1,10 +1,8 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { useTempDb } from "./helpers.ts";
 
-process.env.DATABASE_PATH = join(mkdtempSync(join(tmpdir(), "goplay-levels-")), "bot.sqlite");
+useTempDb("goplay-levels-");
 
 const { xpForLevel, levelFromXp, levelProgress, levelDefaults, MAX_LEVEL } = await import("../src/lib/levels.ts");
 const { levelSettingsFor } = await import("../src/lib/levels-store.ts");

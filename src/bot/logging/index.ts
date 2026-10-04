@@ -7,7 +7,7 @@ import { safeJson } from "../../lib/json.ts";
 import { ttlCacheAsync, ttlCacheSync } from "../../lib/cache.ts";
 import { isMissingDiscordResource } from "../../lib/errors.ts";
 import { logTitleFor } from "../../lib/labels.ts";
-import { guildLang } from "../../lib/i18n/bot.ts";
+import { guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 
 let client: Client | null = null;
@@ -18,8 +18,14 @@ export function initLogging(c: Client) { client = c; }
 const SETTINGS_TTL = 5_000;
 const settingsCache = ttlCacheSync<string, { channelId: string | null; categories: Record<string, boolean> }>((guildId) => {
   count("db.settings_load");
-  const setting = stmt.loggingSettings.get(guildId) as { channel_id: string | null; categories_json: string } | undefined;
-  return { channelId: setting?.channel_id ?? null, categories: safeJson<Record<string, boolean>>(setting?.categories_json, {}) };
+  try {
+    const setting = stmt.loggingSettings.get(guildId) as { channel_id: string | null; categories_json: string } | undefined;
+    return { channelId: setting?.channel_id ?? null, categories: safeJson<Record<string, boolean>>(setting?.categories_json, {}) };
+  } catch (error) {
+    // Сбой SQLite не должен ронять logAction из обработчиков без собственного catch.
+    logger.warn("[LOG] Не удалось прочитать настройки логирования", guildId, error);
+    return { channelId: null, categories: {} };
+  }
 }, SETTINGS_TTL);
 
 // Очередь на канал + один отправитель: burst событий не упирается в rate
@@ -95,6 +101,12 @@ async function drainChannel(channelId: string) {
 // соответствующее gateway-событие не дублировало запись.
 const botActions = new Map<string, number>();
 const BOT_ACTION_TTL = 15_000;
+// Пометки, не подтверждённые gateway-событием (действие отменено/упало),
+// удаляются только при isBotAction — без sweep map росла бы навсегда.
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, at] of botActions) if (now - at > BOT_ACTION_TTL) botActions.delete(key);
+}, 60_000).unref();
 export function markBotAction(guildId: string, type: string, targetId: string) { botActions.set(`${guildId}:${type}:${targetId}`, Date.now()); }
 export function isBotAction(guildId: string, type: string, targetId: string) {
   const key = `${guildId}:${type}:${targetId}`;
@@ -112,6 +124,7 @@ export function isBotAction(guildId: string, type: string, targetId: string) {
 type AuditRequest = { guildId: string; type: number; targetId: string; priority: boolean; resolve: (entry: GuildAuditLogsEntry<number> | undefined) => void };
 const auditQueue: AuditRequest[] = [];
 let auditWorker: Promise<void> | null = null;
+let auditFailures = 0;
 const AUDIT_INTERVAL = 300;
 const AUDIT_QUEUE_LIMIT = 250;
 
@@ -123,8 +136,11 @@ function auditLookup(guildId: string, type: number, targetId: string, priority: 
     // При экстремальном всплеске роняем самый старый НЕприоритетный запрос:
     // priority-запросы (kick/ban/timeout) никогда не выкидывают себя сами.
     if (auditQueue.length > AUDIT_QUEUE_LIMIT) {
+      // Роняем самый старый неприоритетный; при всплеске одних приоритетных —
+      // самый старый вообще, чтобы очередь не росла без границы.
       const dropAt = auditQueue.findIndex(entry => !entry.priority);
-      if (dropAt !== -1) auditQueue.splice(dropAt, 1)[0]!.resolve(undefined);
+      const [dropped] = auditQueue.splice(dropAt === -1 ? 0 : dropAt, 1);
+      dropped!.resolve(undefined);
     }
     void drainAuditQueue();
   });
@@ -138,7 +154,7 @@ async function drainAuditQueue() {
       const guild = client?.guilds.cache.get(guildId);
       if (!guild) { resolve(undefined); continue; }
       const started = performance.now();
-      const logs = await guild.fetchAuditLogs({ type, limit: 5 }).catch(error => { logger.warn("[AUDIT] Не удалось получить журнал аудита", guildId, error); return null; });
+      const logs = await guild.fetchAuditLogs({ type, limit: 5 }).catch(error => { auditFailures = logger.warnEvery(auditFailures, 20, "[AUDIT] Не удалось получить журнал аудита", guildId, error); return null; });
       time("audit.rest", performance.now() - started);
       count("audit.lookups");
       const entry = logs?.entries.find(x => x.targetId === targetId && Date.now() - x.createdTimestamp < 15_000);
@@ -191,11 +207,11 @@ function buildEmbed(guildId: string, settings: { channelId: string | null; categ
   const allowed = settings.categories[type] ?? true;
   if (!allowed) return null;
   const lang = guildLang(guildId);
-  const t = (k: Parameters<typeof logTr>[1], v?: Record<string, string | number>) => logTr(lang, k, v);
+  const t = trFor(logTr, lang);
   const channelEvent = type.startsWith("channel_") || type === "message_purge";
   // «все» — сентинел для /clearwarn all: это не ID, а признак «вся гильдия».
   const subject = targetId === "все" ? t("targetAllSubject") : targetId === t("unknownExecutor") ? targetId : channelEvent ? `<#${targetId}> (ID: ${targetId})` : `<@${targetId}> (ID: ${targetId})`;
-  const color = logColors[type] ?? (type.includes("delete") || type.includes("ban") || type.includes("kick") ? 0xed4245 : type.includes("join") || type.includes("create") ? 0x57f287 : 0x5865f2);
+  const color = logColors[type] ?? 0x5865f2;
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(logTitleFor(lang, type))

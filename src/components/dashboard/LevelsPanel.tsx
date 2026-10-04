@@ -104,9 +104,9 @@ export function LevelsPanel({ channels, roles, value, rewards, onChange, onRewar
                 {rewards.map((reward, index) => (
                   <div className="reward-row" key={index}>
                     <input type="number" min={1} max={MAX_LEVEL} aria-label="Уровень награды" value={reward.level}
-                      onChange={e => { const level = Math.max(1, Math.min(MAX_LEVEL, Number(e.target.value) || 1)); if (rewards.some((entry, n) => n !== index && entry.level === level)) return; onRewardsChange(rewards.map((entry, n) => n === index ? { ...entry, level } : entry)); }}/>
+                      onChange={e => { const level = Math.max(1, Math.min(MAX_LEVEL, Number(e.target.value) || 1)); if (rewards.some((entry, n) => n !== index && entry.level === level)) return; onRewardsChange(rewards.with(index, { ...reward, level })); }}/>
                     <Select value={reward.role_id} placeholder="Выберите роль" ariaLabel={`Роль за ${reward.level} уровень`}
-                      onChange={roleId => onRewardsChange(rewards.map((entry, n) => n === index ? { ...entry, role_id: roleId } : entry))}
+                      onChange={roleId => onRewardsChange(rewards.with(index, { ...reward, role_id: roleId }))}
                       options={roles.map(role => ({ value: role.id, label: role.name }))}/>
                     <button type="button" className="btn danger small icon-only" onClick={() => onRewardsChange(rewards.filter((_, n) => n !== index))} aria-label={`Удалить награду за уровень ${reward.level}`}><Trash2 size={14}/></button>
                   </div>

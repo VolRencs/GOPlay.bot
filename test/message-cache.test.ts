@@ -1,12 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { useTempDb } from "./helpers.ts";
 
-const dbPath = join(mkdtempSync(join(tmpdir(), "goplay-message-cache-")), "bot.sqlite");
-process.env.DATABASE_PATH = dbPath;
+const dbPath = useTempDb("goplay-message-cache-");
 const { db } = await import("../src/db/database.ts");
 const { rememberMessage, messageContent, forgetMessage, flushMessageCache, enforceMessageCap, MESSAGE_CACHE_PER_GUILD } = await import("../src/bot/db/message-cache.ts");
 

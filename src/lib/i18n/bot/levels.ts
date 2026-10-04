@@ -1,8 +1,7 @@
-import { makeTr } from "../bot.ts";
+import { makeTr, commonMessages } from "../bot.ts";
 
 export const levelsTr = makeTr({
-  genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
-  notGuild: { ru: "❌ Команда доступна только на сервере.", en: "❌ This command is only available in a server." },
+  ...commonMessages,
   disabled: { ru: "Система уровней на этом сервере выключена.", en: "The level system is disabled on this server." },
   memberNotFound: { ru: "❌ Участник не найден на сервере.", en: "❌ Member not found on this server." },
   title: { ru: "Уровень {user}", en: "{user}'s level" },

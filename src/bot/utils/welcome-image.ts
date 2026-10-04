@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { setImmediate as immediate } from "node:timers/promises";
 import { join, resolve } from "node:path";
-import { buildWelcomeSvg, imageSize, parseImageConfig, renderWelcomeTemplate, WELCOME_DESIGN, type WelcomeImageConfig } from "../../lib/welcome.ts";
+import { buildWelcomeSvg, imageSize, parseImageConfig, renderWelcomeTemplate, welcomeValues, WELCOME_DESIGN, type WelcomeImageConfig } from "../../lib/welcome.ts";
 const PUBLIC_ROOT = resolve(process.cwd(), "public");
 const WELCOME_ROOT = resolve(PUBLIC_ROOT, "uploads/welcome");
 const MAX_WELCOME_CONCURRENCY = 2;
@@ -72,7 +72,7 @@ async function avatarData(url: string): Promise<string> {
     const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
     if (!response.ok) throw new Error();
     const bytes = Buffer.from(await response.arrayBuffer());
-    const dataUri = `data:${response.headers.get("content-type") ?? "image/png"};base64,${bytes.toString("base64")}`;
+    const dataUri = `data:${response.headers.get("content-type") ?? "image/png"};base64,${bytes.toBase64()}`;
     if (avatarCache.size >= AVATAR_CACHE_MAX) {
       const oldest = avatarCache.keys().next().value;
       if (oldest !== undefined) avatarCache.delete(oldest);
@@ -84,7 +84,7 @@ async function avatarData(url: string): Promise<string> {
 
 export async function welcomeImage(input: { avatar: string; name: string; username?: string; userId?: string; server: string; count: number; backgroundPath?: string | null; config?: unknown }) {
   const config: WelcomeImageConfig = parseImageConfig(input.config);
-  const values = { user: input.name, username: input.username ?? input.name, displayName: input.name, server: input.server, count: String(input.count), memberCount: String(input.count), userId: input.userId ?? "", userAvatar: input.avatar, serverIcon: "" };
+  const values = welcomeValues(input);
   const title = renderWelcomeTemplate(config.title, values), subtitle = renderWelcomeTemplate(config.subtitle, values);
   // Кэш проверяем ДО любой тяжёлой работы: фон с диска, CDN-аватар и base64
   // нужны только на реальном промахе.
@@ -99,7 +99,7 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
   // backgroundVersion === "none" означает инвалид: читать с диска нечего.
   if (backgroundVersion !== "none" && backgroundPath) {
     background = await readFile(resolve(PUBLIC_ROOT, "." + backgroundPath)).catch(() => null);
-    if (background) bgDataUri = `data:image/${backgroundPath.endsWith(".jpg") ? "jpeg" : backgroundPath.split(".").pop()};base64,${background.toString("base64")}`;
+    if (background) bgDataUri = `data:image/${backgroundPath.endsWith(".jpg") ? "jpeg" : backgroundPath.split(".").pop()};base64,${background.toBase64()}`;
   }
   const size = background ? imageSize(background) : WELCOME_DESIGN;
   const avatar = await avatarData(input.avatar);

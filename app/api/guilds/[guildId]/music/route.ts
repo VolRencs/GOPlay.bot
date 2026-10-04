@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { musicSettingsFor, type MusicSettings } from "../../../../../src/lib/music-settings.ts";
+import { musicSettingsFor, invalidateMusicSettings, type MusicSettings, type MusicSettingsRow } from "../../../../../src/lib/music-settings.ts";
 import { clampMusicSeconds } from "../../../../../src/lib/labels.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { safeJson } from "../../../../../src/lib/json.ts";
@@ -14,9 +14,7 @@ const leaveLabel = (seconds: number) => seconds === 0 ? "выключен" : sec
 const musicUpsertStmt = db.prepare(
   "INSERT INTO music_settings(guild_id,command_channel_id,voice_channel_ids_json,allowed_role_ids_json,leave_after_seconds) VALUES(?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET command_channel_id=excluded.command_channel_id,voice_channel_ids_json=excluded.voice_channel_ids_json,allowed_role_ids_json=excluded.allowed_role_ids_json,leave_after_seconds=excluded.leave_after_seconds",
 );
-const readRow = (guildId: string) => stmt.musicSettings.get(guildId) as
-  | { command_channel_id: string | null; voice_channel_ids_json: string; allowed_role_ids_json: string; leave_after_seconds: number }
-  | undefined;
+const readRow = (guildId: string) => stmt.musicSettings.get(guildId) as MusicSettingsRow | undefined;
 
 export const GET = guildRoute(async (_, { guildId }) => {
   return NextResponse.json(musicSettingsFor(guildId));
@@ -29,8 +27,10 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const body = await readJson<MusicSettings>(request);
   if (!body) return jsonError("Некорректное тело запроса.");
 
-  const ids = Array.isArray(body.voice_channel_ids) ? body.voice_channel_ids : [];
-  const roles = Array.isArray(body.allowed_role_ids) ? body.allowed_role_ids : [];
+  const ids = body.voice_channel_ids ?? [];
+  const roles = body.allowed_role_ids ?? [];
+  // Строка/объект вместо массива раньше молча сбрасывали настройки в [].
+  if (!Array.isArray(ids) || !Array.isArray(roles)) return jsonError("Некорректный список каналов или ролей.");
   if (!ids.every(id => isSnowflake(id)) || !roles.every(role => isSnowflake(role)))
     return jsonError("Некорректный ID канала или роли.");
   if (new Set(ids).size !== ids.length)
@@ -60,6 +60,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   ) return NextResponse.json({ ok: true, unchanged: true });
 
   musicUpsertStmt.run(guildId, next.command_channel_id, next.voice_channel_ids_json, next.allowed_role_ids_json, next.leave_after_seconds);
+  invalidateMusicSettings(guildId);
 
   recordDashboardDiff(guildId, user, "Музыка", "Настройки музыки: ",
     {

@@ -27,7 +27,7 @@ async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
 
 export function registerEvents(client: Client) {
   client.on(Events.InteractionCreate, (i) => guard("EVENTS", () => handleInteraction(i)));
-  client.on(Events.MessageDelete, (message) => { if (message.guildId) detachEventMessage(message.id); });
+  client.on(Events.MessageDelete, (message) => { if (message.guildId) guard("EVENTS:DETACH", () => detachEventMessage(message.id)); });
   client.on(Events.GuildMemberRemove, (member) => {
     for (const result of removeParticipantFromGuild(member.guild.id, member.user.id)) {
       const event = getEvent(result.eventId);
@@ -132,7 +132,7 @@ async function tick() {
       // Статус-гейт: после простоя напоминания по уже начавшемуся/завершённому
       // событию ушли бы как «начнётся через…» с датой в прошлом.
       if (!event || event.status !== "scheduled") continue;
-      void sendReminders(event);
+      guard("EVENTS:REMIND", () => sendReminders(event));
     }
     const { changed, created } = transitionDueEvents(now);
     for (const follower of created) await publishEventMessage(follower);

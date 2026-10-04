@@ -3,7 +3,7 @@ import { appealPunishmentTypes, createAppeal, declineAppeal, type AppealPunishme
 import { punishmentLabel } from "../../lib/labels.ts";
 import { failInteraction } from "../../lib/errors.ts";
 import { count } from "../perf.ts";
-import { guildLang } from "../../lib/i18n/bot.ts";
+import { guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { trAppeals } from "../../lib/i18n/bot/appeals.ts";
 
 export function registerAppeals(client: Client) {
@@ -19,36 +19,41 @@ async function handleInteraction(i: Interaction) {
   }
 }
 
-type OfferContext = { action: "agree" | "decline"; guildId: string; punishmentId: number; appealType: AppealPunishmentType };
+type AppealContext = { guildId: string; punishmentId: number; appealType: AppealPunishmentType };
 
-function parseOfferId(customId: string): OfferContext | null {
-  const [, , action, guildId, punishmentIdRaw, typeRaw] = customId.split(":");
-  const punishmentId = Number(punishmentIdRaw);
-  const appealType = appealPunishmentTypes.find(type => type === typeRaw);
-  if ((action !== "agree" && action !== "decline") || !guildId || !Number.isInteger(punishmentId) || !appealType) return null;
-  return { action, guildId, punishmentId, appealType };
+// custom_id: appeal:offer:<action>:<guild>:<punishmentId>:<type> или
+// appeal:modal:<guild>:<punishmentId>:<type>; offset — позиция guildId.
+function parseAppealId(customId: string, offset: number): AppealContext | null {
+  const parts = customId.split(":");
+  const guildId = parts[offset];
+  const punishmentId = Number(parts[offset + 1]);
+  const appealType = appealPunishmentTypes.find(type => type === parts[offset + 2]);
+  if (!guildId || !Number.isInteger(punishmentId) || !appealType) return null;
+  return { guildId, punishmentId, appealType };
 }
 
 async function handleOffer(i: ButtonInteraction) {
-  const context = parseOfferId(i.customId);
+  const action = i.customId.split(":")[2];
+  if (action !== "agree" && action !== "decline") return;
+  const context = parseAppealId(i.customId, 3);
   if (!context) return;
   count("appeals.offer");
-  if (context.action === "agree") {
+  if (action === "agree") {
     const lang = guildLang(context.guildId);
     await i.showModal(new ModalBuilder().setCustomId(`appeal:modal:${context.guildId}:${context.punishmentId}:${context.appealType}`).setTitle(trAppeals(lang, "appealModalTitle")).addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId("reason").setLabel(trAppeals(lang, "modalReasonLabel")).setStyle(TextInputStyle.Paragraph).setMinLength(10).setMaxLength(4000).setRequired(true).setPlaceholder(trAppeals(lang, "modalReasonPh")))));
     return;
   }
   const result = declineAppeal({ guildId: context.guildId, userId: i.user.id, punishmentId: context.punishmentId });
   await i.reply({ content: result.ok ? trAppeals(guildLang(context.guildId), "declinedOk") : `❌ ${result.error}`, flags: MessageFlags.Ephemeral });
-  await i.message?.edit({ components: [] }).catch(() => null);
+  // Кнопки снимаем только при успехе: иначе пользователь не сможет повторить отказ.
+  if (result.ok) await i.message?.edit({ components: [] }).catch(() => null);
 }
 
 async function handleModal(i: ModalSubmitInteraction) {
-  const [, , guildId, punishmentIdRaw, typeRaw] = i.customId.split(":");
-  const punishmentId = Number(punishmentIdRaw);
-  const appealType = appealPunishmentTypes.find(type => type === typeRaw);
-  if (!guildId || !Number.isInteger(punishmentId) || !appealType) return;
+  const context = parseAppealId(i.customId, 2);
+  if (!context) return;
   count("appeals.modal");
+  const { guildId, punishmentId, appealType } = context;
   const reason = i.fields.getTextInputValue("reason").trim();
   const result = createAppeal({ guildId, userId: i.user.id, punishmentId, reason, type: appealType });
   if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral });
@@ -60,7 +65,7 @@ async function handleModal(i: ModalSubmitInteraction) {
 // гильдии, DM доставаем; сбой (закрытые DM) проглатывается — наказание в силе.
 export function offerAppeal(client: Client, input: { punishmentId: number; guildId: string; guildName: string; userId: string; type: string; reason: string | null; appealType: AppealPunishmentType }) {
   const lang = guildLang(input.guildId);
-  const t = (k: Parameters<typeof trAppeals>[1], v?: Record<string,string|number>) => trAppeals(lang, k, v);
+  const t = trFor(trAppeals, lang);
   const typeLabel = punishmentLabel(lang, input.type);
   const content = t("offerTitle", { server: input.guildName, type: typeLabel }) + (input.reason ? t("offerReason", { reason: input.reason }) : "") + t("offerBody");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(

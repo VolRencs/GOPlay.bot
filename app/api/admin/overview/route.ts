@@ -3,12 +3,12 @@ import { adminRoute, discordFetch } from "../../../../src/lib/guild-access.ts";
 import { db } from "../../../../src/db/database.ts";
 import { ttlCacheAsync } from "../../../../src/lib/cache.ts";
 import { DAY_MS } from "../../../../src/lib/constants.ts";
-import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-function botStatus(): { online: boolean; uptimeMs: number | null } {
+async function botStatus(): Promise<{ online: boolean; uptimeMs: number | null }> {
   try {
-    const hb = JSON.parse(readFileSync(join(process.cwd(), "data", "heartbeat"), "utf8")) as { startedAt?: number; ts?: number };
+    const hb = JSON.parse(await readFile(join(process.cwd(), "data", "heartbeat"), "utf8")) as { startedAt?: number; ts?: number };
     if (typeof hb.startedAt !== "number" || typeof hb.ts !== "number") return { online: false, uptimeMs: null };
     const online = Date.now() - hb.ts < 3 * 60_000;
     return { online, uptimeMs: online ? Date.now() - hb.startedAt : null };
@@ -32,5 +32,5 @@ export const GET = adminRoute(async () => {
   const guilds = Number(guildCountStmt.get()?.c ?? 0);
   const activity = activity7dStmt.get(cutoff) as { m: number; mod: number };
   const members = await memberTotal.get("total").catch(() => null);
-  return NextResponse.json({ ...botStatus(), guilds, messages7d: Number(activity.m), moderation7d: Number(activity.mod), members });
+  return NextResponse.json({ ...(await botStatus()), guilds, messages7d: Number(activity.m), moderation7d: Number(activity.mod), members });
 });

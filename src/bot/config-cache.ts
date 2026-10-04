@@ -36,11 +36,14 @@ function load(guildId: string): CachedRules {
   return { rules, ignoredRoles: parseStringArray(security?.ignored_role_ids_json), protectedChannelId: security?.protected_channel_id ?? null, lang: guildLang(guildId) };
 }
 
-function refreshGuild(guildId: string) {
+function refreshGuild(guildId: string): CachedRules | null {
   try {
-    snapshots.set(guildId, load(guildId));
+    const snapshot = load(guildId);
+    snapshots.set(guildId, snapshot);
+    return snapshot;
   } catch (error) {
     logger.warn("[CONFIG] Не удалось обновить конфигурацию автомода", guildId, error);
+    return null;
   }
 }
 
@@ -76,16 +79,8 @@ function refreshLoop() {
 export function cachedRules(guildId: string): CachedRules {
   activeGuilds.set(guildId, Date.now());
   ensureTimer();
-  let snapshot = snapshots.get(guildId);
-  if (!snapshot) {
-    try {
-      snapshot = load(guildId);
-    } catch (error) {
-      logger.warn("[CONFIG] Не удалось загрузить конфигурацию автомода", guildId, error);
-      snapshot = { rules: [], ignoredRoles: [], protectedChannelId: null, lang: "ru" as const };
-    }
-    snapshots.set(guildId, snapshot);
-  }
+  const snapshot = snapshots.get(guildId) ?? refreshGuild(guildId) ?? { rules: [], ignoredRoles: [], protectedChannelId: null, lang: "ru" as const };
+  snapshots.set(guildId, snapshot);
   return snapshot;
 }
 

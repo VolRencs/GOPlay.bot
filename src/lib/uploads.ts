@@ -53,9 +53,9 @@ export async function deleteGuildFiles(guildId: string) {
  *  nginx в проде режет на 8 MB — это защита прямого доступа к Next. */
 export function rejectOversized(request: Request, limitBytes = 32 * 1024 * 1024): Response | null {
   const raw = request.headers.get("content-length");
-  // Chunked multipart без content-length буферизуется formData() безлимитно:
-  // заголовок не проверить, поэтому отказываем. Браузерный FormData его шлёт.
-  if (raw === null && request.headers.get("content-type")?.includes("multipart/form-data")) {
+  // Тело без content-length (chunked) буферизуется formData()/json() безлимитно:
+  // заголовок не проверить, поэтому отказываем для любого типа контента.
+  if (raw === null) {
     return new Response(JSON.stringify({ error: "Не удалось определить размер запроса." }), { status: 411, headers: { "content-type": "application/json" } });
   }
   const len = Number(raw ?? 0);

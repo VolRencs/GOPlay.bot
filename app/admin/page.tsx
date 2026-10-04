@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
 import { apiGet, apiSend } from "../../src/components/dashboard/api.ts";
-import { CardHeader, ConfirmHost, confirmAction, formatNumber, ModalShell, TemplateLibrary, useAsyncAction } from "../../src/components/dashboard/ui.tsx";
+import { CardHeader, ConfirmHost, confirmAction, formatNumber, ModalShell, StatCard, TemplateLibrary, useAsyncAction } from "../../src/components/dashboard/ui.tsx";
 
 type Overview = { online: boolean; uptimeMs: number | null; guilds: number; messages7d: number; moderation7d: number; members: number | null };
 type AdminGuild = { id: string; name: string; messages: number; panels: number; events: number };
@@ -77,10 +77,10 @@ export default function AdminPage() {
               <CardHeader title={<>Статус бота <span className={`pill ${overview.online ? "pill-ok" : "pill-err"}`}>{overview.online ? "онлайн" : "оффлайн"}</span></>}
                 muted={overview.uptimeMs !== null ? `Uptime: ${uptime(overview.uptimeMs)}.` : "Uptime недоступен."}/>
               <div className="stat-cards">
-                <article className="card stat-card"><span>Серверов</span><strong>{formatNumber(overview.guilds)}</strong><small>всего у бота</small></article>
-                <article className="card stat-card"><span>Сообщения</span><strong>{formatNumber(overview.messages7d)}</strong><small>за 7 дней по всем серверам</small></article>
-                <article className="card stat-card"><span>Модерация</span><strong>{formatNumber(overview.moderation7d)}</strong><small>срабатываний за 7 дней</small></article>
-                <article className="card stat-card"><span>Участники</span><strong>{overview.members !== null ? formatNumber(overview.members) : "—"}</strong><small>во всех серверах</small></article>
+                <StatCard label="Серверов" value={formatNumber(overview.guilds)} hint="всего у бота"/>
+                <StatCard label="Сообщения" value={formatNumber(overview.messages7d)} hint="за 7 дней по всем серверам"/>
+                <StatCard label="Модерация" value={formatNumber(overview.moderation7d)} hint="срабатываний за 7 дней"/>
+                <StatCard label="Участники" value={overview.members !== null ? formatNumber(overview.members) : "—"} hint="во всех серверах"/>
               </div>
             </article>
             <TemplateLibrary

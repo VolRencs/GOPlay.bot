@@ -1,10 +1,9 @@
-import { makeTr } from "../bot.ts";
+import { makeTr, commonMessages } from "../bot.ts";
 
 export const trModeration = makeTr({
-  notGuild: { ru: "❌ Команда доступна только на сервере.", en: "❌ This command is only available in a server." },
+  ...commonMessages,
   noPermsTarget: { ru: "❌ Нельзя управлять этим пользователем: проверьте иерархию ролей.", en: "❌ Cannot moderate this user: check role hierarchy." },
   noPermsGeneric: { ru: "❌ У бота недостаточно прав или ресурс был удалён.", en: "❌ The bot lacks permissions or the resource was deleted." },
-  noReason: { ru: "Без причины", en: "No reason" },
   warnListEmpty: { ru: "Активных предупреждений нет.", en: "No active warnings." },
   clearwarnNeedTarget: { ru: "Укажите пользователя (user) или включите снятие всех предупреждений сервера (all).", en: "Specify a user (user) or enable clearing all server warnings (all)." },
   clearwarnExclusive: { ru: "Выберите что-то одно: пользователя (user) или все предупреждения сервера (all).", en: "Pick one: a user (user) or all server warnings (all)." },

@@ -62,8 +62,11 @@ export const GET = guildRoute(async (request, { guildId }) => {
     totals.moderation = moderation.reduce((sum, row) => sum + row.count, 0);
   }
 
-  const topChannels = await channelNames.get(guildId).catch(() => ({} as Record<string, string>)).then(names => (topChannelsStmt.all(guildId, cutoff) as { id: string; messages: number }[]).map(row => ({ ...row, name: names[row.id] ?? "Неизвестный канал" })));
-  const memberNames = await guildMemberNames(guildId).catch(() => new Map<string, string>());
+  const [names, memberNames] = await Promise.all([
+    channelNames.get(guildId).catch(() => ({} as Record<string, string>)),
+    guildMemberNames(guildId).catch(() => new Map<string, string>()),
+  ]);
+  const topChannels = (topChannelsStmt.all(guildId, cutoff) as { id: string; messages: number }[]).map(row => ({ ...row, name: names[row.id] ?? "Неизвестный канал" }));
   const topUsers = (topUsersStmt.all(guildId, cutoff) as { id: string; messages: number }[]).map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" }));
 
   const peakHour = (peakHourStmt.get(guildId, cutoff) as { day: string; hour: number; messages: number } | undefined) ?? null;

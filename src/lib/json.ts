@@ -23,7 +23,7 @@ export function parseActions(raw: string | null | undefined): string[] {
 export function stableJson(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
   if (Array.isArray(value)) {
-    const items = value.every(item => typeof item === "string") ? [...value].sort() : value;
+    const items = value.every(item => typeof item === "string") ? value.toSorted() : value;
     return `[${items.map(stableJson).join(",")}]`;
   }
   const entries = Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));

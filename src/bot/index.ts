@@ -1,4 +1,4 @@
-import { AuditLogEvent, ChannelType, Client, EmbedBuilder, Events, GatewayIntentBits, Partials, REST, Routes, MessageFlags, PermissionFlagsBits, type Guild, type GuildMember, type Interaction, type Message, type MessageReaction, type PartialMessageReaction, type PartialUser, type User } from "discord.js";
+import { ApplicationCommandOptionType, AuditLogEvent, ChannelType, Client, EmbedBuilder, Events, GatewayIntentBits, Partials, REST, Routes, MessageFlags, PermissionFlagsBits, type Guild, type GuildBasedChannel, type GuildMember, type Interaction, type Message, type MessageReaction, type PartialMessageReaction, type PartialUser, type User } from "discord.js";
 import { closeDatabase, db } from "../db/database.ts";
 import { safeJson } from "../lib/json.ts";
 import { automodActions, automodDefaultActions } from "../lib/automod.ts";
@@ -7,7 +7,7 @@ import { DAY_MS, MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../lib/con
 import { detect, isIgnored, pruneDetectors, burstMessages, shouldWarn, markWarned, type Rule, type MessageData } from "./automod/detectors.ts";
 import { moderate, purgeUserMessages, recordPunishmentAndOffer } from "./moderation/index.ts";
 import { welcomeImage } from "./utils/welcome-image.ts";
-import { renderWelcomeTemplate } from "../lib/welcome.ts";
+import { renderWelcomeTemplate, welcomeValues, type WelcomeGet } from "../lib/welcome.ts";
 import { stmt } from "./db/statements.ts";
 import { forgetMessage, flushMessageCache, messageContent, rememberMessage } from "./db/message-cache.ts";
 import { logger } from "./utils/logger.ts";
@@ -25,12 +25,13 @@ import { destroyAllSessions, stopAndLeave } from "../lib/player/index.ts";
 import { count, time } from "./perf.ts";
 import { startHeartbeat } from "./heartbeat.ts";
 import { localeFromDiscord } from "../lib/i18n/core.ts";
-import { automodTr, commandsTr, guildLang } from "../lib/i18n/bot.ts";
+import { automodTr, commandsTr, guildLang, trFor } from "../lib/i18n/bot.ts";
 import { trModeration } from "../lib/i18n/bot/moderation.ts";
 import { logTr } from "../lib/i18n/bot/logs.ts";
 import { wipeGuildData } from "../lib/server-cleanup.ts";
 import { deleteGuildFiles } from "../lib/uploads.ts";
 import { setTimeout as delay } from "node:timers/promises";
+import { fetchMember } from "./utils/members.ts";
 const langUpdate = db.prepare("UPDATE guilds SET lang=? WHERE id=?");
 const guildRefresh = db.prepare("UPDATE guilds SET name=?,icon=?,updated_at=? WHERE id=?");
 const automodRuleTitles = { ru: automodRulesFor("ru"), en: automodRulesFor("en") } as const;
@@ -48,23 +49,23 @@ const commandDescriptionsEn: Record<string, string> = {
   lvl: "Show a member's level", top: "Show the XP leaderboard",
 };
 const commands = [
-  { name: "play", description: "Включить музыку с YouTube в голосовом канале", options: [{ name: "link", description: "Ссылка YouTube (видео или плейлист)", type: 3, required: true }] },
+  { name: "play", description: "Включить музыку с YouTube в голосовом канале", options: [{ name: "link", description: "Ссылка YouTube (видео или плейлист)", type: ApplicationCommandOptionType.String, required: true }] },
   { name: "ping", description: "Показать задержку бота до Discord" },
   { name: "help", description: "Показать список команд и их описание" },
-  { name: "user", description: "Информация о пользователе", options: [{ name: "user", description: "Кого посмотреть (по умолчанию — вы)", type: 6 }] },
+  { name: "user", description: "Информация о пользователе", options: [{ name: "user", description: "Кого посмотреть (по умолчанию — вы)", type: ApplicationCommandOptionType.User }] },
   { name: "server", description: "Информация о сервере" },
-  { name: "avatar", description: "Показать аватар пользователя", options: [{ name: "user", description: "Чей аватар (по умолчанию — ваш)", type: 6 }] },
-  { name: "lvl", description: "Показать уровень участника", options: [{ name: "user", description: "Чей уровень (по умолчанию — ваш)", type: 6 }] },
+  { name: "avatar", description: "Показать аватар пользователя", options: [{ name: "user", description: "Чей аватар (по умолчанию — ваш)", type: ApplicationCommandOptionType.User }] },
+  { name: "lvl", description: "Показать уровень участника", options: [{ name: "user", description: "Чей уровень (по умолчанию — ваш)", type: ApplicationCommandOptionType.User }] },
   { name: "top", description: "Топ участников сервера по уровню" },
-  { name: "ban", description: "Забанить пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "reason", description: "Причина", type: 3 }] },
-  { name: "kick", description: "Исключить пользователя с сервера", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "reason", description: "Причина", type: 3 }] },
-  { name: "timeout", description: "Выдать тайм-аут (заглушить) пользователю", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "minutes", description: "Минуты (по умолчанию 10)", type: 4, min_value: 1, max_value: 40320 }, { name: "reason", description: "Причина", type: 3 }] },
-  { name: "untimeout", description: "Снять тайм-аут с пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "reason", description: "Причина", type: 3 }] },
-  { name: "warn", description: "Выдать предупреждение пользователю", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }, { name: "reason", description: "Причина", type: 3 }] },
-  { name: "warnings", description: "Показать предупреждения пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: 6, required: true }] },
-  { name: "clearwarn", description: "Снять предупреждения: у пользователя или все на сервере", admin: true, options: [{ name: "user", description: "Пользователь, которому снять предупреждения", type: 6 }, { name: "all", description: "Снять все предупреждения на сервере", type: 5 }, { name: "reason", description: "Причина снятия", type: 3 }] },
-  { name: "purge", description: "Удалить последние сообщения канала", admin: true, options: [{ name: "amount", description: "Количество (1-100)", type: 4, required: true, min_value: 1, max_value: 100 }] },
-  { name: "slowmode", description: "Установить медленный режим канала", admin: true, options: [{ name: "seconds", description: "Секунды между сообщениями (0 — выключить)", type: 4, required: true, min_value: 0, max_value: 21600 }] },
+  { name: "ban", description: "Забанить пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "kick", description: "Исключить пользователя с сервера", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "timeout", description: "Выдать тайм-аут (заглушить) пользователю", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "minutes", description: "Минуты (по умолчанию 10)", type: ApplicationCommandOptionType.Integer, min_value: 1, max_value: 40320 }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "untimeout", description: "Снять тайм-аут с пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "warn", description: "Выдать предупреждение пользователю", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "warnings", description: "Показать предупреждения пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }] },
+  { name: "clearwarn", description: "Снять предупреждения: у пользователя или все на сервере", admin: true, options: [{ name: "user", description: "Пользователь, которому снять предупреждения", type: ApplicationCommandOptionType.User }, { name: "all", description: "Снять все предупреждения на сервере", type: ApplicationCommandOptionType.Boolean }, { name: "reason", description: "Причина снятия", type: ApplicationCommandOptionType.String }] },
+  { name: "purge", description: "Удалить последние сообщения канала", admin: true, options: [{ name: "amount", description: "Количество (1-100)", type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }] },
+  { name: "slowmode", description: "Установить медленный режим канала", admin: true, options: [{ name: "seconds", description: "Секунды между сообщениями (0 — выключить)", type: ApplicationCommandOptionType.Integer, required: true, min_value: 0, max_value: 21600 }] },
   { name: "lock", description: "Закрыть канал для отправки сообщений", admin: true },
   { name: "unlock", description: "Открыть канал для отправки сообщений", admin: true },
 ].map(({ admin, ...command }) => {
@@ -93,7 +94,7 @@ function onboardGuild(guild: Guild): void {
 }
 client.once(Events.ClientReady, async c => {
   startHeartbeat();
-  logger.info("Бот готов:", c.user.tag);
+  logger.info("Бот готов:", c.user.username);
   try {
     await new REST().setToken(token).put(Routes.applicationCommands(c.user.id), { body: commands });
   } catch (error) {
@@ -101,32 +102,20 @@ client.once(Events.ClientReady, async c => {
   }
   for (const guild of c.guilds.cache.values()) onboardGuild(guild);
   logger.info("Зарегистрировано команд:", commands.length, "Гильдий:", c.guilds.cache.size);
-  await cleanupTempChannels(c);
+  try { await cleanupTempChannels(c); } catch (error) { logger.error("[TEMP] Ошибка очистки временных каналов:", error); }
 });
 client.on(Events.GuildCreate, g => {
   onboardGuild(g);
   logger.info("Бот добавлен на сервер:", g.id, g.name);
 });
-type MemberEventSettings = {
-  enabled: number; channel_id: string | null; message: string; image_enabled: number;
-  background_path: string | null; image_config_json: string;
-  goodbye_enabled: number; goodbye_channel_id: string | null; goodbye_message: string;
-};
 function memberTemplate(template: string, member: GuildMember) {
-  const count = String(member.guild.memberCount);
   return renderWelcomeTemplate(template.replace(/\r\n?/g, "\n"), {
+    ...welcomeValues({ name: member.displayName, username: member.user.username, userId: member.id, server: member.guild.name, count: member.guild.memberCount, avatar: member.user.displayAvatarURL() }),
     user: `<@${member.id}>`,
-    username: member.user.username,
-    displayName: member.displayName,
-    server: member.guild.name,
-    count,
-    memberCount: count,
-    userId: member.id,
-    userAvatar: member.user.displayAvatarURL(),
     serverIcon: member.guild.iconURL() ?? "",
   });
 }
-async function renderMemberImage(member: GuildMember, setting: MemberEventSettings, event: "welcome" | "goodbye") {
+async function renderMemberImage(member: GuildMember, setting: WelcomeGet, event: "welcome" | "goodbye") {
   const started = performance.now();
   try {
     return await welcomeImage({
@@ -147,7 +136,7 @@ async function renderMemberImage(member: GuildMember, setting: MemberEventSettin
   }
 }
 async function sendMemberEvent(member: GuildMember, event: "welcome" | "goodbye") {
-  const setting = stmt.welcomeSettings.get(member.guild.id) as MemberEventSettings | undefined;
+  const setting = stmt.welcomeSettings.get(member.guild.id) as WelcomeGet | undefined;
   const welcome = event === "welcome";
   const enabled = welcome ? setting?.enabled : setting?.goodbye_enabled;
   const channelId = welcome ? setting?.channel_id : setting?.goodbye_channel_id;
@@ -325,7 +314,7 @@ client.on(Events.MessageCreate, async message => {
 client.on(Events.InteractionCreate, i => void routeInteraction(i));
 async function routeInteraction(i: Interaction) {
   const cmdLang = guildLang(i.guildId ?? "");
-  const tC = (k: Parameters<typeof commandsTr>[1], v?: Record<string, string | number>) => commandsTr(cmdLang, k, v);
+  const tC = trFor(commandsTr, cmdLang);
   count("events.interaction");
   try {
     if (await handleMusicCommand(i)) return;
@@ -340,7 +329,7 @@ async function routeInteraction(i: Interaction) {
         const member = i.guild?.members.cache.get(user.id);
         const fields = [{ name: "ID", value: user.id, inline: true }, { name: tC("accountCreated"), value: `<t:${Math.floor(user.createdTimestamp / 1000)}:d>`, inline: true }];
         if (member) fields.push({ name: tC("joinedAt"), value: `<t:${Math.floor((member.joinedTimestamp ?? Date.now()) / 1000)}:d>`, inline: true }, { name: tC("rolesField"), value: member.roles.cache.filter(r => r.id !== i.guild!.id).map(r => `<@&${r.id}>`).slice(0, 25).join(" ") || "—", inline: false });
-        await i.reply({ embeds: [new EmbedBuilder().setTitle(user.tag).setThumbnail(user.displayAvatarURL({ size: 256 })).setColor(0x5865f2).addFields(fields)] });
+        await i.reply({ embeds: [new EmbedBuilder().setTitle(user.username).setThumbnail(user.displayAvatarURL({ size: 256 })).setColor(0x5865f2).addFields(fields)] });
       } else if (i.commandName === "server") {
         const guild = i.guild;
         if (!guild) return i.reply({ content: trModeration(guildLang(i.guildId ?? ""), "notGuild"), flags: MessageFlags.Ephemeral });
@@ -356,12 +345,12 @@ async function routeInteraction(i: Interaction) {
         await i.reply({ embeds: [embed] });
       } else if (i.commandName === "avatar") {
         const user = i.options.getUser("user") ?? i.user;
-        await i.reply({ embeds: [new EmbedBuilder().setTitle(user.tag).setImage(user.displayAvatarURL({ size: 512 }))] });
+        await i.reply({ embeds: [new EmbedBuilder().setTitle(user.username).setImage(user.displayAvatarURL({ size: 512 }))] });
       } else await moderate(i);
     }
     if (i.isButton() && i.customId.startsWith("role:")) {
       const [, id, roleId] = i.customId.split(":");
-      const member = i.guild ? await resolveMember(i.guild, i.user.id) : null;
+      const member = i.guild ? await fetchMember(i.guild, i.user.id) : null;
       if (!id || !roleId || !member) return;
       const result = await applyPanelRoleSafe(i.guildId!, Number(id), roleId, member);
       if (result.notify) await i.reply({ content: result.text, flags: MessageFlags.Ephemeral });
@@ -369,7 +358,7 @@ async function routeInteraction(i: Interaction) {
     }
     if (i.isStringSelectMenu() && i.customId.startsWith("roles:")) {
       const id = Number(i.customId.split(":")[1]);
-      const member = i.guild ? await resolveMember(i.guild, i.user.id) : null;
+      const member = i.guild ? await fetchMember(i.guild, i.user.id) : null;
       if (!member) return;
       const results = await Promise.all(i.values.map(roleId =>
         applyPanelRoleSafe(i.guildId!, id, roleId, member),
@@ -383,9 +372,6 @@ async function routeInteraction(i: Interaction) {
   }
 }
 function samePanelEmoji(saved: string | null, name: string | null, identifier: string) { if (!saved) return normalizeEmojiText(name ?? "") === "✅"; return sameEmojiValue(saved, name, identifier); }
-function resolveMember(guild: Guild, userId: string): Promise<GuildMember | null> {
-  return guild.members.fetch(userId).catch(() => null);
-}
 function applyPanelRoleSafe(guildId: string, panelId: number, roleId: string, member: GuildMember): Promise<{ text: string; notify: boolean }> {
   return applyPanelRole(guildId, panelId, roleId, member).catch(() => ({ text: automodTr(guildLang(guildId), "roleUpdateFail"), notify: true }));
 }
@@ -400,7 +386,7 @@ async function handleReaction(reaction: MessageReaction | PartialMessageReaction
   if (!message?.guild) return;
   const option = panel.options.find(o => samePanelEmoji(o.emoji, reaction.emoji.name, reaction.emoji.identifier));
   if (!option || (removing && panel.role_mode === "add")) return;
-  const member = await resolveMember(message.guild, user.id);
+  const member = await fetchMember(message.guild, user.id);
   if (!member) return;
   if (removing) {
     const role = member.guild.roles.cache.get(option.role_id);
@@ -452,10 +438,10 @@ client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
   if (pending) {
     clearTimeout(pending.timer);
     pending.after = newMessage.content;
-    pending.timer = setTimeout(() => { editPending.delete(key); fireEditLog(newMessage, pending.before, pending.after); }, EDIT_DEBOUNCE_MS);
+    pending.timer = setTimeout(() => { editPending.delete(key); fireEditLog(newMessage, pending.before, pending.after); }, EDIT_DEBOUNCE_MS).unref();
     return;
   }
-  editPending.set(key, { before, after: newMessage.content, timer: setTimeout(() => { editPending.delete(key); fireEditLog(newMessage, before, newMessage.content); }, EDIT_DEBOUNCE_MS) });
+  editPending.set(key, { before, after: newMessage.content, timer: setTimeout(() => { editPending.delete(key); fireEditLog(newMessage, before, newMessage.content); }, EDIT_DEBOUNCE_MS).unref() });
 });
 function fireEditLog(newMessage: Message, before: string, after: string) {
   logAction({ guildId: newMessage.guild!.id, type: "message_edit", targetId: newMessage.author!.id, details: (() => { const l = guildLang(newMessage.guild!.id); return `${logTr(l, "channelField", { channel: `<#${newMessage.channelId}>` })}\n${logTr(l, "beforeLabel")}:\n${code(before.slice(0, 450))}\n${logTr(l, "afterLabel")}:\n${code(after.slice(0, 450))}`; })() });
@@ -496,16 +482,12 @@ client.on(Events.GuildBanRemove, ban => {
     logAction({ guildId: ban.guild.id, type: "member_unban", targetId: ban.user.id, moderatorId: entry?.executor?.id, details: logTr(guildLang(ban.guild.id), "reason", { reason: entry?.reason ?? logTr(guildLang(ban.guild.id), "notSpecified") }) });
   });
 });
-client.on(Events.ChannelCreate, async channel => {
-  if (!("guild" in channel)) return;
-  const actor = await auditActor(channel.guild, AuditLogEvent.ChannelCreate, channel.id);
-  logAction({ guildId: channel.guild.id, type: "channel_create", targetId: channel.id, moderatorId: actor, details: logTr(guildLang(channel.guild.id), "channelCreated", { name: channel.name }) });
-});
-client.on(Events.ChannelDelete, async channel => {
-  if (!("guild" in channel)) return;
-  const actor = await auditActor(channel.guild, AuditLogEvent.ChannelDelete, channel.id);
-  logAction({ guildId: channel.guild.id, type: "channel_delete", targetId: channel.id, moderatorId: actor, details: logTr(guildLang(channel.guild.id), "channelDeleted", { name: channel.name }) });
-});
+async function logChannelEvent(channel: GuildBasedChannel, type: AuditLogEvent, kind: "channel_create" | "channel_delete", key: "channelCreated" | "channelDeleted") {
+  const actor = await auditActor(channel.guild, type, channel.id);
+  logAction({ guildId: channel.guild.id, type: kind, targetId: channel.id, moderatorId: actor, details: logTr(guildLang(channel.guild.id), key, { name: channel.name }) });
+}
+client.on(Events.ChannelCreate, channel => { if ("guild" in channel) guard("CHANNEL_LOG", () => logChannelEvent(channel, AuditLogEvent.ChannelCreate, "channel_create", "channelCreated")); });
+client.on(Events.ChannelDelete, channel => { if ("guild" in channel) guard("CHANNEL_LOG", () => logChannelEvent(channel, AuditLogEvent.ChannelDelete, "channel_delete", "channelDeleted")); });
 setInterval(pruneDetectors, 10 * 60_000).unref();
 setInterval(sweepRecentBans, 60_000).unref();
 registerTempChannels(client);

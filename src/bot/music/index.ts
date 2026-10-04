@@ -1,9 +1,9 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type GuildMember, type Interaction, type StringSelectMenuInteraction } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type APIInteractionGuildMember, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type GuildMember, type Interaction, type StringSelectMenuInteraction } from "discord.js";
 import { count, time } from "../perf.ts";
 import { logger } from "../utils/logger.ts";
 import { stmt } from "../db/statements.ts";
 import { failInteraction, isMissingDiscordResource } from "../../lib/errors.ts";
-import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
+import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
 import { resolveChannel } from "../logging/index.ts";
@@ -29,10 +29,10 @@ const PENDING_MOVE_TTL_MS = 5 * 60_000;
 const musicTFor = (guildId: string) => guildTr(musicTr, guildId);
 
 /** Переводчик для функций, где язык уже известен (очередь и панель). */
-const musicT = (lang: Locale) => (k: Parameters<typeof musicTr>[1], v?: Record<string, string | number>) => musicTr(lang, k, v);
+const musicT = (lang: Locale) => trFor(musicTr, lang);
 
 function isAdminInteraction(i: ButtonInteraction | StringSelectMenuInteraction | ChatInputCommandInteraction): boolean {
-  return Boolean((i.member as GuildMember | null)?.permissions?.has(PermissionFlagsBits.Administrator));
+  return Boolean(i.memberPermissions?.has(PermissionFlagsBits.Administrator));
 }
 
 /** Регистрация обработчиков. Вызывается один раз из src/bot/index.ts. */
@@ -68,7 +68,7 @@ export function registerMusic(client: Client): void {
   // Голосовые события: пересчёт единого таймера бездействия (пусто/тишина/пауза
   // решает сама сессия). Свои переходы бота событиями не считаем — иначе первый
   // же rejoin из пустеющего канала убил бы живую сессию.
-  client.on("voiceStateUpdate", (oldState, newState) => {
+  client.on(Events.VoiceStateUpdate, (oldState, newState) => {
     if (oldState.id === client.user!.id) {
       if (oldState.channelId !== newState.channelId) refreshSessionActivity(newState.guild.id);
       return;
@@ -113,8 +113,8 @@ function forgetPanel(guildId: string): void {
   try { stmt.musicSessionDelete.run(guildId); } catch { }
 }
 
-function memberHasAllowedRole(member: GuildMember, roles: string[]): boolean {
-  return member.roles.cache.some(role => roles.includes(role.id));
+function memberHasAllowedRole(member: GuildMember | APIInteractionGuildMember, roles: string[]): boolean {
+  return Array.isArray(member.roles) ? member.roles.some(id => roles.includes(id)) : member.roles.cache.some(role => roles.includes(role.id));
 }
 
 /** Отказ после раннего connectToVoice не должен оставлять бота в канале без
@@ -133,6 +133,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       await i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
       return true;
     }
+    const member = i.member;
     await i.deferReply({ flags: MessageFlags.Ephemeral });
 
     const settings = musicSettingsFor(i.guildId!);
@@ -141,12 +142,12 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       await i.editReply({ content: t("wrongChannel", { channel: settings.command_channel_id }) });
       return true;
     }
-    if (settings.allowed_role_ids.length > 0 && !isAdminInteraction(i) && !memberHasAllowedRole(i.member as GuildMember, settings.allowed_role_ids)) {
+    if (settings.allowed_role_ids.length > 0 && !isAdminInteraction(i) && !memberHasAllowedRole(member, settings.allowed_role_ids)) {
       await i.editReply({ content: t("noRoles") });
       return true;
     }
 
-    const voiceChannel = (i.member as GuildMember).voice.channel;
+    const voiceChannel = "voice" in member ? member.voice.channel : null;
     if (!voiceChannel) { await i.editReply(t("notInVoice")); return true; }
     if (settings.voice_channel_ids.length > 0 && !settings.voice_channel_ids.includes(voiceChannel.id)) {
       await i.editReply({ content: t("voiceNotAllowed", { channels: settings.voice_channel_ids.map(id => `<#${id}>`).join(", ") }) });

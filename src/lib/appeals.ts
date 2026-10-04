@@ -1,7 +1,7 @@
 import { type SQLInputValue } from "node:sqlite";
 import { db, withTransaction } from "../db/database.ts";
 import { stmt } from "../bot/db/statements.ts";
-import { discordFetch, sendDiscordDM } from "./guild-access.ts";
+import { discordFetch, sendDiscordDM } from "./discord-api.ts";
 import { punishmentLabel } from "./labels.ts";
 import type { Locale } from "./i18n/core.ts";
 import { guildLang } from "./i18n/bot.ts";

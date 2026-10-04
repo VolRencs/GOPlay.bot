@@ -1,12 +1,13 @@
 import { headers } from "next/headers.js";
-import { NextResponse } from "next/server.js";
 import { hash } from "node:crypto";
 import { auth } from "./auth.ts";
 import { db } from "../db/database.ts";
 import { logger } from "../bot/utils/logger.ts";
-import { setTimeout as delay } from "node:timers/promises";
 import { ttlCacheAsync } from "./cache.ts";
 import { DAY_MS } from "./constants.ts";
+import { DiscordRateLimitError, discordFetch, withRateLimitRetry } from "./discord-api.ts";
+
+export { DiscordRateLimitError, discordFetch, sendDiscordDM } from "./discord-api.ts";
 type DiscordGuild = { id:string; permissions:string; owner:boolean; name:string; icon:string|null };
 const manage=0x20n, admin=0x8n;
 // Единственный источник allowlist: все серверные точки входа применяют одни правила.
@@ -36,22 +37,9 @@ export function discordAccountOf(userId: string) {
   return discordAccountStmt.get(userId) as { id: string; accountId: string } | undefined;
 }
 
-export class DiscordRateLimitError extends Error {
-  readonly retryAfterMs: number;
-  constructor(retryAfterMs: number) { super("Discord rate limit reached"); this.retryAfterMs = retryAfterMs; }
-}
-
-// Общий 429-хендлинг Discord REST: парсим и клампим retry_after, ретраим раз
-// при коротком окне (у Discord часто субсекундные лимиты), иначе типизированная
-// ошибка. `parse` разбирает ответ, `redo` делает единственный ретрай.
-async function withRateLimitRetry<T>(response: Response, retry: boolean, parse: (settled: Response) => Promise<T>, redo: () => Promise<T>): Promise<T> {
-  if (response.status !== 429) return parse(response);
-  const body = await response.clone().json().catch(() => null) as { retry_after?: unknown } | null;
-  const raw = Number(body?.retry_after ?? response.headers.get("retry-after") ?? 1);
-  const retryAfterMs = Math.max(250, Math.min(60_000, (Number.isFinite(raw) ? raw : 1) * 1000));
-  if (retry && retryAfterMs <= 3_000) { await delay(retryAfterMs); return redo(); }
-  throw new DiscordRateLimitError(retryAfterMs);
-}
+// Discord-токен связанного аккаунта не выдался (истёк/отозван): нужен
+// повторный вход, а не 502 «обновите страницу».
+export class DiscordAuthError extends Error {}
 
 function guildsRequest(accessToken: string): Promise<Response> {
   return fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
@@ -82,7 +70,9 @@ async function discordAccessToken(requestHeaders: Headers, accountId?: string) {
 // accountId (внутренний id Better Auth) можно передать уже разрезолвленным:
 // гейт requireUser уже валидировал сессию — второй getSession не нужен.
 export async function discordGuilds(requestHeaders: Headers, accountId?: string) {
-  const token = await discordAccessToken(requestHeaders, accountId), key = cacheKey(token.accessToken), now = Date.now();
+  const token = await discordAccessToken(requestHeaders, accountId);
+  if (!token.accessToken) throw new DiscordAuthError("Discord access token missing");
+  const key = cacheKey(token.accessToken), now = Date.now();
   // Ключ — хеш access-token, который меняется при каждом перелогине: без
   // подчистки истёкших записей map рос бы бесконечно за время аптайма.
   for (const [k, e] of guildCache) if (k !== key && !e.pending && e.staleUntil < now) guildCache.delete(k);
@@ -124,7 +114,7 @@ export function canManageGuild(guild: DiscordGuild) { return guild.owner || (Big
 
 async function withGuild(guildId: string) {
   const access = await authorize(guildId);
-  return access.ok ? access : NextResponse.json({ error: access.error }, { status: access.status });
+  return access.ok ? access : Response.json({ error: access.error }, { status: access.status });
 }
 
 type SessionUser = NonNullable<Awaited<ReturnType<typeof resolveSession>>>["user"];
@@ -176,11 +166,11 @@ export async function requireUser() {
 
 // Гейт всех админ-API: сессия должна принадлежать Discord-аккаунту из списка
 // владельца бота.
-async function requireAdmin(): Promise<{ ok: true } | NextResponse> {
+async function requireAdmin(): Promise<{ ok: true } | Response> {
   const resolved = await resolveSession();
-  if (!resolved) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!resolved) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const accountId = resolved.discordAccount?.accountId;
-  if (!allowedAdminIds().includes(accountId ?? "")) return NextResponse.json({ error: "Админ-панель доступна только владельцу бота." }, { status: 403 });
+  if (!allowedAdminIds().includes(accountId ?? "")) return Response.json({ error: "Админ-панель доступна только владельцу бота." }, { status: 403 });
   return { ok: true };
 }
 
@@ -188,40 +178,38 @@ async function authorize(guildId:string) {
   const gate = await requireUser();
   if (!gate.ok) return gate;
   let remote: DiscordGuild[];
-  try { remote = await discordGuilds(gate.requestHeaders, gate.discordAccount?.id); } catch (error) { logger.warn("[WARN] Discord guild access failed", error); const rateLimited = error instanceof DiscordRateLimitError; return {ok:false as const,error:rateLimited?"Discord временно ограничил запросы. Подождите несколько секунд и обновите страницу.":"Не удалось проверить доступ Discord. Обновите страницу; если ошибка повторится, войдите через Discord снова.",status:rateLimited?429:403} as const; }
+  try { remote = await discordGuilds(gate.requestHeaders, gate.discordAccount?.id); } catch (error) { logger.warn("[WARN] Discord guild access failed", error); const rateLimited = error instanceof DiscordRateLimitError, authFailed = error instanceof DiscordAuthError; return {ok:false as const,error:authFailed?"Сессия Discord истекла. Войдите через Discord снова.":rateLimited?"Discord временно ограничил запросы. Подождите несколько секунд и обновите страницу.":"Не удалось проверить доступ Discord. Обновите страницу; если ошибка повторится, войдите через Discord снова.",status:rateLimited?429:403} as const; }
   const guild=remote.find(x=>x.id===guildId); if(!guild||!canManageGuild(guild))return {ok:false as const,error:"У вас нет права «Управление сервером» на этом сервере.",status:403} as const;
   if(!guildExists.get(guildId))return {ok:false as const,error:"Guild is not configured",status:404} as const;
   return { ok: true as const, user: gate.user };
 }
 
-export const isSnowflake = (v: string) => /^\d{15,22}$/.test(v);
-export const isSnowflakeArray = (value: unknown): value is string[] => Array.isArray(value) && value.every(item => typeof item === "string" && isSnowflake(item));
+export { isSnowflake, isSnowflakeArray } from "./ids.ts";
 
 // Единый формат ошибок API: `{ error }` с нужным статусом.
-export const jsonError = (message: string, status = 400) => NextResponse.json({ error: message }, { status });
+export const jsonError = (message: string, status = 400) => Response.json({ error: message }, { status });
 
 // Чтение JSON-тела: битый/пустой JSON → null, дальше роут проверяет форму.
+// Тело читается вручную с лимитом: request.json() буферизует в памяти всё,
+// что прислал клиент (chunked body обходит проверку content-length).
+const MAX_JSON_BYTES = 1024 * 1024;
 export async function readJson<T>(request: Request): Promise<T | null> {
-  try { return await request.json() as T; } catch { return null; }
-}
-
-export async function sendDiscordDM(userId: string, content: string): Promise<boolean> {
-  if (!process.env.DISCORD_TOKEN) return false;
+  const declared = Number(request.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > MAX_JSON_BYTES) return null;
+  if (!request.body) return null;
   try {
-    const headers = { "content-type": "application/json" };
-    const channel = await discordFetch(`/users/${userId}/channels`, { method: "POST", headers, body: JSON.stringify({ recipient_id: userId }) });
-    if (!channel.ok) return false;
-    const { id } = await channel.json() as { id: string };
-    const message = await discordFetch(`/channels/${id}/messages`, { method: "POST", headers, body: JSON.stringify({ content: content.slice(0, 2000) }) });
-    return message.ok;
-  } catch { return false; }
-}
-
-export async function discordFetch(path: string, init?: RequestInit, retry = true): Promise<Response> {
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) throw new Error("DISCORD_TOKEN missing");
-  const response = await fetch(`https://discord.com/api/v10${path}`, { ...init, headers: { ...(init?.headers as Record<string, string> ?? {}), Authorization: `Bot ${token}` }, cache: "no-store" });
-  return withRateLimitRetry(response, retry, (settled) => Promise.resolve(settled), () => discordFetch(path, init, false));
+    const reader = request.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_JSON_BYTES) { void reader.cancel(); return null; }
+      chunks.push(value);
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as T;
+  } catch { return null; }
 }
 
 // Имена участников гильдии: полная пагинация списка (одна страница — не более

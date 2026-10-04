@@ -25,14 +25,30 @@ export function makeTr<M extends Record<string, Bi>>(messages: M) {
   };
 }
 
+/** Общие строки всех словарей интерфейса: один источник текста для
+ *  genericError/notGuild/noReason вместо копий в каждом файле. */
+export const commonMessages = {
+  genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
+  notGuild: { ru: "❌ Команда доступна только на сервере.", en: "❌ This command is only available in a server." },
+  noReason: { ru: "Без причины", en: "No reason" },
+} as const satisfies Record<string, Bi>;
+
+/** Тип готового переводчика на guildId (см. guildTr). */
+type Tr<K extends string> = (key: K, vars?: Record<string, string | number>) => string;
+
+/** Перевод на фиксированный язык: заменяет локальные `(k, v) => trX(lang, k, v)`. */
+export function trFor<K extends string>(tr: (lang: Locale, key: K, vars?: Record<string, string | number>) => string, lang: Locale): Tr<K> {
+  return (key, vars) => tr(lang, key, vars);
+}
+
 // Готовый переводчик на guildId: заменяет копии `(k, v) => trX(guildLang(id), k, v)`
 // в обработчиках бота. guildLang кэширован (10 c), так что вызов дешёвый.
-export function guildTr<K extends string>(tr: (lang: Locale, key: K, vars?: Record<string, string | number>) => string, guildId: string) {
-  return (key: K, vars?: Record<string, string | number>): string => tr(guildLang(guildId), key, vars);
+export function guildTr<K extends string>(tr: (lang: Locale, key: K, vars?: Record<string, string | number>) => string, guildId: string): Tr<K> {
+  return trFor(tr, guildLang(guildId));
 }
 
 export const tempTr = makeTr({
-  genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
+  ...commonMessages,
   panelTitle: { ru: "Управление каналом", en: "Channel controls" },
   panelDesc: { ru: "Вы владелец этого временного канала. Используйте кнопки ниже, чтобы настроить его.", en: "You own this temporary channel. Use the buttons below to configure it." },
   btnRename: { ru: "Переименовать", en: "Rename" },
@@ -74,6 +90,7 @@ export const tempTr = makeTr({
 });
 
 export const automodTr = makeTr({
+  ...commonMessages,
   roleUpdateFail: { ru: "❌ Не удалось обновить роль.", en: "❌ Failed to update the role." },
   reason: { ru: "Автомодерация: {rule}", en: "AutoMod: {rule}" },
   protectedAdminOnly: { ru: "Защищённый канал: сообщения разрешены только администраторам", en: "Protected channel: only administrators may send messages here" },
@@ -81,7 +98,6 @@ export const automodTr = makeTr({
   protectedWipedFailed: { ru: "Защищённый канал: сообщение удалено, сообщения за 24 часа стёрты, бан не применён (не хватило прав)", en: "Protected channel: message deleted, last 24h wiped, ban not applied (insufficient permissions)" },
   roleUnavailable: { ru: "❌ Эта роль недоступна.", en: "❌ This role is unavailable." },
   roleLimitReached: { ru: "❌ Достигнут лимит ролей: {n}.", en: "❌ Role limit reached: {n}." },
-  genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
 });
 
 export const eventsTr = makeTr({

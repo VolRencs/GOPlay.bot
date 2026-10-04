@@ -2,6 +2,7 @@ import { db, withTransaction } from "../db/database.ts";
 import { forgetGuildMessages } from "../bot/db/message-cache.ts";
 import { clearWarns } from "./warns.ts";
 import { deleteEventsByGuild } from "./events.ts";
+import { invalidateMusicSettings } from "./music-settings.ts";
 import type { CleanupTarget } from "./labels.ts";
 
 const auditDelete = db.prepare("DELETE FROM dashboard_audit WHERE guild_id=?");
@@ -29,7 +30,7 @@ export function runCleanupTarget(guildId: string, target: CleanupTarget): number
     return removed;
   });
   if (target === "warns") return clearWarns(guildId, null);
-  if (target === "music") return Number(musicDelete.run(guildId).changes);
+  if (target === "music") { invalidateMusicSettings(guildId); return Number(musicDelete.run(guildId).changes); }
   if (target === "levels") return Number(levelsDelete.run(guildId).changes);
   if (target === "events") return deleteEventsByGuild(guildId);
   return withTransaction(() => {

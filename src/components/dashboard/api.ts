@@ -14,13 +14,9 @@ async function apiErrorMessage(response: Response, fallback: string): Promise<st
  *  если вкладка открыта без сети». Ошибки не различаются от пустых данных:
  *  панели показывают нейтральное состояние. */
 export async function apiGet<T>(url: string, fallback: T, signal?: AbortSignal): Promise<T> {
-  try {
-    const response = await fetch(url, signal ? { signal } : {});
-    if (!response.ok) return fallback;
-    return await response.json() as T;
-  } catch {
-    return fallback;
-  }
+  const response = await fetch(url, signal ? { signal } : {}).catch(() => null);
+  if (!response?.ok) return fallback;
+  return await response.json().catch(() => fallback) as T;
 }
 
 /** Мутация с разбором тела: успех возвращает JSON ответа ({}, если тела нет),

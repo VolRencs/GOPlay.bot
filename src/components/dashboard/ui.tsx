@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, lazy, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, ArrowRight, Check, ChevronDown, Smile } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
-import { stableJson } from "../../lib/json.ts";
+import { safeJson, stableJson } from "../../lib/json.ts";
 
 export function channelOptions(channels: Channel[], emptyLabel: string) {
   return [{ value: "", label: emptyLabel }, ...channels.map(c => ({ value: c.id, label: `# ${c.name}` }))];
@@ -33,13 +33,13 @@ export function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onCha
       <div className="section-title"><strong>Поля</strong></div>
       {fields.map((field, index) => (
         <div className="field-row field-row-simple" key={index}>
-          <input value={field.name} maxLength={256} placeholder="Заголовок" onChange={e => onChange(fields.map((item, n) => n === index ? { ...item, name: e.target.value } : item))}/>
-          <textarea rows={2} value={field.value} maxLength={1024} placeholder="Текст" onChange={e => onChange(fields.map((item, n) => n === index ? { ...item, value: e.target.value } : item))}/>
+          <input value={field.name} maxLength={256} placeholder="Заголовок" onChange={e => onChange(fields.with(index, { ...field, name: e.target.value }))}/>
+          <textarea rows={2} value={field.value} maxLength={1024} placeholder="Текст" onChange={e => onChange(fields.with(index, { ...field, value: e.target.value }))}/>
           <div className="field-actions">
             <button
               type="button"
               className="btn secondary small"
-              onClick={() => onChange(fields.map((item, n) => n === index ? { ...item, inline: !item.inline } : item))}
+              onClick={() => onChange(fields.with(index, { ...field, inline: !field.inline }))}
               title={field.inline ? "Поле в одну строку — идёт вбок. Нажмите, чтобы поставить в столбик." : "Поле столбиком — идёт вниз. Нажмите, чтобы поставить в одну строку."}
               aria-label={field.inline ? "Поле в одну строку" : "Поле столбиком"}
             >
@@ -88,6 +88,33 @@ export function useSessionDraft(key: string, enabled: boolean, deps: readonly un
     return () => clearTimeout(timer);
   }, [key, enabled, ...deps]);
   useEffect(() => () => write(), []);
+}
+
+/** Восстановление черновика из sessionStorage: читает ключ при смене
+ *  guildId/key, мусор и массивы игнорируются, apply получает объект. */
+export function useSessionDraftRestore(key: string, enabled: boolean, apply: (saved: Record<string, unknown>) => void): void {
+  const applyEvent = useEffectEvent(apply);
+  useEffect(() => {
+    if (!enabled) return;
+    try {
+      const raw = sessionStorage.getItem(key);
+      if (!raw) return;
+      const saved = safeJson<Record<string, unknown>>(raw, {});
+      if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+      applyEvent(saved);
+    } catch { /* malformed draft */ }
+  }, [key, enabled]);
+}
+
+export const asString = (value: unknown, fallback = ""): string => typeof value === "string" ? value : fallback;
+export const asNumber = (value: unknown, fallback: number): number => typeof value === "number" && Number.isFinite(value) ? value : fallback;
+export const asBoolean = (value: unknown, fallback: boolean): boolean => typeof value === "boolean" ? value : fallback;
+export const asFields = (value: unknown): EmbedField[] => Array.isArray(value)
+  ? value.map(field => ({ name: asString((field as { name?: unknown })?.name), value: asString((field as { value?: unknown })?.value), inline: Boolean((field as { inline?: unknown })?.inline) }))
+  : [];
+
+export function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+  return <article className="card stat-card"><span>{label}</span><strong>{value}</strong>{hint != null && <small>{hint}</small>}</article>;
 }
 
 export function SaveButton({ saving, onClick, label = "Сохранить", disabled = false, savingLabel = "Сохраняем…", variant }: { saving: boolean; onClick: () => void; label?: string; disabled?: boolean; savingLabel?: string; variant?: "secondary" }) {
@@ -193,13 +220,8 @@ export function useDismissOnOutside<T extends HTMLElement>(ref: RefObject<T | nu
 }
 
 export function useObjectUrl(file: File | null) {
-  const [url, setUrl] = useState("");
-  useEffect(() => {
-    if (!file) { setUrl(""); return; }
-    const next = URL.createObjectURL(file);
-    setUrl(next);
-    return () => URL.revokeObjectURL(next);
-  }, [file]);
+  const url = useMemo(() => file ? URL.createObjectURL(file) : "", [file]);
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
   return url;
 }
 
@@ -225,12 +247,12 @@ export function TemplateLibrary({ title, note, description, action, extra, empty
   );
 }
 
-export function MediaField({ icon, label, file, previewUrl, saved, onPick, onClear, inputRef, clearLabel = "Удалить" }: { icon: ReactNode; label: string; file: File | null; previewUrl: string; saved: boolean; onPick: (file: File | null) => void; onClear: () => void; inputRef?: React.Ref<HTMLInputElement>; clearLabel?: string }) {
+export function MediaField({ icon, label, file, previewUrl, saved, onPick, onClear, ref, clearLabel = "Удалить" }: { icon: ReactNode; label: string; file: File | null; previewUrl: string; saved: boolean; onPick: (file: File | null) => void; onClear: () => void; ref?: React.Ref<HTMLInputElement>; clearLabel?: string }) {
   return (
     <label className="media-upload">
       {icon}
       <span>{label}</span>
-      <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => onPick(e.target.files?.[0] ?? null)}/>
+      <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={e => onPick(e.target.files?.[0] ?? null)}/>
       <em>{file?.name ?? (saved ? "Сохранено — заменить" : "PNG, JPG, GIF")}</em>
       {previewUrl && <img className="media-preview" src={previewUrl} alt=""/>}
       {(saved || file) && <button type="button" className="btn danger small media-remove" onClick={onClear} aria-label={`${clearLabel}: ${label}`}>{clearLabel}</button>}

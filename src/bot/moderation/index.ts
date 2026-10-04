@@ -53,7 +53,7 @@ export async function moderate(i: ChatInputCommandInteraction) {
     if (command === "warn") {
       recordPunishmentAndOffer(i.client, { guildId: i.guildId!, guildName: i.guild.name, userId: user.id, type: "warn", reason, moderatorId: i.user.id });
       logAction({ guildId: i.guildId!, type: "member_warn", targetId: user.id, moderatorId: i.user.id, details: reason });
-      return i.editReply(`✅ ${command}: ${user.tag}`);
+      return i.editReply(`✅ ${command}: ${user.username}`);
     }
     if (command === "warnings") {
       const rows = stmt.warns.all(i.guildId, user.id) as { reason: string; created_at: number }[];
@@ -61,7 +61,7 @@ export async function moderate(i: ChatInputCommandInteraction) {
     }
     recordPunishmentAndOffer(i.client, { guildId: i.guildId!, guildName: i.guild.name, userId: user.id, type: command, reason, moderatorId: i.user.id });
     if (logType) logAction({ guildId: i.guildId!, type: logType, targetId: user.id, moderatorId: i.user.id, details: command === "timeout" ? t("logTimeout", { min: String(i.options.getInteger("minutes") ?? 10), reason }) : t("logReason", { reason }) });
-    return i.editReply(`✅ ${command}: ${user.tag}`);
+    return i.editReply(`✅ ${command}: ${user.username}`);
   } catch (error) {
     logger.warn("Команда модерации не выполнена:", i.commandName, i.guildId, error);
     return void i.editReply({ content: t("noPermsGeneric") }).catch(() => null);
@@ -78,9 +78,9 @@ async function clearWarnsCommand(i: ChatInputCommandInteraction) {
     if (!canTarget(i.member as GuildMember, target)) return i.editReply({ content: t("noPermsTarget") });
   }
   const removed = clearWarns(i.guildId!, user?.id ?? null);
-  if (!removed) return i.editReply({ content: user ? t("clearwarnNoneUser",{user:user.tag}) : t("warnListEmpty") });
-  logAction({ guildId: i.guildId!, type: "member_warn_clear", targetId: user?.id ?? "все", moderatorId: i.user.id, details: t("logWarnClear", { n: String(removed) }) + (user ? t("targetUser", { user: user.tag }) : t("targetAll")) });
-  return i.editReply({ content: t("clearwarnDone", { n: String(removed), target: user ? ` (${user.tag})` : t("targetAll") }) });
+  if (!removed) return i.editReply({ content: user ? t("clearwarnNoneUser",{user:user.username}) : t("warnListEmpty") });
+  logAction({ guildId: i.guildId!, type: "member_warn_clear", targetId: user?.id ?? "все", moderatorId: i.user.id, details: t("logWarnClear", { n: String(removed) }) + (user ? t("targetUser", { user: user.username }) : t("targetAll")) });
+  return i.editReply({ content: t("clearwarnDone", { n: String(removed), target: user ? ` (${user.username})` : t("targetAll") }) });
 }
 async function channelAction(i: ChatInputCommandInteraction) {
   const t = guildTr(trModeration, i.guildId ?? "");

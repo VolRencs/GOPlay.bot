@@ -1,8 +1,7 @@
-import { makeTr } from "../bot.ts";
+import { makeTr, commonMessages } from "../bot.ts";
 
 export const musicTr = makeTr({
-  genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
-  notGuild: { ru: "❌ Команда доступна только на сервере.", en: "❌ This command is only available in a server." },
+  ...commonMessages,
   wrongChannel: { ru: "❌ Эта команда работает только в канале <#{channel}>.", en: "❌ This command only works in <#{channel}>." },
   noRoles: { ru: "❌ Использовать /play могут только пользователи с определённой ролью.", en: "❌ /play is restricted to members with a specific role." },
   notInVoice: { ru: "🔊 Зайдите в голосовой канал, чтобы включить музыку.", en: "🔊 Join a voice channel first to play music." },

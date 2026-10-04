@@ -1,8 +1,7 @@
 import test from "node:test"; import assert from "node:assert/strict";
-import { tmpdir } from "node:os"; import { join } from "node:path";
-import { mkdtempSync } from "node:fs";
+import { useTempDb } from "./helpers.ts";
 
-process.env.DATABASE_PATH = join(mkdtempSync(join(tmpdir(), "goplay-audit-test-")), "bot.sqlite");
+useTempDb("goplay-audit-test-");
 const { describeChanges } = await import("../src/lib/dashboard-audit.ts");
 
 test("describeChanges: только изменённые скаляры в формате было → стало", () => {

@@ -1,18 +1,14 @@
+import { styleText } from "node:util";
+
 type Level = "info" | "warn" | "error";
 
 const debugEnabled = process.env.DEBUG === "1";
 
-const COLORS: Record<Level, string> = {
-  info: "\x1b[36m",
-  warn: "\x1b[33m",
-  error: "\x1b[31m",
+const LEVELS: Record<Level, { color: "cyan" | "yellow" | "red"; label: string }> = {
+  info: { color: "cyan", label: "INFO" },
+  warn: { color: "yellow", label: "WARN" },
+  error: { color: "red", label: "ERROR" },
 };
-const LEVEL_LABEL: Record<Level, string> = {
-  info: "INFO",
-  warn: "WARN",
-  error: "ERROR",
-};
-const RESET = "\x1b[0m";
 
 function timestamp() {
   const d = new Date();
@@ -30,8 +26,8 @@ function emit(level: Level, parts: unknown[]) {
   if (level === "info" && !debugEnabled) return;
   const line = parts.map(safeString).join(" ");
   const stamp = timestamp();
-  const label = LEVEL_LABEL[level].padEnd(5);
-  const colored = `${COLORS[level]}${stamp} [${label}]${RESET} ${line}`;
+  const { color, label } = LEVELS[level];
+  const colored = `${styleText(color, `${stamp} [${label.padEnd(5)}]`)} ${line}`;
   if (level === "error") console.error(colored);
   else if (level === "warn") console.warn(colored);
   else console.log(colored);

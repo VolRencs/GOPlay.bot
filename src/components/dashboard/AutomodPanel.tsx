@@ -78,7 +78,7 @@ function DomainListEditor({ domains, onChange }: { domains: string[]; onChange: 
   const [value, setValue] = useState("");
   const list = domains.filter(Boolean);
   const add = () => { const domain = value.trim().toLowerCase(); if (!domain || list.includes(domain)) { setValue(""); return; } onChange([...list, domain]); setValue(""); };
-  const update = (index: number, next: string) => { const clean = next.trim().toLowerCase(); onChange(clean ? list.map((domain, i) => i === index ? clean : domain) : list.filter((_, i) => i !== index)); };
+  const update = (index: number, next: string) => { const clean = next.trim().toLowerCase(); onChange(clean ? list.with(index, clean) : list.filter((_, i) => i !== index)); };
   return (
     <div className="domain-editor">
       <div className="domain-input-row">

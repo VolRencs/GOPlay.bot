@@ -78,7 +78,7 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
   const [notify, setNotify] = useState(true);
   const [template, setTemplate] = useState("✅ Выдана роль **{role}**");
 
-  const updateOption = (index: number, change: Partial<PanelOptionInput>) => setOptions(options.map((o, n) => n === index ? { ...o, ...change } : o));
+  const updateOption = (index: number, change: Partial<PanelOptionInput>) => setOptions(options.with(index, { ...options[index]!, ...change }));
 
   function edit(panel: SavedRolePanel) {
     setPanelId(panel.id);

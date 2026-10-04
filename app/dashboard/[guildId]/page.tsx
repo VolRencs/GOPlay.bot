@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, use, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { BarChart3, Bot, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, X } from "lucide-react";
 import { buildWelcomePutBody, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../src/lib/welcome.ts";
 import { automodRules, buildLoggingPutBody, type LangGet, type LoggingGet, type LoggingPutBody } from "../../../src/lib/labels.ts";
@@ -45,8 +45,9 @@ let toastSeq = 0;
 const dirty = (a: unknown, b: unknown) => a !== null && stableStringify(a) !== stableStringify(b);
 
 export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId]">) {
-  const [guildId, setGuildId] = useState("");
+  const { guildId } = use(params);
   const [tab, setTab] = useState<TabKey>("stats");
+  const [, startTransition] = useTransition();
   const langDraft = useConfigDraft<"ru" | "en">("ru");
   const musicDraft = useConfigDraft<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: 300 });
   const serverLang = langDraft.value, setServerLang = langDraft.setValue;
@@ -103,7 +104,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
     if (value && TAB_KEYS.includes(value)) setTab(value);
   }, []);
   function switchTab(next: TabKey) {
-    setTab(next);
+    startTransition(() => setTab(next));
     const url = new URL(window.location.href);
     url.searchParams.set("tab", next);
     window.history.replaceState(null, "", url.toString());
@@ -111,20 +112,19 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
 
   useEffect(() => {
     let active = true;
-    void params.then(async ({ guildId: id }) => {
+    void (async () => {
       setLoading(true);
       try {
-      setGuildId(id);
       const loadFail = "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу.";
       const [resourcesRes, welcomeRes, rulesRes, loggingRes, tempRes, langRes, musicRes, levelsRes] = await Promise.all([
-        apiSend<ResourcesGet>(`/api/guilds/${id}/resources`, {}, loadFail),
-        apiSend<WelcomeGet>(`/api/guilds/${id}/welcome`, {}, loadFail),
-        apiSend<AutomodGet>(`/api/guilds/${id}/automod`, {}, loadFail),
-        apiSend<LoggingGet>(`/api/guilds/${id}/logging`, {}, loadFail),
-        apiSend<TempchannelsGet>(`/api/guilds/${id}/tempchannels`, {}, loadFail),
-        apiSend<LangGet>(`/api/guilds/${id}/lang`, {}, loadFail),
-        apiSend<MusicSettings>(`/api/guilds/${id}/music`, {}, loadFail),
-        apiSend<LevelsGet>(`/api/guilds/${id}/levels`, {}, loadFail),
+        apiSend<ResourcesGet>(`/api/guilds/${guildId}/resources`, {}, loadFail),
+        apiSend<WelcomeGet>(`/api/guilds/${guildId}/welcome`, {}, loadFail),
+        apiSend<AutomodGet>(`/api/guilds/${guildId}/automod`, {}, loadFail),
+        apiSend<LoggingGet>(`/api/guilds/${guildId}/logging`, {}, loadFail),
+        apiSend<TempchannelsGet>(`/api/guilds/${guildId}/tempchannels`, {}, loadFail),
+        apiSend<LangGet>(`/api/guilds/${guildId}/lang`, {}, loadFail),
+        apiSend<MusicSettings>(`/api/guilds/${guildId}/music`, {}, loadFail),
+        apiSend<LevelsGet>(`/api/guilds/${guildId}/levels`, {}, loadFail),
       ]);
       if (!resourcesRes.ok || !welcomeRes.ok || !rulesRes.ok || !loggingRes.ok || !tempRes.ok || !langRes.ok || !musicRes.ok || !levelsRes.ok) {
         const failed=[resourcesRes,welcomeRes,rulesRes,loggingRes,tempRes,langRes,musicRes,levelsRes].find(response=>!response.ok);
@@ -155,9 +155,9 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
       } finally {
         if(active) setLoading(false);
       }
-    });
+    })();
     return () => { active = false; };
-  }, [params]);
+  }, [guildId]);
 
   const apiPut = async <TBody,>(url:string, body:TBody, onOk:()=>void, okMsg:string, report=true): Promise<boolean> => { const sent=await apiSend<{unchanged?:boolean}>(url,{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify(body)},"Не удалось сохранить изменения."); if(!sent.ok){fail(sent.error);return false;} onOk(); if(report) notify(sent.data.unchanged?"Изменений нет.":okMsg); return true; };
   async function saveWelcome(report=true): Promise<boolean> {
@@ -215,6 +215,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
     <section className="settings-content"><div className="settings-top"><div><a className="back-link" href="/dashboard">← Все серверы</a><div className="server-heading"><div className="server-heading-icon">{server.icon?<img src={`https://cdn.discordapp.com/icons/${guildId}/${server.icon}.png?size=128`} alt=""/>:<Bot size={24}/>}</div><div><p className="eyebrow">{server.name}</p><h1>{TAB_LABELS[tab].title}</h1></div></div></div></div>
       {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
       <div className="toast-stack" role="region" aria-label="Уведомления">{toasts.map(toast => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><span className="toast-dot" aria-hidden="true"/><span className="toast-text">{toast.text}</span><button type="button" className="toast-close" aria-label="Закрыть уведомление" onClick={() => dismissToast(toast.id)}><X size={14}/></button></div>)}</div>
+      {!loading && <Fragment key={guildId}>
       {tab === "welcome" && <WelcomeSettings channels={channels} value={welcome} onChange={setWelcome} onSave={() => saveWelcome()} onUpload={(file) => uploadWelcomeBackground(file)} bgTimestamp={bgTimestamp} />}
       {tab === "automod" && <AutoModSettings channels={channels} roles={roles} rules={rules} ignoredRoleIds={ignoredRoleIds} protectedChannelId={protectedChannelId} onGlobalChange={(roles,channel)=>{setIgnoredRoleIds(roles);setProtectedChannelId(channel);}} onSaveAll={() => saveAutoMod()} onChange={updateRule} />}
       {tab === "roles" && <RoleSettings guildId={guildId} roles={roles} emojis={emojis} channels={channels} onDone={notify} onError={fail} />}
@@ -231,6 +232,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
         <BotLanguageCard value={serverLang} onChange={setServerLang} onSave={() => void saveLang()} />
         <ServerDataCleanup guildId={guildId} onDone={notify} onError={fail} />
       </section>}
+      </Fragment>}
     </section>
     {pendingNav && <ConfirmNavigationDialog onSave={()=>void saveAndGo()} onDiscard={discardAndGo} onCancel={()=>setPendingNav(null)} />}
     {isDirty && (

@@ -90,6 +90,6 @@ export function buildLevelsPutBody(settings: LevelSettings, rewards: LevelReward
       ignored_channel_ids: [...settings.ignored_channel_ids],
       ignored_role_ids: [...settings.ignored_role_ids],
     },
-    rewards: rewards.map(reward => ({ level: reward.level, role_id: reward.role_id })).sort((a, b) => a.level - b.level),
+    rewards: rewards.map(reward => ({ level: reward.level, role_id: reward.role_id })).toSorted((a, b) => a.level - b.level),
   };
 }

@@ -1,10 +1,8 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { useTempDb } from "./helpers.ts";
 
-process.env.DATABASE_PATH = join(mkdtempSync(join(tmpdir(), "goplay-pure-")), "test.sqlite");
+useTempDb("goplay-pure-");
 
 // Тесты ядра плеера (pickAudioUrl и т.д.) живут в player.test.ts.
 const { isMissingDiscordResource } = await import("../src/lib/errors.ts");

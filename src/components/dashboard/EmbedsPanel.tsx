@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Image, Trash2, User } from "lucide-react";
 import { safeJson } from "../../../src/lib/json.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, useObjectUrl, useSessionDraft } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, asFields, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type Channel, type EmbedField, type EmbedPayload, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type SavedEmbed } from "./types.ts";
@@ -58,30 +58,15 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
 
   const draftKey = `goplay-draft-embeds-${guildId}`;
   useSessionDraft(draftKey, Boolean(guildId), [form], () => form);
-  useEffect(() => {
-    if (!guildId) return;
-    try {
-      const raw = sessionStorage.getItem(draftKey);
-      if (!raw) return;
-      const d = safeJson<Record<string, unknown>>(raw, {});
-      if (!d || typeof d !== "object" || Array.isArray(d) || d.id) return;
-      if (!(typeof d.title === "string" && d.title) && !(typeof d.description === "string" && d.description) && !(typeof d.name === "string" && d.name)) return;
-      setForm({
-        name: String(d.name ?? ""),
-        mode: d.mode === "text" ? "text" : "embed",
-        title: String(d.title ?? ""),
-        description: String(d.description ?? ""),
-        footer: String(d.footer ?? ""),
-        author: String(d.author ?? ""),
-        authorUrl: String(d.authorUrl ?? ""),
-        authorIcon: String(d.authorIcon ?? ""),
-        color: typeof d.color === "string" ? d.color : DEFAULT_ACCENT,
-        fields: Array.isArray(d.fields) ? d.fields.map(field => ({ name: String((field as { name?: unknown })?.name ?? ""), value: String((field as { value?: unknown })?.value ?? ""), inline: Boolean((field as { inline?: unknown })?.inline) })) : [],
-        image: String(d.image ?? ""),
-        thumbnail: String(d.thumbnail ?? ""),
-      });
-    } catch { /* malformed draft */ }
-  }, [guildId, draftKey]);
+  useSessionDraftRestore(draftKey, Boolean(guildId), d => {
+    const hasContent = asString(d.title) || asString(d.description) || asString(d.name);
+    if (d.id || !hasContent) return;
+    setForm({
+      name: asString(d.name), mode: d.mode === "text" ? "text" : "embed", title: asString(d.title), description: asString(d.description),
+      footer: asString(d.footer), author: asString(d.author), authorUrl: asString(d.authorUrl), authorIcon: asString(d.authorIcon),
+      color: asString(d.color, DEFAULT_ACCENT), fields: asFields(d.fields), image: asString(d.image), thumbnail: asString(d.thumbnail),
+    });
+  });
 
   const payload: EmbedPayload = {
     title: form.title,
@@ -266,7 +251,7 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
                 {form.author && (
                   <>
                     <input value={form.authorUrl} maxLength={256} placeholder="Ссылка автора https://…" onChange={e => setForm({ authorUrl: e.target.value })}/>
-                    <MediaField icon={<User size={18}/>} label="Иконка автора" file={authorFile} previewUrl={authorIconPreview} saved={Boolean(form.authorIcon)} onPick={setAuthorFile} onClear={clearAuthor} inputRef={authorInput}/>
+                    <MediaField icon={<User size={18}/>} label="Иконка автора" file={authorFile} previewUrl={authorIconPreview} saved={Boolean(form.authorIcon)} onPick={setAuthorFile} onClear={clearAuthor} ref={authorInput}/>
                   </>
                 )}
               </div>
@@ -275,8 +260,8 @@ export function EmbedsPanel({ guildId, channels, onDone, onError }: { guildId: s
               <FieldsEditor fields={form.fields} onChange={fields => setForm({ fields })}/>
               <input className="embed-footer-input" value={form.footer} maxLength={2048} placeholder="Футер" onChange={e => setForm({ footer: e.target.value })}/>
               <div className="embed-bottom">
-                <MediaField icon={<Image size={18}/>} label="Основное изображение" file={imageFile} previewUrl={imagePreview} saved={Boolean(form.image)} onPick={setImageFile} onClear={clearImage} inputRef={imageInput} clearLabel="Удалить изображение"/>
-                <MediaField icon={<Image size={18}/>} label="Миниатюра" file={thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(form.thumbnail)} onPick={setThumbnailFile} onClear={clearThumbnail} inputRef={thumbnailInput} clearLabel="Удалить миниатюру"/>
+                <MediaField icon={<Image size={18}/>} label="Основное изображение" file={imageFile} previewUrl={imagePreview} saved={Boolean(form.image)} onPick={setImageFile} onClear={clearImage} ref={imageInput} clearLabel="Удалить изображение"/>
+                <MediaField icon={<Image size={18}/>} label="Миниатюра" file={thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(form.thumbnail)} onPick={setThumbnailFile} onClear={clearThumbnail} ref={thumbnailInput} clearLabel="Удалить миниатюру"/>
               </div>
             </div>
           ) : (
