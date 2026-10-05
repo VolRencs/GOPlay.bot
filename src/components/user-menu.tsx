@@ -13,7 +13,7 @@ export default function UserMenu({ access }: { access: AccountAccess }) {
   useDismissOnOutside(root, open, () => setOpen(false));
 
   if (!access.authenticated) {
-    return <a className="nav-dashboard" href="/login"><span>Войти</span><ArrowRight size={16} /></a>;
+    return <a className="btn secondary small" href="/login"><span>Войти</span><ArrowRight size={16} /></a>;
   }
 
   async function signOut() {

@@ -11,7 +11,7 @@ const MAX_WELCOME_CONCURRENCY = 2;
 // фона, аватар) переиспользуют готовый PNG вместо нового Resvg. Ключ включает
 // mtime фона — свежезагруженный фон не попадёт в устаревшую запись.
 // Текст не должен зависеть от шрифтов хоста: на headless-сервере их нет, и
-// Resvg молча не рисует глифы. Noto Sans бандлится и грузится явно —
+// Resvg молча не рисует глифы. Onest бандлится и грузится явно —
 // текст одинаков везде.
 // При любом сбое вернётся исходный URL и пустой аватар, а не битая картинка;
 // малый FIFO аватаров экономит повторы CDN/base64.
@@ -61,7 +61,7 @@ async function withWelcomeSlot<T>(fn: () => Promise<T> | T): Promise<T> {
     if (next) next();
   }
 }
-const fontFiles = ["NotoSans-Regular.ttf", "NotoSans-Bold.ttf"].map(name => join(process.cwd(), "public", "fonts", name)).filter(existsSync);
+const fontFiles = ["Onest-Regular.ttf", "Onest-Bold.ttf"].map(name => join(process.cwd(), "public", "fonts", name)).filter(existsSync);
 const AVATAR_CACHE_MAX = 50;
 const avatarCache = new Map<string, string>(); // url → data URI
 

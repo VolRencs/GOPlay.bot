@@ -176,5 +176,5 @@ pnpm start
 Licensed under **GPL-3.0** — see [`LICENSE`](LICENSE).
 Copyright (C) 2026 VolRen.
 
-- `public/fonts/NotoSans-*.ttf` — Noto Sans under the SIL Open Font License.
+- Fonts in `public/fonts/` — Onest 2.001 and Geist Mono, both under the SIL Open Font License.
 - `public/bot-logo.png`, `app/icon.png` — original project assets.

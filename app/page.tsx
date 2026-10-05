@@ -1,6 +1,7 @@
-import { Bot, Check, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
-import UserMenu from "../src/components/user-menu.tsx";
+import { Bot, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
+import { SiteHeader } from "../src/components/site-header.tsx";
 import { accountAccess } from "../src/lib/access.ts";
+import { discordInviteUrl } from "../src/lib/constants.ts";
 
 function GithubMark() {
   return <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -25,36 +26,32 @@ const features = [
 ] as const;
 
 export default async function Home() {
-  const invite = `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID ?? ""}&scope=bot%20applications.commands&permissions=8`;
   const access = await accountAccess();
 
-  return <main className="landing">
-    <nav className="landing-nav" aria-label="Основная навигация">
-      <a className="landing-brand" href="/"><img src="/bot-logo.png" alt="GOPlay"/><span>GOPlay</span></a>
-      <div className="nav-user-area">
-        <UserMenu access={access} />
-      </div>
-    </nav>
+  return <main className="container page landing">
+    <SiteHeader access={access} />
     <section className="hero">
       <div>
-        <h1>Управляйте<br/><em>сервером проще.</em></h1>
-        <p className="hero-text">Один бот и одна понятная панель для ежедневных задач вашего Discord-сервера.</p>
-        <div className="hero-actions">
-          <a className="btn" href={invite}><Bot size={18}/>Добавить бота</a>
-          <a className="btn secondary" href="/dashboard">Открыть панель</a>
+        <h1>Управляйте сервером проще.</h1>
+        <p className="lead">Один бот и одна понятная панель: приветствия, автомодерация, роли, события, музыка и статистика.</p>
+        <div className="hero-cta">
+          <a className="btn lg" href={discordInviteUrl()}><Bot size={18}/>Добавить бота</a>
+          <a className="btn secondary lg" href="/dashboard">Открыть панель</a>
         </div>
-        <ul className="hero-points">
-          <li><Check size={16}/>Настройка без команд</li>
-          <li><Check size={16}/>Роли и сообщения в одном месте</li>
-          <li><Check size={16}/>Открытый код под GPL-3.0</li>
-        </ul>
       </div>
-      <div className="hero-art" aria-hidden="true"><div className="hero-ring"/><img src="/bot-logo.png" alt=""/></div>
+      <div className="hero-art">
+        <span className="hero-ring"/><span className="hero-ring second"/>
+        <img src="/bot-logo.png" alt="GOPlay"/>
+      </div>
     </section>
-    <section className="feature-grid" aria-label="Возможности бота">
-      {features.map(([Icon, title, text]) => <article className="feature-card" key={title}>
-        <span className="feature-icon"><Icon size={21}/></span><h2>{title}</h2><p>{text}</p>
-      </article>)}
+    <section className="features">
+      <div className="feature-grid">
+        {features.map(([Icon, title, text]) => <article className="feature-card" key={title}>
+          <span className="tile"><Icon size={21}/></span>
+          <h2>{title}</h2>
+          <p>{text}</p>
+        </article>)}
+      </div>
     </section>
     <footer className="landing-footer">
       <p>GOPlay — открытый исходный код под <a href={GITHUB_LICENSE} target="_blank" rel="noreferrer">GPL-3.0</a>.</p>

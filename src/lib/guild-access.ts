@@ -112,6 +112,17 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
 // и резолвит аккаунт сессии. canManageGuild — есть ли «Управление сервером».
 export function canManageGuild(guild: DiscordGuild) { return guild.owner || (BigInt(guild.permissions) & (manage | admin)) !== 0n; }
 
+export type DashboardGuild = { id: string; name: string; icon: string | null };
+
+const configuredGuildsStmt = db.prepare("SELECT id FROM guilds WHERE id IN (SELECT value FROM json_each(?))");
+
+export async function configuredGuilds(requestHeaders: Headers, accountId?: string): Promise<DashboardGuild[]> {
+  const allowed = (await discordGuilds(requestHeaders, accountId)).filter(canManageGuild);
+  if (!allowed.length) return [];
+  const configured = new Set((configuredGuildsStmt.all(JSON.stringify(allowed.map(guild => guild.id))) as { id: string }[]).map(row => row.id));
+  return allowed.filter(guild => configured.has(guild.id)).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, icon }) => ({ id, name, icon }));
+}
+
 async function withGuild(guildId: string) {
   const access = await authorize(guildId);
   return access.ok ? access : Response.json({ error: access.error }, { status: access.status });

@@ -4,6 +4,8 @@ export const DEFAULT_TIMEOUT_SECONDS = 300;
 export const BOT_TOKEN_ERROR = "Бот недоступен. Попробуйте позже.";
 export const SERVER_FALLBACK_NAME = "Discord server";
 
+export const discordInviteUrl = () => `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID ?? ""}&scope=bot%20applications.commands&permissions=8`;
+
 // Discord component-button style identifiers, shared by the bot's builders
 // (значения совпадают с enum discord.js) и payload'ам панели.
 export const BUTTON_STYLE_IDS = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;

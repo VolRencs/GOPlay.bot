@@ -160,8 +160,8 @@ export function buildWelcomeSvg(input: { backgroundHref?: string | null; backgro
     : `<defs><linearGradient id="g"><stop stop-color="#111827"/><stop offset="1" stop-color="#312e81"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/>`;
   const avatar = `<clipPath id="c"><ellipse cx="${ax}" cy="${ay}" rx="${aw / 2}" ry="${ah / 2}"/></clipPath>`
     + `<image href="${escapeXml(input.avatarHref)}" x="${ax - aw / 2}" y="${ay - ah / 2}" width="${aw}" height="${ah}" preserveAspectRatio="xMidYMid slice" clip-path="url(#c)"/>`;
-  const title = `<text x="${x(config.titleX)}" y="${y(config.titleY)}" text-anchor="middle" fill="${escapeXml(config.titleColor)}" font-family="Noto Sans, sans-serif" font-size="${size(config.titleSize)}" font-weight="700">${escapeXml(input.title)}</text>`;
-  const subtitle = `<text x="${x(config.subtitleX)}" y="${y(config.subtitleY)}" text-anchor="middle" fill="${escapeXml(config.subtitleColor)}" font-family="Noto Sans, sans-serif" font-size="${size(config.subtitleSize)}">${escapeXml(input.subtitle)}</text>`;
+  const title = `<text x="${x(config.titleX)}" y="${y(config.titleY)}" text-anchor="middle" fill="${escapeXml(config.titleColor)}" font-family="Onest, sans-serif" font-size="${size(config.titleSize)}" font-weight="700">${escapeXml(input.title)}</text>`;
+  const subtitle = `<text x="${x(config.subtitleX)}" y="${y(config.subtitleY)}" text-anchor="middle" fill="${escapeXml(config.subtitleColor)}" font-family="Onest, sans-serif" font-size="${size(config.subtitleSize)}">${escapeXml(input.subtitle)}</text>`;
   return `<svg viewBox="0 0 ${input.backgroundWidth} ${input.backgroundHeight}" width="${input.backgroundWidth}" height="${input.backgroundHeight}" xmlns="http://www.w3.org/2000/svg">`
     + `<rect width="100%" height="100%" fill="#111827"/>${bg}`
     + `<rect width="100%" height="100%" fill="#000" opacity=".25"/>`

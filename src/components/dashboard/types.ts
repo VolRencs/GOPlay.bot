@@ -36,8 +36,6 @@ export type SavedRolePanel = {
 };
 export type AuditEntry = { id: number; user_name: string; section: string; summary: string; created_at: number };
 export type AuditListGet = { entries: AuditEntry[]; total: number };
-export type GuildListItem = { id: string; name: string; icon: string | null };
-export type GuildListGet = GuildListItem[];
 
 export const DEFAULT_ACCENT = "#5865f2";
 const DEFAULT_EMBED_COLOR = 0x5865f2;

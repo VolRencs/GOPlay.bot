@@ -178,5 +178,5 @@ pnpm start
 Проект под лицензией **GPL-3.0** — см. [`LICENSE`](LICENSE).
 Copyright (C) 2026 VolRen.
 
-- Шрифты `public/fonts/NotoSans-*.ttf` — Noto Sans под SIL Open Font License.
+- Шрифты в `public/fonts/` — Onest 2.001 и Geist Mono под SIL Open Font License.
 - `public/bot-logo.png`, `app/icon.png` — собственные ассеты проекта.
