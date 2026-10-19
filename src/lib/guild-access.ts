@@ -7,7 +7,7 @@ import { ttlCacheAsync } from "./cache.ts";
 import { DAY_MS } from "./constants.ts";
 import { DiscordRateLimitError, discordFetch, withRateLimitRetry } from "./discord-api.ts";
 
-export { DiscordRateLimitError, discordFetch, sendDiscordDM } from "./discord-api.ts";
+export { DiscordRateLimitError, discordFetch } from "./discord-api.ts";
 type DiscordGuild = { id:string; permissions:string; owner:boolean; name:string; icon:string|null };
 const manage=0x20n, admin=0x8n;
 // Единственный источник allowlist: все серверные точки входа применяют одни правила.

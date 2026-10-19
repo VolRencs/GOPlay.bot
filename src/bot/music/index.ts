@@ -2,7 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, Mes
 import { count, time } from "../perf.ts";
 import { logger } from "../utils/logger.ts";
 import { stmt } from "../db/statements.ts";
-import { failInteraction, isMissingDiscordResource } from "../../lib/errors.ts";
+import { failInteraction, guard, isMissingDiscordResource } from "../../lib/errors.ts";
 import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
@@ -68,7 +68,7 @@ export function registerMusic(client: Client): void {
   // Голосовые события: пересчёт единого таймера бездействия (пусто/тишина/пауза
   // решает сама сессия). Свои переходы бота событиями не считаем — иначе первый
   // же rejoin из пустеющего канала убил бы живую сессию.
-  client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("MUSIC_VOICE", () => {
     if (oldState.id === client.user!.id) {
       if (oldState.channelId !== newState.channelId) refreshSessionActivity(newState.guild.id);
       return;
@@ -77,7 +77,7 @@ export function registerMusic(client: Client): void {
     if (!getSessionTextChannelId(guildId)) return;
     if (oldState.channelId === newState.channelId) return;
     refreshSessionActivity(guildId);
-  });
+  }));
   client.on(Events.InteractionCreate, (i: Interaction) => {
     if (i.isButton() && i.customId.startsWith("music:")) void handlePanelButton(i);
     else if (i.isStringSelectMenu() && i.customId.startsWith("music:")) void handleMusicSelect(i);

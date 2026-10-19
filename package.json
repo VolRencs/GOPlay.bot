@@ -2,7 +2,7 @@
   "name": "goplaybot",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.9.0+sha512.8f64efa0b792986ca98ae568791bcd7722807e274c4f0c1d9853c62116495c584119db98762a2a5343b1684d361b9ae26fdd16d551666d7635346d3fae830ddd",
+  "packageManager": "pnpm@12.14.0+sha512.c18ba6d87993d3d164cb5e8948f32b2c06ee854487e06cd8d86781342fb3e5bb4634367034711e86802baa9c37bea906ce1929ad08d70884c97d801df13389a6",
   "engines": {
     "node": ">=26.0.0"
   },
@@ -18,16 +18,16 @@
   "dependencies": {
     "@discordjs/voice": "^0.19.2",
     "@resvg/resvg-js": "2.6.2",
-    "better-auth": "^1.7.7",
+    "better-auth": "^1.7.10",
     "discord.js": "^14.27.0",
     "goemoji": "^0.3.0",
-    "lucide-react": "^1.49.0",
-    "next": "^16.3.8",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "lucide-react": "^1.59.0",
+    "next": "^16.4.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "typescript": "^7.0.2"

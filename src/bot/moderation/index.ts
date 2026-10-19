@@ -1,4 +1,4 @@
-import { ChannelType, MessageFlags, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type NewsChannel, type TextChannel, type ThreadChannel } from "discord.js";
+import { ChannelType, MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type NewsChannel, type TextChannel, type ThreadChannel } from "discord.js";
 import { stmt } from "../db/statements.ts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "../utils/logger.ts";
@@ -27,7 +27,7 @@ export function recordPunishmentAndOffer(client: Client, input: { guildId: strin
 const logTypes: Record<string, string> = { ban: "member_ban", kick: "member_kick", timeout: "member_timeout", untimeout: "member_timeout" };
 export async function moderate(i: ChatInputCommandInteraction) {
   const t = guildTr(trModeration, i.guildId ?? "");
-  if (!i.guild || !i.member || !i.memberPermissions) return void i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
+  if (!i.guild || !i.member || !i.memberPermissions || !i.memberPermissions.has(PermissionFlagsBits.Administrator)) return void i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
   const command = i.commandName;
   // Отвечаем сразу: ниже REST-вызовы (фетч участника, бан, purge), которые
   // иначе держали бы интеракцию висящей и могли вылететь за 3-секундное окно.

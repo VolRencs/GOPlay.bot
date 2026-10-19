@@ -1,6 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, Events, MessageFlags, ModalBuilder, PermissionFlagsBits, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Guild, type GuildChannelCreateOptions, type GuildMember, type Interaction, type ModalSubmitInteraction, type VoiceChannel, type VoiceState } from "discord.js";
 import { stmt } from "../db/statements.ts";
 import { logger } from "../utils/logger.ts";
+import { guard } from "../../lib/errors.ts";
 import { count } from "../perf.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { parseStringArray } from "../../lib/json.ts";
@@ -41,7 +42,7 @@ export function renderName(template: string, member: { user: { username: string 
 }
 
 export function registerTempChannels(client: Client) {
-  client.on(Events.VoiceStateUpdate, (oldState, newState) => void handleVoiceState(oldState, newState));
+  client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("TEMP_VOICE", () => handleVoiceState(oldState, newState)));
   client.on(Events.InteractionCreate, (i) => void handleInteraction(i));
   // Вышедший владелец → канал передаётся первому оставшемуся участнику, а если
   // он пуст — удаляется. Иначе строка навсегда остаётся с мёртвым owner_id.

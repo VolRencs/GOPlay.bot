@@ -23,6 +23,7 @@ import { MusicSettingsCard } from "../../../src/components/dashboard/MusicSettin
 import { WelcomeSettings } from "../../../src/components/dashboard/WelcomePanel.tsx";
 import { AutoModSettings, defaultRule } from "../../../src/components/dashboard/AutomodPanel.tsx";
 import { RoleSettings } from "../../../src/components/dashboard/RolesPanel.tsx";
+import { AutoroleSettings } from "../../../src/components/dashboard/AutorolePanel.tsx";
 import { EmbedsPanel } from "../../../src/components/dashboard/EmbedsPanel.tsx";
 import { AppealsPanel } from "../../../src/components/dashboard/AppealsPanel.tsx";
 import { EventsPanel } from "../../../src/components/dashboard/EventsPanel.tsx";
@@ -218,7 +219,10 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
       {!loading && <Fragment key={guildId}>
       {tab === "welcome" && <WelcomeSettings channels={channels} value={welcome} onChange={setWelcome} onSave={() => saveWelcome()} onUpload={(file) => uploadWelcomeBackground(file)} bgTimestamp={bgTimestamp} />}
       {tab === "automod" && <AutoModSettings channels={channels} roles={roles} rules={rules} ignoredRoleIds={ignoredRoleIds} protectedChannelId={protectedChannelId} onGlobalChange={(roles,channel)=>{setIgnoredRoleIds(roles);setProtectedChannelId(channel);}} onSaveAll={() => saveAutoMod()} onChange={updateRule} />}
-      {tab === "roles" && <RoleSettings guildId={guildId} roles={roles} emojis={emojis} channels={channels} onDone={notify} onError={fail} />}
+      {tab === "roles" && <section className="panel-stack">
+        <AutoroleSettings guildId={guildId} roles={roles} onDone={notify} onError={fail} />
+        <RoleSettings guildId={guildId} roles={roles} emojis={emojis} channels={channels} onDone={notify} onError={fail} />
+      </section>}
       {tab === "levels" && <LevelsPanel channels={channels} roles={roles} value={levels.settings} rewards={levels.rewards} onChange={settings => setLevels(value => ({ ...value, settings }))} onRewardsChange={rewards => setLevels(value => ({ ...value, rewards }))} onSave={() => void saveLevels()} />}
       {tab === "embeds" && <EmbedsPanel guildId={guildId} channels={channels} onDone={notify} onError={fail} />}
       {tab === "music" && <MusicSettingsCard channels={channels} voiceChannels={voiceChannels} roles={roles} value={music} onChange={setMusic} onSave={() => void saveMusic()} />}

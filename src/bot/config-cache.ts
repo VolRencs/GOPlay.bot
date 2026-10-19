@@ -3,6 +3,7 @@ import { logger } from "./utils/logger.ts";
 import { safeJson, parseStringArray } from "../lib/json.ts";
 import { ttlCacheSync } from "../lib/cache.ts";
 import { guildLang } from "../lib/i18n/bot.ts";
+import { invalidateAutoroleSettings } from "../lib/autorole.ts";
 import type { Rule } from "./automod/detectors.ts";
 
 export type CachedRule = {
@@ -104,4 +105,5 @@ export function purgeConfigCaches(guildId: string) {
   snapshots.delete(guildId);
   activeGuilds.delete(guildId);
   reactionPanelCache.delete(guildId);
+  invalidateAutoroleSettings(guildId);
 }

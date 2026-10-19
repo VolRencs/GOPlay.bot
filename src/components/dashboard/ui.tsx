@@ -187,7 +187,7 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
     return next;
   });
   useDismissOnOutside(rootRef, open, () => setOpen(false), "mousedown");
-  const select=(emoji:string)=>{onChange(emoji);setOpen(false);};
+  const select=(emoji:string)=>{onChange(emoji.replace(/[\uFE0E\uFE0F]/g, ""));setOpen(false);};
   return (
     <div className="emoji-picker" ref={rootRef}>
       <div className="emoji-current">

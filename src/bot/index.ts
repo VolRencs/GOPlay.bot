@@ -8,6 +8,7 @@ import { detect, isIgnored, pruneDetectors, burstMessages, shouldWarn, markWarne
 import { moderate, purgeUserMessages, recordPunishmentAndOffer } from "./moderation/index.ts";
 import { welcomeImage } from "./utils/welcome-image.ts";
 import { renderWelcomeTemplate, welcomeValues, type WelcomeGet } from "../lib/welcome.ts";
+import { autoroleSettingsFor } from "../lib/autorole.ts";
 import { stmt } from "./db/statements.ts";
 import { forgetMessage, flushMessageCache, messageContent, rememberMessage } from "./db/message-cache.ts";
 import { logger } from "./utils/logger.ts";
@@ -104,10 +105,10 @@ client.once(Events.ClientReady, async c => {
   logger.info("Зарегистрировано команд:", commands.length, "Гильдий:", c.guilds.cache.size);
   try { await cleanupTempChannels(c); } catch (error) { logger.error("[TEMP] Ошибка очистки временных каналов:", error); }
 });
-client.on(Events.GuildCreate, g => {
+client.on(Events.GuildCreate, g => guard("GUILD_CREATE", () => {
   onboardGuild(g);
   logger.info("Бот добавлен на сервер:", g.id, g.name);
-});
+}));
 function memberTemplate(template: string, member: GuildMember) {
   return renderWelcomeTemplate(template.replace(/\r\n?/g, "\n"), {
     ...welcomeValues({ name: member.displayName, username: member.user.username, userId: member.id, server: member.guild.name, count: member.guild.memberCount, avatar: member.user.displayAvatarURL() }),
@@ -148,12 +149,22 @@ async function sendMemberEvent(member: GuildMember, event: "welcome" | "goodbye"
   const image = welcome && setting.image_enabled ? await renderMemberImage(member, setting, event) : null;
   await channel.send({ content, ...(image ? { files: [{ attachment: image, name: "welcome.png" }] } : {}) }).catch(error => logger.warn(`[${event}] Доставка сообщения не удалась`, member.guild.id, error));
 }
-client.on(Events.GuildMemberAdd, member => {
+client.on(Events.GuildMemberAdd, member => guard("MEMBER_JOIN", () => {
   count("events.member_join");
   addMetric(member.guild.id, "joins");
   guard("WELCOME", () => sendMemberEvent(member, "welcome"));
+  const autorole = autoroleSettingsFor(member.guild.id);
+  if (autorole.enabled && autorole.roleIds.length) {
+    guard("AUTOROLE", async () => {
+      for (const roleId of autorole.roleIds) {
+        const role = member.guild.roles.cache.get(roleId) ?? await member.guild.roles.fetch(roleId).catch(() => null);
+        if (!role || role.managed || !role.editable) continue;
+        await member.roles.add(role).catch(error => logger.warn("[AUTOROLE] Не удалось выдать роль", member.guild.id, roleId, error));
+      }
+    });
+  }
   logAction({ guildId: member.guild.id, type: "member_join", targetId: member.id, details: logTr(guildLang(member.guild.id), "joinDetails") });
-});
+}));
 client.on(Events.GuildMemberRemove, member => {
   count("events.member_leave");
   addMetric(member.guild.id, "leaves");
@@ -278,7 +289,7 @@ async function deleteBurst(guild: Guild, burst: { id: string; channelId: string 
   }
   return deleted;
 }
-client.on(Events.MessageCreate, async message => {
+client.on(Events.MessageCreate, message => guard("MESSAGE_CREATE", async () => {
   count("events.message_create");
   if (!message.guild || message.author.bot) return;
   rememberMessage(message.id, message.guild.id, message.channel.id, message.content);
@@ -310,7 +321,7 @@ client.on(Events.MessageCreate, async message => {
       break;
     }
   }
-});
+}));
 client.on(Events.InteractionCreate, i => void routeInteraction(i));
 async function routeInteraction(i: Interaction) {
   const cmdLang = guildLang(i.guildId ?? "");
@@ -371,7 +382,7 @@ async function routeInteraction(i: Interaction) {
     failInteraction("[INTERACTION] Обработка взаимодействия не удалась", i, error, automodTr(guildLang(i.guildId ?? ""), "genericError"), i.guildId ?? "dm");
   }
 }
-function samePanelEmoji(saved: string | null, name: string | null, identifier: string) { if (!saved) return normalizeEmojiText(name ?? "") === "✅"; return sameEmojiValue(saved, name, identifier); }
+function samePanelEmoji(saved: string | null, name: string | null, identifier: string) { if (!saved) return normalizeEmojiText(name ?? "") === normalizeEmojiText("✅"); return sameEmojiValue(saved, name, identifier); }
 function applyPanelRoleSafe(guildId: string, panelId: number, roleId: string, member: GuildMember): Promise<{ text: string; notify: boolean }> {
   return applyPanelRole(guildId, panelId, roleId, member).catch(() => ({ text: automodTr(guildLang(guildId), "roleUpdateFail"), notify: true }));
 }
@@ -396,8 +407,8 @@ async function handleReaction(reaction: MessageReaction | PartialMessageReaction
   const result = await applyPanelRoleSafe(message.guild.id, panel.id, option.role_id, member);
   if (result.notify) await member.send(result.text).catch(() => null);
 }
-client.on(Events.MessageReactionAdd, (reaction, user) => void handleReaction(reaction, user, false));
-client.on(Events.MessageReactionRemove, (reaction, user) => void handleReaction(reaction, user, true));
+client.on(Events.MessageReactionAdd, (reaction, user) => guard("REACTION_ADD", () => handleReaction(reaction, user, false)));
+client.on(Events.MessageReactionRemove, (reaction, user) => guard("REACTION_REMOVE", () => handleReaction(reaction, user, true)));
 function renderEmbed(embed: Message["embeds"][number], lang: "ru" | "en"): string {
   const lines: string[] = [];
   if (embed.title) lines.push(`**${embed.title}**`);
@@ -409,11 +420,11 @@ function renderEmbed(embed: Message["embeds"][number], lang: "ru" | "en"): strin
   if (embed.image?.url) lines.push(`${logTr(lang, "imageLabel")}: ${embed.image.url}`);
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
-client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+client.on(Events.GuildMemberUpdate, (oldMember, newMember) => guard("MEMBER_UPDATE", () => {
   const before = new Set(oldMember?.roles.cache.keys() ?? []), after = new Set(newMember.roles.cache.keys());
   const added = [...after.difference(before)].filter(id => id !== newMember.guild.id), removed = [...before.difference(after)].filter(id => id !== newMember.guild.id);
   const logRoles = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_roles", targetId: newMember.id, moderatorId: actor, details: (() => { const l = guildLang(newMember.guild.id); return logTr(l, "rolesPrefix") + [...added.map(id => logTr(l, "roleGivenPart", { id })), ...removed.map(id => logTr(l, "roleRemovedPart", { id }))].join(", "); })() });
-  if (added.length || removed.length) void auditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id, { retries: 0 }).then(logRoles, () => logRoles());
+  if (added.length || removed.length) void auditActor(newMember.guild, AuditLogEvent.MemberRoleUpdate, newMember.id, { retries: 0 }).then(logRoles, () => logRoles()).catch(() => null);
   if (!isBotAction(newMember.guild.id, "member_timeout", newMember.id) && oldMember?.communicationDisabledUntilTimestamp !== newMember.communicationDisabledUntilTimestamp) {
     const isSet = Boolean(newMember.communicationDisabledUntilTimestamp);
     const logTimeout = (actor?: string) => logAction({ guildId: newMember.guild.id, type: "member_timeout", targetId: newMember.id, moderatorId: actor, details: isSet ? logTr(guildLang(newMember.guild.id), "timeoutSet") : logTr(guildLang(newMember.guild.id), "timeoutCleared") });
@@ -423,7 +434,7 @@ client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
       if (isSet && entry) recordPunishmentAndOffer(client, { guildId: newMember.guild.id, guildName: newMember.guild.name, userId: newMember.id, type: "timeout", reason: entry.reason ?? logTr(guildLang(newMember.guild.id), "noReason"), moderatorId: entry.executor?.id ?? null });
     }, () => logTimeout());
   }
-});
+}));
 const editPending = new Map<string, { before: string; after: string; timer: ReturnType<typeof setTimeout> }>();
 const EDIT_DEBOUNCE_MS = 2_000;
 const code = (value: string) => `\`\`\`${value.replace(/```/g, "ˋˋˋ") || "—"}\`\`\``;
@@ -446,7 +457,7 @@ client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
 function fireEditLog(newMessage: Message, before: string, after: string) {
   logAction({ guildId: newMessage.guild!.id, type: "message_edit", targetId: newMessage.author!.id, details: (() => { const l = guildLang(newMessage.guild!.id); return `${logTr(l, "channelField", { channel: `<#${newMessage.channelId}>` })}\n${logTr(l, "beforeLabel")}:\n${code(before.slice(0, 450))}\n${logTr(l, "afterLabel")}:\n${code(after.slice(0, 450))}`; })() });
 }
-client.on(Events.MessageDelete, async message => {
+client.on(Events.MessageDelete, message => guard("MESSAGE_DELETE", async () => {
   count("events.message_delete");
   if (!message.guild) return;
   const deleted = stmt.panelDelete.run(message.guild.id, message.channelId, message.id);
@@ -461,7 +472,7 @@ client.on(Events.MessageDelete, async message => {
   const embeds = message.embeds.map(embed => renderEmbed(embed, lDel)).filter(Boolean);
   if (embeds.length) details += `\n${logTr(lDel, "attachmentsLabel")}\n${embeds.join("\n—\n").slice(0, 800)}`;
   logAction({ guildId: message.guild.id, type: "message_delete", targetId: authorId, moderatorId: actor, details });
-});
+}));
 const recentBans = new Map<string, number>();
 const RECENT_BAN_TTL = 5 * 60_000;
 function sweepRecentBans() {
@@ -495,13 +506,13 @@ registerMusic(client);
 registerLevels(client);
 registerAppeals(client);
 registerEvents(client);
-client.on(Events.GuildDelete, guild => {
+client.on(Events.GuildDelete, guild => guard("GUILD_DELETE", () => {
   stopAndLeave(guild.id);
   purgeConfigCaches(guild.id);
   guard("GUILD_WIPE", () => wipeGuildData(guild.id));
   guard("GUILD_FILES", () => deleteGuildFiles(guild.id));
   logger.info("[GUILD] Бот удалён с сервера, данные стёрты:", guild.id);
-});
+}));
 function shutdown() {
   stopTimer();
   flushMetrics();

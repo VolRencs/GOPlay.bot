@@ -187,7 +187,7 @@ function seedVoiceSessions(client: Client): void {
 
 export function registerLevels(client: Client): void {
   client.on(Events.MessageCreate, message => guard("LEVELS", () => handleMessage(message)));
-  client.on(Events.VoiceStateUpdate, (oldState, newState) => handleVoiceState(oldState, newState));
+  client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("LEVELS_VOICE", () => handleVoiceState(oldState, newState)));
   client.on(Events.GuildDelete, guild => purgeLevelsGuild(guild.id));
   client.once(Events.ClientReady, () => seedVoiceSessions(client));
   setInterval(() => {

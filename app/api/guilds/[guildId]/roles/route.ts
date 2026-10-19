@@ -32,9 +32,13 @@ const panelEmojisStmt = db.prepare("SELECT emoji FROM self_role_options WHERE pa
 function discordEmoji(value?: string) {
   if (!value) return undefined;
   const custom = parseCustomEmoji(value);
-  return custom ? { id: custom.id, name: custom.name, animated: custom.animated } : { name: value };
+  return custom ? { id: custom.id, name: custom.name, animated: custom.animated } : { name: value.replace(/[\uFE0E\uFE0F]/g, "") };
 }
-function reactionEmoji(value?: string) { const custom = value ? parseCustomEmoji(value) : null; return custom ? `${custom.name}:${custom.id}` : value ?? "✅"; }
+function reactionEmoji(value?: string) {
+  const custom = value ? parseCustomEmoji(value) : null;
+  if (custom) return `${custom.name}:${custom.id}`;
+  return (value ?? "✅").replace(/[\uFE0E\uFE0F]/g, "");
+}
 
 const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value === "string" && Object.hasOwn(BUTTON_STYLE_IDS, value);
 
@@ -45,7 +49,7 @@ function readOptions(value: PanelPayload) {
     .map(o => ({
       roleId: o.roleId,
       label: String(o.label ?? ""),
-      emoji: typeof o.emoji === "string" ? o.emoji.slice(0, 96) : "",
+      emoji: typeof o.emoji === "string" ? o.emoji.replace(/[\uFE0E\uFE0F]/g, "").slice(0, 96) : "",
       buttonColor: isButtonStyle(o.buttonColor) ? o.buttonColor : "primary",
     }));
   if (Array.isArray(value.options)) return valid(value.options);
@@ -89,6 +93,10 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if (assignable === null) return jsonError("Не удалось проверить иерархию ролей в Discord.", 502);
   if (options.some(o => !assignable.has(o.roleId))) return jsonError("Некоторые роли нельзя выдавать: переместите роль бота выше них в Discord.");
   const style = ["buttons", "select", "reaction"].includes(value.style) ? value.style : "buttons";
+  if (style === "reaction") {
+    const reactionEmojis = options.map(o => reactionEmoji(o.emoji || undefined));
+    if (new Set(reactionEmojis).size !== reactionEmojis.length) return jsonError("Эмодзи реакций должны быть уникальными.");
+  }
   if (value.roleLimit !== undefined && value.roleLimit !== null && !Number.isInteger(Number(value.roleLimit))) return jsonError("Некорректный лимит ролей.");
   if (value.notifyTemplate !== undefined && value.notifyTemplate !== null && typeof value.notifyTemplate !== "string") return jsonError("Некорректный шаблон уведомления.");
   const roleLimit = Math.max(0, Math.min(25, Number(value.roleLimit) || 0));
@@ -114,7 +122,10 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       if (!created && panelUpdateStmt.run(embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now(), panelId, guildId).changes === 0)
         throw new Error("panel deleted concurrently");
       panelOptionsDeleteStmt.run(panelId);
-      for (const option of options) panelOptionInsertStmt.run(panelId, option.roleId, (option.label || embed.name).slice(0, 80), option.emoji?.slice(0, 96) || null, option.buttonColor);
+      for (const option of options) {
+        const emoji = option.emoji ? option.emoji.replace(/[\uFE0E\uFE0F]/g, "").slice(0, 96) : "";
+        panelOptionInsertStmt.run(panelId, option.roleId, (option.label || embed.name).slice(0, 80), emoji || null, option.buttonColor);
+      }
     });
   };
   const headers = { "content-type": "application/json" };
@@ -133,7 +144,9 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     if (!response.ok) throw new Error(`patch ${response.status}`);
   } else {
     const buttons = options.map(o => ({ type: 2, style: buttonStyleId(o.buttonColor), label: (o.label || embed.name).slice(0, 80), custom_id: `role:${panelId}:${o.roleId}`, emoji: discordEmoji(o.emoji || undefined) }));
-    const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [{ type: 1, components: buttons }] }) });
+    const rows = [];
+    for (let i = 0; i < buttons.length; i += 5) rows.push({ type: 1, components: buttons.slice(i, i + 5) });
+    const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: rows }) });
     if (!response.ok) throw new Error(`patch ${response.status}`);
   }
   } catch (error) {
