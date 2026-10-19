@@ -10,6 +10,7 @@ import { buildLevelsPutBody, levelDefaults, type LevelsGet } from "../../../src/
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
 import { SERVER_FALLBACK_NAME } from "../../../src/lib/constants.ts";
 import type { MusicSettings } from "../../../src/lib/music-settings.ts";
+import type { AutoroleGet, AutorolePutBody } from "../../../src/lib/autorole.ts";
 import { buildMusicPutBody, type Channel, type LoggingState, type ResourcesGet, type Role, type ServerEmoji, type ServerIdentity, type ServerStats } from "../../../src/components/dashboard/types.ts";
 import { ConfirmHost, ModalShell, stableStringify } from "../../../src/components/dashboard/ui.tsx";
 import { useConfigDraft } from "../../../src/components/dashboard/hooks.ts";
@@ -51,8 +52,10 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
   const [, startTransition] = useTransition();
   const langDraft = useConfigDraft<"ru" | "en">("ru");
   const musicDraft = useConfigDraft<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: 300 });
+  const autoroleDraft = useConfigDraft<AutoroleGet>({ enabled: false, roleId: null });
   const serverLang = langDraft.value, setServerLang = langDraft.setValue;
   const music = musicDraft.value, setMusic = musicDraft.setValue;
+  const autorole = autoroleDraft.value, setAutorole = autoroleDraft.setValue;
   const [channels, setChannels] = useState<Channel[]>([]);
   const [voiceChannels, setVoiceChannels] = useState<Channel[]>([]);
   const [categories, setCategories] = useState<Channel[]>([]);
@@ -117,7 +120,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
       setLoading(true);
       try {
       const loadFail = "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу.";
-      const [resourcesRes, welcomeRes, rulesRes, loggingRes, tempRes, langRes, musicRes, levelsRes] = await Promise.all([
+      const [resourcesRes, welcomeRes, rulesRes, loggingRes, tempRes, langRes, musicRes, levelsRes, autoroleRes] = await Promise.all([
         apiSend<ResourcesGet>(`/api/guilds/${guildId}/resources`, {}, loadFail),
         apiSend<WelcomeGet>(`/api/guilds/${guildId}/welcome`, {}, loadFail),
         apiSend<AutomodGet>(`/api/guilds/${guildId}/automod`, {}, loadFail),
@@ -126,13 +129,14 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
         apiSend<LangGet>(`/api/guilds/${guildId}/lang`, {}, loadFail),
         apiSend<MusicSettings>(`/api/guilds/${guildId}/music`, {}, loadFail),
         apiSend<LevelsGet>(`/api/guilds/${guildId}/levels`, {}, loadFail),
+        apiSend<AutoroleGet>(`/api/guilds/${guildId}/autorole`, {}, loadFail),
       ]);
-      if (!resourcesRes.ok || !welcomeRes.ok || !rulesRes.ok || !loggingRes.ok || !tempRes.ok || !langRes.ok || !musicRes.ok || !levelsRes.ok) {
-        const failed=[resourcesRes,welcomeRes,rulesRes,loggingRes,tempRes,langRes,musicRes,levelsRes].find(response=>!response.ok);
+      if (!resourcesRes.ok || !welcomeRes.ok || !rulesRes.ok || !loggingRes.ok || !tempRes.ok || !langRes.ok || !musicRes.ok || !levelsRes.ok || !autoroleRes.ok) {
+        const failed=[resourcesRes,welcomeRes,rulesRes,loggingRes,tempRes,langRes,musicRes,levelsRes,autoroleRes].find(response=>!response.ok);
         if(active) fail(failed!.error);
         return;
       }
-      const resourceData = resourcesRes.data, welcomeData = welcomeRes.data, automodData = rulesRes.data, loggingData = loggingRes.data, tempData = tempRes.data, langData = langRes.data, musicData = musicRes.data, levelsData = levelsRes.data;
+      const resourceData = resourcesRes.data, welcomeData = welcomeRes.data, automodData = rulesRes.data, loggingData = loggingRes.data, tempData = tempRes.data, langData = langRes.data, musicData = musicRes.data, levelsData = levelsRes.data, autoroleData = autoroleRes.data;
       if(!active) return;
       langDraft.commit(langData.lang);
       musicDraft.commit(musicData);
@@ -151,6 +155,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
       const tempValue = { presets: tempData.presets };
       tempDraft.commit(tempValue);
       levelsDraft.commit(levelsData);
+      autoroleDraft.commit(autoroleData);
       } catch {
         if(active) fail("Не удалось соединиться с сервером.");
       } finally {
@@ -185,6 +190,10 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
     const payload: MusicSettings = buildMusicPutBody(music);
     return apiPut<MusicSettings>(`/api/guilds/${guildId}/music`, payload, () => musicDraft.commit(payload), "Настройки музыки сохранены.", report);
   }
+  async function saveAutorole(report=true): Promise<boolean> {
+    const payload: AutorolePutBody = { enabled: autorole.enabled, roleId: autorole.roleId };
+    return apiPut<AutorolePutBody>(`/api/guilds/${guildId}/autorole`, payload, () => autoroleDraft.markSaved(autorole), "Автороль при входе сохранена.", report);
+  }
   async function saveLevels(report=true): Promise<boolean> {
     const payload: LevelsGet = buildLevelsPutBody(levels.settings, levels.rewards);
     return apiPut<LevelsGet>(`/api/guilds/${guildId}/levels`, payload, () => levelsDraft.commit(payload), "Настройки уровней сохранены.", report);
@@ -202,9 +211,9 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
   async function uploadWelcomeBackground(file: File) { const body=new FormData(); body.set("background",file); const sent=await apiSend<{backgroundPath:string}>(`/api/guilds/${guildId}/welcome`,{method:"POST",body},"Не удалось загрузить фон."); if(sent.ok){const data=sent.data;welcomeDraft.patch(v=>({...v,background_path:data.backgroundPath}));setBgTimestamp(Date.now());notify("Фон загружен.");}else fail(sent.error); }
   const rulesDirty=useMemo(()=>dirty(savedRules,rules),[savedRules,rules]);
   const securityDirty=useMemo(()=>dirty(savedSecurity,{roles:ignoredRoleIds,channel:protectedChannelId}),[savedSecurity,ignoredRoleIds,protectedChannelId]);
-  const isDirty=Boolean(guildId)&&(welcomeDraft.dirty||rulesDirty||securityDirty||loggingDraft.dirty||tempDraft.dirty||langDraft.dirty||musicDraft.dirty||levelsDraft.dirty);
-  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDraft.dirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDraft.dirty)ok=(await saveLogging(false))&&ok;if(tempDraft.dirty)ok=(await saveTemp(false))&&ok;if(langDraft.dirty)ok=(await saveLang(false))&&ok;if(musicDraft.dirty)ok=(await saveMusic(false))&&ok;if(levelsDraft.dirty)ok=(await saveLevels(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
-  function discardChanges(){welcomeDraft.reset();musicDraft.reset();loggingDraft.reset();tempDraft.reset();langDraft.reset();levelsDraft.reset();if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}notify("Несохранённые изменения сброшены.");}
+  const isDirty=Boolean(guildId)&&(welcomeDraft.dirty||rulesDirty||securityDirty||loggingDraft.dirty||tempDraft.dirty||langDraft.dirty||musicDraft.dirty||levelsDraft.dirty||autoroleDraft.dirty);
+  async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDraft.dirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDraft.dirty)ok=(await saveLogging(false))&&ok;if(tempDraft.dirty)ok=(await saveTemp(false))&&ok;if(langDraft.dirty)ok=(await saveLang(false))&&ok;if(musicDraft.dirty)ok=(await saveMusic(false))&&ok;if(levelsDraft.dirty)ok=(await saveLevels(false))&&ok;if(autoroleDraft.dirty)ok=(await saveAutorole(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
+  function discardChanges(){welcomeDraft.reset();musicDraft.reset();loggingDraft.reset();tempDraft.reset();langDraft.reset();levelsDraft.reset();autoroleDraft.reset();if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}notify("Несохранённые изменения сброшены.");}
   function applyNav(nav:NonNullable<typeof pendingNav>){if("tab" in nav)switchTab(nav.tab);else window.location.href=nav.href;setPendingNav(null);}
   async function saveAndGo(){if(!pendingNav)return;const ok=await saveAllDirty();if(ok)applyNav(pendingNav);else setPendingNav(null);}
   function discardAndGo(){if(!pendingNav)return;discardChanges();applyNav(pendingNav);}
@@ -220,7 +229,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
       {tab === "welcome" && <WelcomeSettings channels={channels} value={welcome} onChange={setWelcome} onSave={() => saveWelcome()} onUpload={(file) => uploadWelcomeBackground(file)} bgTimestamp={bgTimestamp} />}
       {tab === "automod" && <AutoModSettings channels={channels} roles={roles} rules={rules} ignoredRoleIds={ignoredRoleIds} protectedChannelId={protectedChannelId} onGlobalChange={(roles,channel)=>{setIgnoredRoleIds(roles);setProtectedChannelId(channel);}} onSaveAll={() => saveAutoMod()} onChange={updateRule} />}
       {tab === "roles" && <section className="panel-stack">
-        <AutoroleSettings guildId={guildId} roles={roles} onDone={notify} onError={fail} />
+        <AutoroleSettings roles={roles} value={autorole} onChange={setAutorole} onSave={() => void saveAutorole()} />
         <RoleSettings guildId={guildId} roles={roles} emojis={emojis} channels={channels} onDone={notify} onError={fail} />
       </section>}
       {tab === "levels" && <LevelsPanel channels={channels} roles={roles} value={levels.settings} rewards={levels.rewards} onChange={settings => setLevels(value => ({ ...value, settings }))} onRewardsChange={rewards => setLevels(value => ({ ...value, rewards }))} onSave={() => void saveLevels()} />}

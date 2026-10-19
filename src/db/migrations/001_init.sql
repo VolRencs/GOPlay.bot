@@ -221,3 +221,10 @@ CREATE INDEX idx_hourly_day ON guild_hourly_messages(day);
 -- составной idx_actions_guild для него бесполезен.
 CREATE INDEX IF NOT EXISTS idx_actions_created ON moderation_actions(created_at);
 CREATE INDEX IF NOT EXISTS idx_appeals_reviewer ON appeals(guild_id, reviewed_by);
+
+CREATE TABLE IF NOT EXISTS autorole_settings (
+  guild_id TEXT PRIMARY KEY REFERENCES guilds(id) ON DELETE CASCADE,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  role_id TEXT,
+  updated_at INTEGER NOT NULL
+);
