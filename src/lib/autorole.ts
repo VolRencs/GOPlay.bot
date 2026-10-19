@@ -1,16 +1,15 @@
 import { stmt } from "../bot/db/statements.ts";
 import { ttlCacheSync } from "./cache.ts";
-import { parseStringArray } from "./json.ts";
 
-export type AutoroleGet = { enabled: boolean; roleIds: string[] };
+export type AutoroleGet = { enabled: boolean; roleId: string | null };
 
-export type AutorolePutBody = { enabled: boolean; roleIds: string[] };
+export type AutorolePutBody = { enabled: boolean; roleId: string | null };
 
 function loadAutorole(guildId: string): AutoroleGet {
-  const row = stmt.autoroleSettings.get(guildId) as { enabled: number; role_ids_json: string } | undefined;
+  const row = stmt.autoroleSettings.get(guildId) as { enabled: number; role_id: string | null } | undefined;
   return {
     enabled: Boolean(row?.enabled),
-    roleIds: parseStringArray(row?.role_ids_json),
+    roleId: row?.role_id ?? null,
   };
 }
 

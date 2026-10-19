@@ -154,13 +154,11 @@ client.on(Events.GuildMemberAdd, member => guard("MEMBER_JOIN", () => {
   addMetric(member.guild.id, "joins");
   guard("WELCOME", () => sendMemberEvent(member, "welcome"));
   const autorole = autoroleSettingsFor(member.guild.id);
-  if (autorole.enabled && autorole.roleIds.length) {
+  if (autorole.enabled && autorole.roleId) {
     guard("AUTOROLE", async () => {
-      for (const roleId of autorole.roleIds) {
-        const role = member.guild.roles.cache.get(roleId) ?? await member.guild.roles.fetch(roleId).catch(() => null);
-        if (!role || role.managed || !role.editable) continue;
-        await member.roles.add(role).catch(error => logger.warn("[AUTOROLE] Не удалось выдать роль", member.guild.id, roleId, error));
-      }
+      const role = member.guild.roles.cache.get(autorole.roleId!) ?? await member.guild.roles.fetch(autorole.roleId!).catch(() => null);
+      if (!role || role.managed || !role.editable) return;
+      await member.roles.add(role).catch(error => logger.warn("[AUTOROLE] Не удалось выдать роль", member.guild.id, autorole.roleId, error));
     });
   }
   logAction({ guildId: member.guild.id, type: "member_join", targetId: member.id, details: logTr(guildLang(member.guild.id), "joinDetails") });
