@@ -7,7 +7,7 @@ useTempDb("goplay-levels-");
 const { xpForLevel, levelFromXp, levelProgress, levelDefaults, MAX_LEVEL } = await import("../src/lib/levels.ts");
 const { levelSettingsFor } = await import("../src/lib/levels-store.ts");
 const { db } = await import("../src/db/database.ts");
-const { stmt } = await import("../src/bot/db/statements.ts");
+const { stmt } = await import("../src/db/statements.ts");
 
 test("формула уровней: порог и обратный уровень согласованы", () => {
   assert.equal(xpForLevel(0, 100, 15), 0);

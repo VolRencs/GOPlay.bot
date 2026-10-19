@@ -1,8 +1,8 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, Events, MessageFlags, ModalBuilder, PermissionFlagsBits, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Guild, type GuildChannelCreateOptions, type GuildMember, type Interaction, type ModalSubmitInteraction, type VoiceChannel, type VoiceState } from "discord.js";
-import { stmt } from "../db/statements.ts";
-import { logger } from "../utils/logger.ts";
+import { stmt } from "../../db/statements.ts";
+import { logger } from "../../lib/logger.ts";
 import { guard } from "../../lib/errors.ts";
-import { count } from "../perf.ts";
+import { count } from "../../lib/perf.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { parseStringArray } from "../../lib/json.ts";
 import { isSnowflake } from "../../lib/ids.ts";
@@ -46,7 +46,7 @@ export function registerTempChannels(client: Client) {
   client.on(Events.InteractionCreate, (i) => void handleInteraction(i));
   // Вышедший владелец → канал передаётся первому оставшемуся участнику, а если
   // он пуст — удаляется. Иначе строка навсегда остаётся с мёртвым owner_id.
-  client.on(Events.GuildMemberRemove, (member) => void handleOwnerLeave(member.guild, member.id));
+  client.on(Events.GuildMemberRemove, (member) => guard("TEMP_OWNER_LEAVE", () => handleOwnerLeave(member.guild, member.id)));
   client.on(Events.GuildDelete, (guild) => {
     // Строки каскадом удалит wipe гильдии; здесь только собственный кэш.
     configCache.delete(guild.id);

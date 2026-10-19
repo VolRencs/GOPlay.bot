@@ -1,7 +1,7 @@
 import { EmbedBuilder, type Client, type Guild, type GuildAuditLogsEntry, type SendableChannels } from "discord.js";
-import { stmt } from "../db/statements.ts";
-import { logger } from "../utils/logger.ts";
-import { count, time } from "../perf.ts";
+import { stmt } from "../../db/statements.ts";
+import { logger } from "../../lib/logger.ts";
+import { count, time } from "../../lib/perf.ts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { safeJson } from "../../lib/json.ts";
 import { ttlCacheAsync, ttlCacheSync } from "../../lib/cache.ts";
@@ -68,33 +68,66 @@ const EMBEDS_PER_MESSAGE = 10;
 async function drainChannel(channelId: string) {
   if (draining.has(channelId)) return;
   draining.add(channelId);
-  while (true) {
-    // Батч до 10 embeds на POST: массовые удаления/пурджи дают ×10 меньше
-    // REST-вызовов и не упираются в rate limit самого канала логов.
-    const queue = queues.get(channelId) ?? [];
-    const batch = queue.splice(0, EMBEDS_PER_MESSAGE);
-    if (!batch.length) break;
-    let attempts = 0;
+  let requeued = false;
+  try {
     while (true) {
-      const channel = await resolveChannel(channelId);
-      try {
-        if (!channel) throw new Error("Канал недоступен");
-        await channel.send({ embeds: batch.map(item => item.embed) });
-        break;
-      } catch (error) {
-        attempts += 1;
-        if (attempts >= MAX_ATTEMPTS) {
-          logger.error("[LOG] Пакет логов отброшен после повторных попыток.", channelId, batch.length, error);
+      // Батч до 10 embeds на POST: массовые удаления/пурджи дают ×10 меньше
+      // REST-вызовов и не упираются в rate limit самого канала логов.
+      const queue = queues.get(channelId) ?? [];
+      const batch = queue.splice(0, EMBEDS_PER_MESSAGE);
+      if (!batch.length) break;
+      let attempts = 0;
+      let sent = false;
+      let permanent = false;
+      while (true) {
+        const channel = await resolveChannel(channelId);
+        if (!channel) {
+          // Канала нет (удалён/недоступен) — повтор не поможет, пакет отброшен.
+          permanent = true;
+          logger.error("[LOG] Канал логов недоступен, пакет отброшен.", channelId, batch.length);
           break;
         }
-        logger.warn(`[LOG] Ошибка отправки пакета логов, попытка ${attempts}/${MAX_ATTEMPTS}`, channelId, error);
-        await sleep(1_000 * attempts);
+        try {
+          await channel.send({ embeds: batch.map(item => item.embed) });
+          sent = true;
+          break;
+        } catch (error) {
+          attempts += 1;
+          if (attempts >= MAX_ATTEMPTS) {
+            logger.error("[LOG] Пакет логов не отправлен после повторных попыток.", channelId, batch.length, error);
+            break;
+          }
+          logger.warn(`[LOG] Ошибка отправки пакета логов, попытка ${attempts}/${MAX_ATTEMPTS}`, channelId, error);
+          await sleep(1_000 * attempts);
+        }
+      }
+      if (!sent && !permanent) {
+        // Транзиентная ошибка: возвращаем батч в очередь и ждём следующего
+        // события/остановки — логи не теряются молча.
+        const list = queues.get(channelId) ?? [];
+        list.unshift(...batch);
+        queues.set(channelId, list);
+        requeued = true;
+        break;
       }
     }
+  } finally {
+    draining.delete(channelId);
   }
-  draining.delete(channelId);
-  if (queues.get(channelId)?.length) void drainChannel(channelId);
-  else queues.delete(channelId);
+  if (!requeued && queues.get(channelId)?.length) void drainChannel(channelId);
+  else if (!queues.get(channelId)?.length) queues.delete(channelId);
+}
+
+/** Дождаться отправки накопленных логов (остановка бота). */
+export async function flushLogs(timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (const channelId of queues.keys()) void drainChannel(channelId);
+  while (Date.now() < deadline) {
+    const pending = [...queues.values()].reduce((sum, list) => sum + list.length, 0);
+    if (!pending && !draining.size) return;
+    await sleep(100);
+  }
+  logger.warn("[LOG] Часть логов не успела отправиться при остановке");
 }
 
 // Действия бота логируются сразу с известным исполнителем и помечаются, чтобы
@@ -161,7 +194,7 @@ async function drainAuditQueue() {
       resolve(entry);
       if (auditQueue.length) await sleep(AUDIT_INTERVAL);
     }
-  })().finally(() => { auditWorker = null; });
+  })().catch(error => { logger.warn("[AUDIT] Очередь журнала аудита прервана", error); }).finally(() => { auditWorker = null; });
 }
 
 type AuditFindOptions = { priority?: boolean; retries?: number; retryDelay?: number };

@@ -1,4 +1,4 @@
-import { stmt } from "../bot/db/statements.ts";
+import { stmt } from "../db/statements.ts";
 import { ttlCacheSync } from "./cache.ts";
 
 export type AutoroleGet = { enabled: boolean; roleId: string | null };

@@ -1,5 +1,5 @@
 import { withTransaction } from "../db/database.ts";
-import { stmt } from "../bot/db/statements.ts";
+import { stmt } from "../db/statements.ts";
 
 export function clearWarns(guildId: string, userId: string | null): number {
   return withTransaction(() => {

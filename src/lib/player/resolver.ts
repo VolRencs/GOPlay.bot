@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { logger } from "../../bot/utils/logger.ts";
+import { logger } from "../logger.ts";
 import { MAX_DURATION_SECONDS, MAX_PLAYLIST, type Track } from "./types.ts";
 
 export const YT_DLP = process.env.YT_DLP_PATH ?? "yt-dlp";
@@ -44,7 +44,9 @@ function memoProbe(probe: () => Promise<boolean>): () => Promise<boolean> {
     if (Date.now() < retryAt) return Promise.resolve(false);
     const pending = probe();
     cached = pending;
-    void pending.then(ok => { if (!ok) { cached = null; retryAt = Date.now() + PROBE_RETRY_MS; } });
+    // Отклонённая проба тоже сбрасывает кэш: иначе derived-промис остался бы
+    // без обработчика и дал unhandled rejection.
+    void pending.then(ok => { if (!ok) { cached = null; retryAt = Date.now() + PROBE_RETRY_MS; } }, () => { cached = null; retryAt = Date.now() + PROBE_RETRY_MS; });
     return pending;
   };
 }

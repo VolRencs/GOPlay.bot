@@ -1,7 +1,7 @@
-import { aliveGuildIds, isForeignKeyError, stmt } from "./db/statements.ts";
-import { logger } from "./utils/logger.ts";
-import { db, withTransaction } from "../db/database.ts";
-import { time } from "./perf.ts";
+import { aliveGuildIds, isForeignKeyError, stmt } from "../db/statements.ts";
+import { logger } from "../lib/logger.ts";
+import { withTransaction } from "../db/database.ts";
+import { time } from "../lib/perf.ts";
 import { pruneOldEvents } from "../lib/server-cleanup.ts";
 
 type MetricKey = "joins" | "leaves" | "messages" | "moderation";
@@ -49,7 +49,6 @@ export function addMessage(guildId: string, channelId: string, userId: string, a
 
 let flushFailures = 0;
 const MODERATION_RETENTION_DAYS = 90;
-const moderationPrune = db.prepare("DELETE FROM moderation_actions WHERE created_at < ? AND id NOT IN(SELECT punishment_id FROM appeals)");
 function noteFlushFailure(error: unknown, started: number): void {
   flushFailures = logger.warnEvery(flushFailures, 60, "Не удалось записать метрики — окно будет отправлено повторно", error);
   time("db.metrics_flush", performance.now() - started);
@@ -120,7 +119,7 @@ setInterval(() => {
   try {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
     for (const cleanup of [stmt.cleanupChannelStats, stmt.cleanupUserStats, stmt.cleanupHourlyStats, stmt.cleanupDailyStats]) cleanup.run(cutoff);
-    moderationPrune.run(Date.now() - MODERATION_RETENTION_DAYS * 86_400_000);
+    stmt.moderationPrune.run(Date.now() - MODERATION_RETENTION_DAYS * 86_400_000);
     pruneOldEvents();
   } catch (error) {
     logger.warn("Очистка статистики не удалась", error);

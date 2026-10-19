@@ -1,9 +1,9 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, type Client, type Interaction } from "discord.js";
 import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
 import { resolveChannel } from "../logging/index.ts";
-import { logger } from "../utils/logger.ts";
+import { logger } from "../../lib/logger.ts";
 import { guard, isMissingDiscordResource } from "../../lib/errors.ts";
-import { count } from "../perf.ts";
+import { count } from "../../lib/perf.ts";
 import { buttonStyleId } from "../../lib/constants.ts";
 import { eventUploadPrefix, eventUploadsDir } from "../../lib/uploads.ts";
 import { reattachStoredAssets } from "../../lib/assets.ts";
@@ -95,7 +95,13 @@ async function buildEventMessage(event: EventRow): Promise<{ embed: EventEmbedPa
 
 async function refreshMessageNow(guildId: string, eventId: string) {
   const event = getEventInGuild(guildId, eventId);
-  if (!event?.message_id) return;
+  if (!event) return;
+  if (!event.message_id) {
+    // Сообщение события удалили: публикуем заново, иначе кнопки записи
+    // исчезают до конца события.
+    if (event.status === "scheduled" || event.status === "live") await publishEventMessage(event);
+    return;
+  }
   // Недоступный канал (негативный кэш, старт) НЕ отвязывает ссылку: следующее
   // обновление повторит правку. Отвязка — только на реальный 404.
   const channel = await resolveChannel(event.channel_id);

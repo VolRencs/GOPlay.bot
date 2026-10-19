@@ -1,5 +1,5 @@
-import { withTransaction } from "../../db/database.ts";
-import { logger } from "../utils/logger.ts";
+import { withTransaction } from "./database.ts";
+import { logger } from "../lib/logger.ts";
 import { stmt } from "./statements.ts";
 
 // Сколько новейших сообщений на гильдию держим для логов правок/удалений.

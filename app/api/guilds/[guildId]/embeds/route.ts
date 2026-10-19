@@ -5,7 +5,7 @@ import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { cleanupOrphanedFiles, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "../../../../../src/lib/uploads.ts";
-import { logger } from "../../../../../src/bot/utils/logger.ts";
+import { logger } from "../../../../../src/lib/logger.ts";
 import { BOT_TOKEN_ERROR } from "../../../../../src/lib/constants.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "../../../../../src/lib/assets.ts";
 import type { EmbedPayload, EmbedSending, EmbedsGet, SavedEmbed } from "../../../../../src/components/dashboard/types.ts";

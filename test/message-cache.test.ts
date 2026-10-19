@@ -5,7 +5,7 @@ import { useTempDb } from "./helpers.ts";
 
 const dbPath = useTempDb("goplay-message-cache-");
 const { db } = await import("../src/db/database.ts");
-const { rememberMessage, messageContent, forgetMessage, flushMessageCache, enforceMessageCap, MESSAGE_CACHE_PER_GUILD } = await import("../src/bot/db/message-cache.ts");
+const { rememberMessage, messageContent, forgetMessage, flushMessageCache, enforceMessageCap, MESSAGE_CACHE_PER_GUILD } = await import("../src/db/message-cache.ts");
 
 const plain = <T extends object>(value: T | undefined): T | undefined => value ? { ...value } : undefined;
 const row = (messageId: string) => plain(db.prepare("SELECT guild_id,channel_id,content,created_at FROM message_cache WHERE message_id=?").get(messageId) as { guild_id: string; channel_id: string; content: string; created_at: number } | undefined);

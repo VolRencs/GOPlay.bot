@@ -3,7 +3,7 @@ import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src
 import { db } from "../../../../../src/db/database.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
 import { logGroups, logKeys, type LoggingGet, type LoggingPutBody } from "../../../../../src/lib/labels.ts";
-import { stmt } from "../../../../../src/bot/db/statements.ts";
+import { stmt } from "../../../../../src/db/statements.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 
 const defaults: Record<string, boolean> = Object.fromEntries(logKeys.map(key => [key, true]));

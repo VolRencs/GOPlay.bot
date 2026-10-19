@@ -5,7 +5,7 @@ import { clampMusicSeconds } from "../../../../../src/lib/labels.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 import { safeJson } from "../../../../../src/lib/json.ts";
 import { db } from "../../../../../src/db/database.ts";
-import { stmt } from "../../../../../src/bot/db/statements.ts";
+import { stmt } from "../../../../../src/db/statements.ts";
 
 const channelRef = (id: string) => `<#${id}>`;
 const roleRef = (id: string) => `<@&${id}>`;

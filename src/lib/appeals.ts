@@ -1,6 +1,6 @@
 import { type SQLInputValue } from "node:sqlite";
 import { db, withTransaction } from "../db/database.ts";
-import { stmt } from "../bot/db/statements.ts";
+import { stmt } from "../db/statements.ts";
 import { discordFetch, sendDiscordDM } from "./discord-api.ts";
 import { punishmentLabel } from "./labels.ts";
 import type { Locale } from "./i18n/core.ts";
@@ -26,23 +26,19 @@ export type AppealsListGet = { appeals: AppealView[] };
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 type ReviewResultValue = { ok: true; value: ReviewResult } | { ok: false; error: string; status: number };
 
-const punishmentStmt = db.prepare("SELECT id,guild_id,user_id,type,reason,created_at FROM moderation_actions WHERE id=?");
-const byIdStmt = db.prepare("SELECT * FROM appeals WHERE id=? AND guild_id=?");
-const existingStmt = db.prepare("SELECT id,number,status FROM appeals WHERE punishment_id=?");
-const insertStmt = db.prepare("INSERT INTO appeals(guild_id,user_id,punishment_id,type,reason,status,number,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)");
-const updateStmt = db.prepare("UPDATE appeals SET status=?,moderator_comment=?,updated_at=?,reviewed_by=?,reviewed_at=? WHERE id=? AND guild_id=? AND status IN ('pending','reviewing')");
+function getPunishment(punishmentId: number): Punishment | undefined {
+  return stmt.appealPunishment.get(punishmentId) as Punishment | undefined;
+}
+
 // Счётчик на гильдию: инкремент в той же транзакции, что и insert — серверы не
 // делят последовательность, номера непрерывны. UNIQUE (guild_id, number)
 // страхует от гонок выделения.
-const nextNumberStmt = db.prepare("UPDATE guilds SET appeal_counter = appeal_counter + 1 WHERE id = ? RETURNING appeal_counter");
-
-function getPunishment(punishmentId: number): Punishment | undefined {
-  return punishmentStmt.get(punishmentId) as Punishment | undefined;
-}
-
 function nextAppealNumber(guildId: string): number {
-  // Гильдия гарантирована FK-проверкой наказания: RETURNING всегда вернёт строку.
-  return (nextNumberStmt.get(guildId) as { appeal_counter: number }).appeal_counter;
+  // Строку гильдии могли удалить между проверкой и insert — тогда номер не
+  // выдаём, а апелляция падает с понятной ошибкой вместо TypeError.
+  const row = stmt.appealNextNumber.get(guildId) as { appeal_counter: number } | undefined;
+  if (!row) throw new Error("Гильдия не найдена");
+  return row.appeal_counter;
 }
 
 // Любая строка апелляции — включая отклонённую — навсегда блокирует новую
@@ -57,8 +53,8 @@ function insertAppeal(guildId: string, userId: string, punishmentId: number, typ
   const at = Date.now();
   return withTransaction(() => {
     const number = nextAppealNumber(guildId);
-    const result = insertStmt.run(guildId, userId, punishmentId, type, reason, status, number, at, at);
-    return byIdStmt.get(Number(result.lastInsertRowid), guildId) as Appeal;
+    const result = stmt.appealInsert.run(guildId, userId, punishmentId, type, reason, status, number, at, at);
+    return stmt.appealById.get(Number(result.lastInsertRowid), guildId) as Appeal;
   });
 }
 
@@ -72,13 +68,13 @@ export function createAppeal(input: { guildId: string; userId: string; punishmen
   const reason = input.reason.trim();
   if (reason.length < 10) return { ok: false, error: trAppeals(lang, "reasonTooShort") };
   if (reason.length > 4000) return { ok: false, error: trAppeals(lang, "reasonTooLong") };
-  const existing = existingStmt.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
+  const existing = stmt.appealExisting.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
   if (existing) return { ok: false, error: existingError(lang, existing) };
   try {
     return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, input.type ?? punishment.type, reason, "pending") };
   } catch {
     // UNIQUE(punishment_id): вторая апелляция обогнала проверку выше.
-    const raced = existingStmt.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
+    const raced = stmt.appealExisting.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
     return { ok: false, error: existingError(lang, raced) };
   }
 }
@@ -91,11 +87,11 @@ export function declineAppeal(input: { guildId: string; userId: string; punishme
   const punishment = getPunishment(input.punishmentId);
   if (!punishment || punishment.guild_id !== input.guildId) return { ok: false, error: trAppeals(lang, "notFound") };
   if (punishment.user_id !== input.userId) return { ok: false, error: trAppeals(lang, "notYours") };
-  if (existingStmt.get(input.punishmentId)) return { ok: true, value: null };
+  if (stmt.appealExisting.get(input.punishmentId)) return { ok: true, value: null };
   try {
     return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, punishment.type, trAppeals(lang, "declinedReason"), "declined") };
   } catch (error) {
-    if (existingStmt.get(input.punishmentId)) return { ok: true, value: null };
+    if (stmt.appealExisting.get(input.punishmentId)) return { ok: true, value: null };
     throw error;
   }
 }
@@ -103,13 +99,13 @@ export function declineAppeal(input: { guildId: string; userId: string; punishme
 type ReviewResult = { appeal: Appeal; reversal: "unban" | "untimeout" | null; previousStatus: AppealStatus };
 export function reviewAppeal(input: { guildId: string; appealId: number; action: ReviewAction; reviewerId: string; comment?: string | null }): ReviewResultValue {
   const lang = guildLang(input.guildId);
-  const appeal = byIdStmt.get(input.appealId, input.guildId) as Appeal | undefined;
+  const appeal = stmt.appealById.get(input.appealId, input.guildId) as Appeal | undefined;
   if (!appeal) return { ok: false, error: trAppeals(lang, "appealNotFound"), status: 404 };
   if (appeal.status !== "pending" && appeal.status !== "reviewing") return { ok: false, error: trAppeals(lang, "appealClosedAlready"), status: 409 };
   if (input.action === "reviewing" && appeal.status === "reviewing") return { ok: false, error: trAppeals(lang, "alreadyReviewing"), status: 409 };
   const comment = typeof input.comment === "string" ? input.comment.trim().slice(0, 500) || null : null;
   const at = Date.now();
-  const result = updateStmt.run(input.action, comment, at, input.reviewerId, at, input.appealId, input.guildId);
+  const result = stmt.appealUpdate.run(input.action, comment, at, input.reviewerId, at, input.appealId, input.guildId);
   if (result.changes === 0) return { ok: false, error: trAppeals(lang, "appealClosedAlready"), status: 409 };
   const reversal = input.action === "approved" ? reversalFor(appeal.type) : null;
   return { ok: true, value: { appeal: { ...appeal, status: input.action, moderator_comment: comment, updated_at: at, reviewed_by: input.reviewerId, reviewed_at: at }, reversal, previousStatus: appeal.status } };
@@ -170,11 +166,11 @@ export function listAppeals(query: AppealListQuery): AppealView[] {
   if (query.to !== undefined) { clauses.push("a.created_at<=?"); params.push(query.to); }
   params.push(Math.max(1, Math.min(200, query.limit ?? 100)), Math.max(0, query.offset ?? 0));
   const key = clauses.join("|");
-  let stmt = listAppealCache.get(key);
-  if (!stmt) {
+  let queryStmt = listAppealCache.get(key);
+  if (!queryStmt) {
     if (listAppealCache.size >= 32) listAppealCache.clear();
-    stmt = db.prepare(`SELECT a.*,m.reason AS punishment_reason,m.created_at AS punishment_created_at FROM appeals a JOIN moderation_actions m ON m.id=a.punishment_id WHERE ${clauses.join(" AND ")} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`);
-    listAppealCache.set(key, stmt);
+    queryStmt = db.prepare(`SELECT a.*,m.reason AS punishment_reason,m.created_at AS punishment_created_at FROM appeals a JOIN moderation_actions m ON m.id=a.punishment_id WHERE ${clauses.join(" AND ")} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`);
+    listAppealCache.set(key, queryStmt);
   }
-  return stmt.all(...params) as AppealView[];
+  return queryStmt.all(...params) as AppealView[];
 }

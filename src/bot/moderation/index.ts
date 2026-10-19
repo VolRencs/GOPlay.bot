@@ -1,9 +1,9 @@
 import { ChannelType, MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction, type Client, type Guild, type GuildMember, type NewsChannel, type TextChannel, type ThreadChannel } from "discord.js";
-import { stmt } from "../db/statements.ts";
+import { stmt } from "../../db/statements.ts";
 import { setTimeout as sleep } from "node:timers/promises";
-import { logger } from "../utils/logger.ts";
+import { logger } from "../../lib/logger.ts";
 import { addMetric } from "../metrics.ts";
-import { time } from "../perf.ts";
+import { time } from "../../lib/perf.ts";
 import { logAction, markBotAction } from "../logging/index.ts";
 import { offerAppeal } from "../appeals/index.ts";
 import { appealPunishmentTypes } from "../../lib/appeals.ts";
@@ -13,9 +13,17 @@ import { guildTr } from "../../lib/i18n/bot.ts";
 import { trModeration } from "../../lib/i18n/bot/moderation.ts";
 function canTarget(actor: GuildMember, target: GuildMember) { return actor.id !== target.id && actor.roles.highest.position > target.roles.highest.position && target.manageable; }
 export function recordPunishmentAndOffer(client: Client, input: { guildId: string; guildName: string; userId: string; type: string; reason: string; moderatorId: string | null }) {
-  const result = stmt.moderationInsert.run(input.guildId, input.userId, input.moderatorId, input.type, input.reason, Date.now());
+  // Запись наказания обязана пережить сбой БД: она вызывается из .then() внутри
+  // gateway-обработчиков, где throw превращался бы в unhandled rejection.
+  let punishmentId: number;
+  try {
+    const result = stmt.moderationInsert.run(input.guildId, input.userId, input.moderatorId, input.type, input.reason, Date.now());
+    punishmentId = Number(result.lastInsertRowid);
+  } catch (error) {
+    logger.warn("[MOD] Не удалось записать наказание", input.guildId, input.userId, input.type, error);
+    return;
+  }
   addMetric(input.guildId, "moderation");
-  const punishmentId = Number(result.lastInsertRowid);
   // untimeout — коррекция, kick необратим: оффер апелляции не нужен обоим.
   if (input.type === "untimeout" || input.type === "kick") return;
   const appealType = appealPunishmentTypes.find(type => type === input.type);
@@ -27,7 +35,8 @@ export function recordPunishmentAndOffer(client: Client, input: { guildId: strin
 const logTypes: Record<string, string> = { ban: "member_ban", kick: "member_kick", timeout: "member_timeout", untimeout: "member_timeout" };
 export async function moderate(i: ChatInputCommandInteraction) {
   const t = guildTr(trModeration, i.guildId ?? "");
-  if (!i.guild || !i.member || !i.memberPermissions || !i.memberPermissions.has(PermissionFlagsBits.Administrator)) return void i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
+  if (!i.guild || !i.member) return void i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
+  if (!i.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void i.reply({ content: t("noPermsSelf"), flags: MessageFlags.Ephemeral }).catch(() => null);
   const command = i.commandName;
   // Отвечаем сразу: ниже REST-вызовы (фетч участника, бан, purge), которые
   // иначе держали бы интеракцию висящей и могли вылететь за 3-секундное окно.
@@ -106,9 +115,16 @@ async function channelAction(i: ChatInputCommandInteraction) {
 // ошибки не роняют вызывающий путь. Повторный вызов во время активной чистки
 // расширяет дедлайн и не запускает второй проход.
 const userPurges = new Map<string, { cutoff: number; requeue: boolean; promise: Promise<number> }>();
+// Повторная чистка того же автора в защищённом канале не запускается сразу:
+// иначе 10 сообщений подряд = 10 полных проходов по всем каналам гильдии
+// (до тысячи REST-запросов на одно сообщение).
+const PURGE_COOLDOWN_MS = 60_000;
+const recentPurges = new Map<string, number>();
 
 export function purgeUserMessages(guild: Guild, userId: string, hours: number): Promise<number> {
   const key = `${guild.id}:${userId}`;
+  const last = recentPurges.get(key);
+  if (last !== undefined && Date.now() - last < PURGE_COOLDOWN_MS) return Promise.resolve(0);
   const cutoff = Date.now() - Math.min(hours * 3_600_000, 14 * DAY_MS);
   const active = userPurges.get(key);
   if (active) { active.cutoff = Math.min(active.cutoff, cutoff); active.requeue = true; return active.promise; }
@@ -124,12 +140,18 @@ export function purgeUserMessages(guild: Guild, userId: string, hours: number): 
       logger.warn("[PURGE] Чистка сообщений прервана", guild.id, userId, error);
     } finally {
       userPurges.delete(key);
+      recentPurges.set(key, Date.now());
     }
     return deleted;
   })();
   userPurges.set(key, state);
   return state.promise;
 }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, at] of recentPurges) if (now - at > PURGE_COOLDOWN_MS * 4) recentPurges.delete(key);
+}, 60_000).unref();
 
 async function purgeMessages(guild: Guild, userId: string, cutoff: number): Promise<number> {
   const started = performance.now();

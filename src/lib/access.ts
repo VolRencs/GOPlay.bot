@@ -1,5 +1,5 @@
 import { allowedAdminIds, canManageGuild, discordGuilds, isAllowedAccount, resolveSession } from "./guild-access.ts";
-import { logger } from "../bot/utils/logger.ts";
+import { logger } from "./logger.ts";
 import { discordFetch } from "./discord-api.ts";
 import { ttlCacheAsync } from "./cache.ts";
 

@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { pipeline } from "node:stream/promises";
 import { AudioPlayerStatus, StreamType, createAudioResource, type AudioPlayer } from "@discordjs/voice";
-import { logger } from "../../bot/utils/logger.ts";
-import { count, time } from "../../bot/perf.ts";
+import { logger } from "../logger.ts";
+import { count, time } from "../perf.ts";
 import { FFMPEG, YT_DLP, isAllowedMediaUrl, ytDlpArgs } from "./resolver.ts";
 import type { StreamOutcome, Track } from "./types.ts";
 

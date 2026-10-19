@@ -1,7 +1,7 @@
 import { EmbedBuilder, Events, MessageFlags, type Client, type Guild, type Interaction, type Message, type VoiceState } from "discord.js";
 import { withTransaction } from "../../db/database.ts";
-import { aliveGuildIds, isForeignKeyError, stmt } from "../db/statements.ts";
-import { logger } from "../utils/logger.ts";
+import { aliveGuildIds, isForeignKeyError, stmt } from "../../db/statements.ts";
+import { logger } from "../../lib/logger.ts";
 import { failInteraction, guard } from "../../lib/errors.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { levelFromXp, levelProgress, type LevelReward, type LevelSettings } from "../../lib/levels.ts";
@@ -104,11 +104,15 @@ function tickVoice(client: Client): void {
   for (const [key, at] of messageCooldowns) if (now - at > COOLDOWN_RETENTION_MS) messageCooldowns.delete(key);
   for (const [key, session] of voiceSessions) {
     const guild = client.guilds.cache.get(session.guildId);
-    const member = guild?.members.cache.get(session.userId);
     const channel = guild?.channels.cache.get(session.channelId);
-    if (!guild || !member || !channel?.isVoiceBased()) { voiceSessions.delete(key); continue; }
+    if (!guild || !channel?.isVoiceBased()) { voiceSessions.delete(key); continue; }
+    // Присутствие проверяем по каналу, а не по кэшу участников гильдии: участник
+    // мог быть вытеснен из кэша, и сессия молча теряла бы голосовой XP.
+    const member = guild.members.cache.get(session.userId) ?? channel.members.get(session.userId);
+    if (!member) { voiceSessions.delete(key); continue; }
     if (guild.afkChannelId === channel.id) continue;
-    if (member.voice.selfMute || member.voice.selfDeaf || member.voice.serverMute || member.voice.serverDeaf) continue;
+    const voice = member.voice;
+    if (voice && (voice.selfMute || voice.selfDeaf || voice.serverMute || voice.serverDeaf)) continue;
     if (channel.members.filter(entry => !entry.user.bot).size < 2) continue;
     const settings = settingsFor(guild.id);
     if (!settings.enabled || settings.xp_per_voice_minute <= 0) continue;

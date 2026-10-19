@@ -1,10 +1,13 @@
-import { db } from "../../db/database.ts";
+import { db } from "./database.ts";
 
 // Все statements готовятся один раз на старте: SQLite не парсит SQL внутри
 // обработчиков событий.
 export const stmt = {
   guildInsert: db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)"),
   guildName: db.prepare("SELECT name FROM guilds WHERE id=?"),
+  guildLangUpdate: db.prepare("UPDATE guilds SET lang=? WHERE id=?"),
+  guildRefresh: db.prepare("UPDATE guilds SET name=?,icon=?,updated_at=? WHERE id=?"),
+  moderationPrune: db.prepare("DELETE FROM moderation_actions WHERE created_at < ? AND id NOT IN(SELECT punishment_id FROM appeals)"),
   guildIds: db.prepare("SELECT id FROM guilds"),
   rules: db.prepare("SELECT kind,action_json,threshold_json,window_seconds,escalation FROM automod_rules WHERE guild_id=? AND enabled=1 ORDER BY id"),
   security: db.prepare("SELECT ignored_role_ids_json,protected_channel_id FROM guild_security_settings WHERE guild_id=?"),
@@ -56,6 +59,53 @@ export const stmt = {
   levelRewardsAll: db.prepare("SELECT level,role_id FROM level_rewards WHERE guild_id=? ORDER BY level"),
   levelRewardsDelete: db.prepare("DELETE FROM level_rewards WHERE guild_id=?"),
   levelRewardsInsert: db.prepare("INSERT INTO level_rewards(guild_id,level,role_id) VALUES(?,?,?)"),
+  // Апелляции
+  appealPunishment: db.prepare("SELECT id,guild_id,user_id,type,reason,created_at FROM moderation_actions WHERE id=?"),
+  appealById: db.prepare("SELECT * FROM appeals WHERE id=? AND guild_id=?"),
+  appealExisting: db.prepare("SELECT id,number,status FROM appeals WHERE punishment_id=?"),
+  appealInsert: db.prepare("INSERT INTO appeals(guild_id,user_id,punishment_id,type,reason,status,number,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)"),
+  appealUpdate: db.prepare("UPDATE appeals SET status=?,moderator_comment=?,updated_at=?,reviewed_by=?,reviewed_at=? WHERE id=? AND guild_id=? AND status IN ('pending','reviewing')"),
+  appealNextNumber: db.prepare("UPDATE guilds SET appeal_counter = appeal_counter + 1 WHERE id = ? RETURNING appeal_counter"),
+  // События
+  eventGet: db.prepare("SELECT * FROM events WHERE id=?"),
+  eventGetInGuild: db.prepare("SELECT * FROM events WHERE id=? AND guild_id=?"),
+  eventInsert: db.prepare(`INSERT INTO events(id,guild_id,channel_id,message_id,series_id,embed_json,buttons_json,scheduled_at,max_participants,registration_enabled,waitlist_enabled,status,event_role_id,reminders_json,recurrence_json,created_at,updated_at,started_at,completed_at,cancelled_at,stats_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`),
+  eventUpdate: db.prepare(`UPDATE events SET channel_id=?,message_id=?,embed_json=?,buttons_json=?,scheduled_at=?,max_participants=?,registration_enabled=?,waitlist_enabled=?,status=?,event_role_id=?,reminders_json=?,recurrence_json=?,updated_at=?,started_at=?,completed_at=?,cancelled_at=?,stats_json=? WHERE id=? AND guild_id=?`),
+  eventDelete: db.prepare("DELETE FROM events WHERE id=? AND guild_id=?"),
+  eventDeleteByGuild: db.prepare("DELETE FROM events WHERE guild_id=?"),
+  eventUpdateMessage: db.prepare("UPDATE events SET message_id=?,updated_at=? WHERE id=?"),
+  eventDetachByMessage: db.prepare("UPDATE events SET message_id=NULL,updated_at=? WHERE message_id=?"),
+  eventList: db.prepare("SELECT * FROM events WHERE guild_id=? ORDER BY scheduled_at DESC"),
+  eventsDueLive: db.prepare("SELECT * FROM events WHERE status='scheduled' AND scheduled_at<=?"),
+  eventsOfUserInGuild: db.prepare("SELECT p.event_id FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? AND p.user_id=?"),
+  eventNextInSeries: db.prepare("SELECT id FROM events WHERE series_id=? AND status='scheduled' LIMIT 1"),
+  eventFlipLive: db.prepare("UPDATE events SET status='live',started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='scheduled'"),
+  eventsPrune: db.prepare("DELETE FROM events WHERE status IN ('completed','cancelled') AND scheduled_at < ?"),
+  participantGet: db.prepare("SELECT * FROM event_participants WHERE event_id=? AND user_id=?"),
+  participantInsert: db.prepare("INSERT INTO event_participants(event_id,user_id,joined_at,waitlist) VALUES(?,?,?,?)"),
+  participantDelete: db.prepare("DELETE FROM event_participants WHERE event_id=? AND user_id=?"),
+  participantPromote: db.prepare("UPDATE event_participants SET waitlist=0 WHERE event_id=? AND user_id=? AND waitlist=1"),
+  participantsOf: db.prepare("SELECT * FROM event_participants WHERE event_id=? ORDER BY waitlist, joined_at"),
+  eventCounts: db.prepare("SELECT COALESCE(SUM(waitlist=0),0) AS joined, COALESCE(SUM(waitlist=1),0) AS waitlist FROM event_participants WHERE event_id=?"),
+  eventNextWaitlisted: db.prepare("SELECT user_id FROM event_participants WHERE event_id=? AND waitlist=1 ORDER BY joined_at LIMIT 1"),
+  reminderDeleteUnsent: db.prepare("DELETE FROM event_reminders WHERE event_id=? AND sent_at IS NULL"),
+  reminderInsert: db.prepare("INSERT OR IGNORE INTO event_reminders(event_id,due_at) VALUES(?,?)"),
+  reminderClaim: db.prepare("UPDATE event_reminders SET sent_at=? WHERE id=? AND sent_at IS NULL"),
+  remindersDue: db.prepare("SELECT id,event_id FROM event_reminders WHERE due_at<=? AND sent_at IS NULL"),
+  eventCountsByGuild: db.prepare("SELECT p.event_id AS eventId, SUM(p.waitlist=0) AS joined, SUM(p.waitlist=1) AS waitlist FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? GROUP BY p.event_id"),
+  eventParticipantsByGuild: db.prepare("SELECT p.event_id AS eventId, p.user_id AS userId, p.joined_at AS joinedAt, p.waitlist FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? ORDER BY p.waitlist, p.joined_at"),
+  // Очистка данных сервера
+  cleanupAudit: db.prepare("DELETE FROM dashboard_audit WHERE guild_id=?"),
+  cleanupAppeals: db.prepare("DELETE FROM appeals WHERE guild_id=?"),
+  cleanupAppealCounter: db.prepare("UPDATE guilds SET appeal_counter=0 WHERE id=?"),
+  cleanupMusic: db.prepare("DELETE FROM music_settings WHERE guild_id=?"),
+  cleanupLevels: db.prepare("DELETE FROM member_levels WHERE guild_id=?"),
+  cleanupStatsMetrics: db.prepare("DELETE FROM guild_daily_metrics WHERE guild_id=?"),
+  cleanupStatsChannelStats: db.prepare("DELETE FROM guild_daily_channel_stats WHERE guild_id=?"),
+  cleanupStatsUserStats: db.prepare("DELETE FROM guild_daily_user_stats WHERE guild_id=?"),
+  cleanupStatsHourlyMessages: db.prepare("DELETE FROM guild_hourly_messages WHERE guild_id=?"),
+  cleanupMessageCache: db.prepare("DELETE FROM message_cache WHERE guild_id=?"),
+  cleanupGuild: db.prepare("DELETE FROM guilds WHERE id=?"),
 };
 
 export function isForeignKeyError(error: unknown): boolean {

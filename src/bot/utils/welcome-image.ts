@@ -51,14 +51,16 @@ let welcomeActive = 0;
 const welcomeQueue: (() => void)[] = [];
 async function withWelcomeSlot<T>(fn: () => Promise<T> | T): Promise<T> {
   if (welcomeActive >= MAX_WELCOME_CONCURRENCY) await new Promise<void>((r) => welcomeQueue.push(r));
-  welcomeActive++;
+  else welcomeActive++;
   try {
     await immediate();
     return await fn();
   } finally {
     welcomeActive--;
     const next = welcomeQueue.shift();
-    if (next) next();
+    // Счётчик для промоутированного ожидающего растёт ДО пробуждения — иначе
+    // новый рендер успевал бы занять слот и лимит превышался.
+    if (next) { welcomeActive++; next(); }
   }
 }
 const fontFiles = ["Onest-Regular.ttf", "Onest-Bold.ttf"].map(name => join(process.cwd(), "public", "fonts", name)).filter(existsSync);

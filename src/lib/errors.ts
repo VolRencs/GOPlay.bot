@@ -1,4 +1,4 @@
-import { logger } from "../bot/utils/logger.ts";
+import { logger } from "./logger.ts";
 import { MessageFlags, type Interaction, type RepliableInteraction } from "discord.js";
 
 /** Fire-and-forget вызов async-функции, трогающей SQLite/сеть, из gateway-

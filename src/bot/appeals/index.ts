@@ -2,7 +2,7 @@ import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, Mod
 import { appealPunishmentTypes, createAppeal, declineAppeal, type AppealPunishmentType } from "../../lib/appeals.ts";
 import { punishmentLabel } from "../../lib/labels.ts";
 import { failInteraction } from "../../lib/errors.ts";
-import { count } from "../perf.ts";
+import { count } from "../../lib/perf.ts";
 import { guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { trAppeals } from "../../lib/i18n/bot/appeals.ts";
 
@@ -66,7 +66,9 @@ async function handleModal(i: ModalSubmitInteraction) {
 export function offerAppeal(client: Client, input: { punishmentId: number; guildId: string; guildName: string; userId: string; type: string; reason: string | null; appealType: AppealPunishmentType }) {
   const lang = guildLang(input.guildId);
   const t = trFor(trAppeals, lang);
-  const typeLabel = punishmentLabel(lang, input.type);
+  // Тип наказания, а не источник ("automod"): иначе юзер видит «Автомодерация»
+  // вместо «Бан»/«Таймаут».
+  const typeLabel = punishmentLabel(lang, input.appealType);
   const content = t("offerTitle", { server: input.guildName, type: typeLabel }) + (input.reason ? t("offerReason", { reason: input.reason }) : "") + t("offerBody");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(`appeal:offer:agree:${input.guildId}:${input.punishmentId}:${input.appealType}`).setLabel(t("btnAppeal")).setStyle(ButtonStyle.Primary),

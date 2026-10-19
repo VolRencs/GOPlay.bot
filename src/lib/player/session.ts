@@ -4,8 +4,8 @@
 import { type Guild } from "discord.js";
 import { AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, createAudioPlayer, entersState, joinVoiceChannel, type VoiceConnection } from "@discordjs/voice";
 import { setTimeout as delay } from "node:timers/promises";
-import { logger } from "../../bot/utils/logger.ts";
-import { count } from "../../bot/perf.ts";
+import { logger } from "../logger.ts";
+import { count } from "../perf.ts";
 import { ACTIVE_STREAM_LIMIT, activeStreamCount, startAudioStream, type StreamHandle } from "./streamer.ts";
 import { isAllowedMediaUrl, setHydrateHooks } from "./resolver.ts";
 import { moveWithinList, MAX_QUEUE, MAX_DURATION_SECONDS, isNaturalEnd, nextLoopMode, partitionByIndices, shuffleWithin, type LoopMode, type StreamOutcome, type Track } from "./types.ts";
@@ -90,7 +90,7 @@ function refreshActivityTimer(s: Session): void {
   s.activityTimer = setTimeout(() => {
     logger.info("[MUSIC] Бездействие (нет слушателей / тишина / пауза) — покидаю канал", s.guildId);
     destroySession(s.guildId);
-  }, remain);
+  }, remain).unref();
 }
 function disarmActivityTimer(s: Session): void {
   if (s.activityTimer) { clearTimeout(s.activityTimer); s.activityTimer = null; }

@@ -6,7 +6,7 @@ import { db } from "../../../../../src/db/database.ts";
 import { parseImageConfig, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../../../src/lib/welcome.ts";
 import { stableJson } from "../../../../../src/lib/json.ts";
 import { rejectOversized } from "../../../../../src/lib/uploads.ts";
-import { stmt } from "../../../../../src/bot/db/statements.ts";
+import { stmt } from "../../../../../src/db/statements.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 
 const welcomeUpsert = db.prepare(`INSERT INTO welcome_settings(guild_id,enabled,channel_id,message,image_enabled,image_config_json,goodbye_enabled,goodbye_channel_id,goodbye_message,updated_at)

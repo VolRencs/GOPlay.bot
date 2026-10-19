@@ -2,7 +2,7 @@ import { headers } from "next/headers.js";
 import { hash } from "node:crypto";
 import { auth } from "./auth.ts";
 import { db } from "../db/database.ts";
-import { logger } from "../bot/utils/logger.ts";
+import { logger } from "./logger.ts";
 import { ttlCacheAsync } from "./cache.ts";
 import { DAY_MS } from "./constants.ts";
 import { DiscordRateLimitError, discordFetch, withRateLimitRetry } from "./discord-api.ts";
@@ -119,7 +119,10 @@ const configuredGuildsStmt = db.prepare("SELECT id FROM guilds WHERE id IN (SELE
 export async function configuredGuilds(requestHeaders: Headers, accountId?: string): Promise<DashboardGuild[]> {
   const allowed = (await discordGuilds(requestHeaders, accountId)).filter(canManageGuild);
   if (!allowed.length) return [];
-  const configured = new Set((configuredGuildsStmt.all(JSON.stringify(allowed.map(guild => guild.id))) as { id: string }[]).map(row => row.id));
+  // Параметр json_each растёт вместе со списком серверов пользователя —
+  // ограничиваем выборку разумным числом.
+  const ids = allowed.slice(0, 200).map(guild => guild.id);
+  const configured = new Set((configuredGuildsStmt.all(JSON.stringify(ids)) as { id: string }[]).map(row => row.id));
   return allowed.filter(guild => configured.has(guild.id)).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, icon }) => ({ id, name, icon }));
 }
 
@@ -185,13 +188,26 @@ async function requireAdmin(): Promise<{ ok: true } | Response> {
   return { ok: true };
 }
 
-async function authorize(guildId:string) {
+// Ошибка доступа к Discord: разные причины — разные сообщения и статусы.
+function accessError(error: unknown) {
+  if (error instanceof DiscordAuthError) return { ok: false as const, error: "Сессия Discord истекла. Войдите через Discord снова.", status: 403 };
+  if (error instanceof DiscordRateLimitError) return { ok: false as const, error: "Discord временно ограничил запросы. Подождите несколько секунд и обновите страницу.", status: 429 };
+  return { ok: false as const, error: "Не удалось проверить доступ Discord. Обновите страницу; если ошибка повторится, войдите через Discord снова.", status: 403 };
+}
+
+async function authorize(guildId: string) {
   const gate = await requireUser();
   if (!gate.ok) return gate;
   let remote: DiscordGuild[];
-  try { remote = await discordGuilds(gate.requestHeaders, gate.discordAccount?.id); } catch (error) { logger.warn("[WARN] Discord guild access failed", error); const rateLimited = error instanceof DiscordRateLimitError, authFailed = error instanceof DiscordAuthError; return {ok:false as const,error:authFailed?"Сессия Discord истекла. Войдите через Discord снова.":rateLimited?"Discord временно ограничил запросы. Подождите несколько секунд и обновите страницу.":"Не удалось проверить доступ Discord. Обновите страницу; если ошибка повторится, войдите через Discord снова.",status:rateLimited?429:403} as const; }
-  const guild=remote.find(x=>x.id===guildId); if(!guild||!canManageGuild(guild))return {ok:false as const,error:"У вас нет права «Управление сервером» на этом сервере.",status:403} as const;
-  if(!guildExists.get(guildId))return {ok:false as const,error:"Guild is not configured",status:404} as const;
+  try {
+    remote = await discordGuilds(gate.requestHeaders, gate.discordAccount?.id);
+  } catch (error) {
+    logger.warn("[WARN] Discord guild access failed", error);
+    return accessError(error);
+  }
+  const guild = remote.find(x => x.id === guildId);
+  if (!guild || !canManageGuild(guild)) return { ok: false as const, error: "У вас нет права «Управление сервером» на этом сервере.", status: 403 };
+  if (!guildExists.get(guildId)) return { ok: false as const, error: "Guild is not configured", status: 404 };
   return { ok: true as const, user: gate.user };
 }
 

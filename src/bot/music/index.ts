@@ -1,7 +1,7 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type APIInteractionGuildMember, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type GuildMember, type Interaction, type StringSelectMenuInteraction } from "discord.js";
-import { count, time } from "../perf.ts";
-import { logger } from "../utils/logger.ts";
-import { stmt } from "../db/statements.ts";
+import { count, time } from "../../lib/perf.ts";
+import { logger } from "../../lib/logger.ts";
+import { stmt } from "../../db/statements.ts";
 import { failInteraction, guard, isMissingDiscordResource } from "../../lib/errors.ts";
 import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
@@ -241,7 +241,7 @@ function refreshPanel(guildId: string): void {
   panelTimers.set(guildId, setTimeout(() => {
     panelTimers.delete(guildId);
     void runPanelRefresh(guildId);
-  }, PANEL_DEBOUNCE_MS));
+  }, PANEL_DEBOUNCE_MS).unref());
 }
 
 async function runPanelRefresh(guildId: string): Promise<void> {
@@ -397,8 +397,11 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
   }
 }
 
-type PendingMove = { from: number; at: number };
+type PendingMove = { from: number; at: number; id: string };
 const pendingMoves = new Map<string, PendingMove>(); // ключ `${guildId}:${userId}`
+/** Идентичность трека в очереди: перенос работает по ней, а не по индексу —
+ *  индекс устаревает, если очередь изменилась между двумя шагами меню. */
+const trackIdentity = (track: Track): string => `${track.query}\u0000${track.title}`;
 
 /** Первый экран: список очереди на удаление или выбор трека для перемещения. */
 async function openQueueMenu(i: ButtonInteraction): Promise<void> {
@@ -445,7 +448,7 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
     if (action === "mvasrc") {
       const from = Number(i.values[0]);
       if (!Number.isInteger(from) || from < 0 || from >= queue.length) { await deny(t("queueChanged")); return; }
-      pendingMoves.set(`${guildId}:${i.user.id}`, { from, at: Date.now() });
+      pendingMoves.set(`${guildId}:${i.user.id}`, { from, at: Date.now(), id: trackIdentity(queue[from]!) });
       const showCount = Math.min(queue.length, SELECT_CAP - 1);
       const options: StringSelectMenuOptionBuilder[] = [];
       for (let slot = 0; slot < showCount; slot++) {
@@ -471,7 +474,10 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
       pendingMoves.delete(key); // шаг одноразовый: повтор — только через кнопку
       const to = Number(i.values[0]);
       if (!pending || Date.now() - pending.at > PENDING_MOVE_TTL_MS || !Number.isInteger(to)) { await deny(t("queueChanged")); return; }
-      const moved = queue[pending.from];
+      // Очередь могла измениться между шагами: переносим только тот же трек.
+      const current = queue[pending.from];
+      if (!current || trackIdentity(current) !== pending.id) { await deny(t("queueChanged")); return; }
+      const moved = current;
       const at = moveQueueTrack(guildId, pending.from, to);
       await deny(at >= 0 && moved ? t("movedDone", { title: moved.title, n: at + 1 }) : t("queueChanged"));
       return;

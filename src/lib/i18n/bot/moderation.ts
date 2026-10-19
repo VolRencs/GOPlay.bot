@@ -3,6 +3,7 @@ import { makeTr, commonMessages } from "../bot.ts";
 export const trModeration = makeTr({
   ...commonMessages,
   noPermsTarget: { ru: "❌ Нельзя управлять этим пользователем: проверьте иерархию ролей.", en: "❌ Cannot moderate this user: check role hierarchy." },
+  noPermsSelf: { ru: "❌ Недостаточно прав для этой команды.", en: "❌ You don't have permission to use this command." },
   noPermsGeneric: { ru: "❌ У бота недостаточно прав или ресурс был удалён.", en: "❌ The bot lacks permissions or the resource was deleted." },
   warnListEmpty: { ru: "Активных предупреждений нет.", en: "No active warnings." },
   clearwarnNeedTarget: { ru: "Укажите пользователя (user) или включите снятие всех предупреждений сервера (all).", en: "Specify a user (user) or enable clearing all server warnings (all)." },

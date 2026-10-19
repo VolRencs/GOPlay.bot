@@ -2,7 +2,7 @@ import { NextResponse } from "next/server.js";
 import { discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
-import { logger } from "../../../../../src/bot/utils/logger.ts";
+import { logger } from "../../../../../src/lib/logger.ts";
 import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId, type ButtonStyleName } from "../../../../../src/lib/constants.ts";
 import type { RolePanelRow } from "../../../../../src/components/dashboard/types.ts";
 import { parseCustomEmoji } from "goemoji/discord";

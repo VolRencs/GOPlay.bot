@@ -1,4 +1,4 @@
-import { stmt } from "../bot/db/statements.ts";
+import { stmt } from "../db/statements.ts";
 import { clampNumber } from "./constants.ts";
 import { parseStringArray } from "./json.ts";
 import { levelDefaults, levelRanges, notifyModes, type LevelReward, type LevelSettings } from "./levels.ts";

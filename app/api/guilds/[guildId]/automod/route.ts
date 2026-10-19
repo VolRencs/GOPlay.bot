@@ -5,7 +5,7 @@ import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
 import { automodRulesM } from "../../../../../src/lib/labels.ts";
 import { automodActions, automodThresholdRanges, automodWindowRange, isAutomodSecurityPutBody, type AutomodGet, type AutomodPutBody, type AutomodRuleRow } from "../../../../../src/lib/automod.ts";
 import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../../../src/lib/constants.ts";
-import { stmt } from "../../../../../src/bot/db/statements.ts";
+import { stmt } from "../../../../../src/db/statements.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
 
 const thresholdLabels: Record<string, string> = {

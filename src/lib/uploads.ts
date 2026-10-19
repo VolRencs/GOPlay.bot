@@ -11,7 +11,10 @@ export const eventUploadPrefix = (guildId: string) => `/uploads/events/${guildId
 export function filenameFromUrl(prefix: string, url: string | null | undefined): string | null {
   if (!url?.startsWith(prefix)) return null;
   const filename = url.slice(prefix.length);
-  return !filename || filename.includes("/") || filename.includes("\\") ? null : filename;
+  if (!filename || filename.includes("/") || filename.includes("\\")) return null;
+  // «.» и «..» не являются именами файлов: join() с ними уводит за каталог.
+  if (filename === "." || filename === "..") return null;
+  return filename;
 }
 
 export function extractFilenames(prefix: string, urls: (string | null | undefined)[]): string[] {

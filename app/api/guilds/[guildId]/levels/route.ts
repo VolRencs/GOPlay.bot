@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, isSnowflakeArray, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { withTransaction } from "../../../../../src/db/database.ts";
-import { stmt } from "../../../../../src/bot/db/statements.ts";
+import { stmt } from "../../../../../src/db/statements.ts";
 import { stableJson } from "../../../../../src/lib/json.ts";
 import { MAX_LEVEL, MAX_REWARDS, levelRanges, notifyModes, type LevelReward, type LevelSettings, type LevelsGet, type NotifyMode } from "../../../../../src/lib/levels.ts";
 import { levelRewardsFor, levelSettingsFor } from "../../../../../src/lib/levels-store.ts";

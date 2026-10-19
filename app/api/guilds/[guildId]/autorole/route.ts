@@ -2,7 +2,7 @@ import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { autoroleSettingsFor, invalidateAutoroleSettings, type AutoroleGet, type AutorolePutBody } from "../../../../../src/lib/autorole.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
-import { stmt } from "../../../../../src/bot/db/statements.ts";
+import { stmt } from "../../../../../src/db/statements.ts";
 
 const roleRef = (id: string) => `<@&${id}>`;
 

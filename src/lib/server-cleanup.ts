@@ -1,19 +1,12 @@
-import { db, withTransaction } from "../db/database.ts";
-import { forgetGuildMessages } from "../bot/db/message-cache.ts";
+import { withTransaction } from "../db/database.ts";
+import { stmt } from "../db/statements.ts";
+import { forgetGuildMessages } from "../db/message-cache.ts";
 import { clearWarns } from "./warns.ts";
 import { deleteEventsByGuild } from "./events.ts";
 import { invalidateMusicSettings } from "./music-settings.ts";
 import type { CleanupTarget } from "./labels.ts";
 
-const auditDelete = db.prepare("DELETE FROM dashboard_audit WHERE guild_id=?");
-const appealsDelete = db.prepare("DELETE FROM appeals WHERE guild_id=?");
-const appealCounterReset = db.prepare("UPDATE guilds SET appeal_counter=0 WHERE id=?");
-const musicDelete = db.prepare("DELETE FROM music_settings WHERE guild_id=?");
-const levelsDelete = db.prepare("DELETE FROM member_levels WHERE guild_id=?");
-const statsDeletes = ["guild_daily_metrics", "guild_daily_channel_stats", "guild_daily_user_stats", "guild_hourly_messages"]
-  .map(table => db.prepare(`DELETE FROM ${table} WHERE guild_id=?`));
-const messageCacheDelete = db.prepare("DELETE FROM message_cache WHERE guild_id=?");
-const guildDelete = db.prepare("DELETE FROM guilds WHERE id=?");
+const statsDeletes = [stmt.cleanupStatsMetrics, stmt.cleanupStatsChannelStats, stmt.cleanupStatsUserStats, stmt.cleanupStatsHourlyMessages];
 
 // Полный набор для стирания сервера. Шире пользовательского списка в
 // labels.ts: «Музыка» — настройки со страницы панели, а не накопленные
@@ -23,15 +16,15 @@ const WIPE_TARGETS: CleanupTarget[] = ["audit", "appeals", "warns", "stats", "ev
 export function runCleanupTarget(guildId: string, target: CleanupTarget): number {
   // Каждая категория — одна транзакция: сбой посередине не оставит
   // полустёртую статистику или несброшенный счётчик апелляций.
-  if (target === "audit") return withTransaction(() => Number(auditDelete.run(guildId).changes));
+  if (target === "audit") return withTransaction(() => Number(stmt.cleanupAudit.run(guildId).changes));
   if (target === "appeals") return withTransaction(() => {
-    const removed = Number(appealsDelete.run(guildId).changes);
-    appealCounterReset.run(guildId);
+    const removed = Number(stmt.cleanupAppeals.run(guildId).changes);
+    stmt.cleanupAppealCounter.run(guildId);
     return removed;
   });
   if (target === "warns") return clearWarns(guildId, null);
-  if (target === "music") { invalidateMusicSettings(guildId); return Number(musicDelete.run(guildId).changes); }
-  if (target === "levels") return Number(levelsDelete.run(guildId).changes);
+  if (target === "music") { invalidateMusicSettings(guildId); return Number(stmt.cleanupMusic.run(guildId).changes); }
+  if (target === "levels") return Number(stmt.cleanupLevels.run(guildId).changes);
   if (target === "events") return deleteEventsByGuild(guildId);
   return withTransaction(() => {
     let removed = 0;
@@ -44,7 +37,7 @@ export function runCleanupTarget(guildId: string, target: CleanupTarget): number
 // буфером (иначе следующий флеш вернул бы стёртые строки).
 function purgeMessageCache(guildId: string) {
   forgetGuildMessages(guildId);
-  messageCacheDelete.run(guildId);
+  stmt.cleanupMessageCache.run(guildId);
 }
 
 // Полное стирание всех данных сервера: все категории очистки, кэш текстов и
@@ -58,13 +51,12 @@ export function wipeGuildData(guildId: string) {
   withTransaction(() => {
     for (const target of WIPE_TARGETS) runCleanupTarget(guildId, target);
     purgeMessageCache(guildId);
-    guildDelete.run(guildId);
+    stmt.cleanupGuild.run(guildId);
   });
 }
 
 // Ретеншн завершённых событий (участники и напоминания каскадом): вызывается
 // из периодической очистки метрик (src/bot/metrics.ts) — без него таблица росла бы вечно.
-const eventsPrune = db.prepare("DELETE FROM events WHERE status IN ('completed','cancelled') AND scheduled_at < ?");
 export function pruneOldEvents(): number {
-  return Number(eventsPrune.run(Date.now() - 90 * 86_400_000).changes);
+  return Number(stmt.eventsPrune.run(Date.now() - 90 * 86_400_000).changes);
 }

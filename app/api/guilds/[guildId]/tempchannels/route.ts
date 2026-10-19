@@ -3,7 +3,7 @@ import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src
 import { db, withTransaction } from "../../../../../src/db/database.ts";
 import { parseStringArray, stableJson } from "../../../../../src/lib/json.ts";
 import { DEFAULT_SETTINGS, clampUserLimit, type TempChannelConfig, type TempPreset, type TempPresetRow, type TempPutBody, type TempchannelsGet } from "../../../../../src/lib/tempchannels.ts";
-import { stmt } from "../../../../../src/bot/db/statements.ts";
+import { stmt } from "../../../../../src/db/statements.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
 
 const presetsDelete = db.prepare("DELETE FROM temp_channel_presets WHERE guild_id=?");

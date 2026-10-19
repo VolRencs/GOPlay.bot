@@ -7,7 +7,7 @@ const { createAppeal, declineAppeal, reviewAppeal, listAppeals, applyAppealRever
 const { punishmentLabelsM: punishmentLabels } = await import("../src/lib/labels.ts");
 const { db } = await import("../src/db/database.ts");
 const { recordDashboardChange } = await import("../src/lib/dashboard-audit.ts");
-const { stmt } = await import("../src/bot/db/statements.ts");
+const { stmt } = await import("../src/db/statements.ts");
 const { recordPunishmentAndOffer } = await import("../src/bot/moderation/index.ts");
 
 await seedGuilds(["g1", "g2"]);
