@@ -1,9 +1,11 @@
 // DTO панели, общие для серверных роутов и клиентских компонентов.
 // Здесь нет импортов из React/Next — только формы данных.
 
+import type { ServerEmoji as GoEmoji } from "goemoji";
+
 export type Channel = { id: string; name: string };
 export type Role = { id: string; name: string };
-export type ServerEmoji = { id: string; name: string; animated: boolean; value: string };
+export type ServerEmoji = GoEmoji & { value: string };
 export type ServerStats = { members: number | null; online: number | null };
 export type ServerIdentity = { name: string; icon: string | null };
 

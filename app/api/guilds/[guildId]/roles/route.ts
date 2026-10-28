@@ -10,7 +10,7 @@ import { roleModeLabels, roleStyleLabels } from "../../../../../src/lib/labels.t
 import { roleRef } from "../../../../../src/lib/mentions.ts";
 import { REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT } from "../../../../../src/lib/limits.ts";
 import type { RolePanelRow } from "../../../../../src/contracts/dashboard.ts";
-import { parseCustomEmoji } from "goemoji/discord";
+import { stripVariationSelectors, toDiscordEmoji, toDiscordReaction } from "goemoji/discord";
 
 type PanelPayload = {
   panelId?: number; embedId: number; style: "buttons" | "select" | "reaction";
@@ -20,16 +20,6 @@ type PanelPayload = {
 };
 type DiscordRole = { id: string; managed: boolean; position: number };
 type DiscordMember = { roles: string[] };
-function discordEmoji(value?: string) {
-  if (!value) return undefined;
-  const custom = parseCustomEmoji(value);
-  return custom ? { id: custom.id, name: custom.name, animated: custom.animated } : { name: value.replace(/[\uFE0E\uFE0F]/g, "") };
-}
-function reactionEmoji(value?: string) {
-  const custom = value ? parseCustomEmoji(value) : null;
-  if (custom) return `${custom.name}:${custom.id}`;
-  return (value ?? "✅").replace(/[\uFE0E\uFE0F]/g, "");
-}
 
 const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value === "string" && Object.hasOwn(BUTTON_STYLE_IDS, value);
 
@@ -40,7 +30,7 @@ function readOptions(value: PanelPayload) {
     .map(o => ({
       roleId: o.roleId,
       label: String(o.label ?? ""),
-      emoji: typeof o.emoji === "string" ? o.emoji.replace(/[\uFE0E\uFE0F]/g, "").slice(0, 96) : "",
+      emoji: typeof o.emoji === "string" ? stripVariationSelectors(o.emoji).slice(0, 96) : "",
       buttonColor: isButtonStyle(o.buttonColor) ? o.buttonColor : "primary",
     }));
   if (Array.isArray(value.options)) return valid(value.options);
@@ -87,7 +77,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if (!["buttons", "select", "reaction"].includes(style)) return jsonError("Некорректный тип панели.");
   if (style === "reaction") {
     if (options.length > REACTION_OPTION_LIMIT) return jsonError(`Для реакций доступно не более ${REACTION_OPTION_LIMIT} ролей.`);
-    const reactionEmojis = options.map(o => reactionEmoji(o.emoji || undefined));
+    const reactionEmojis = options.map(o => toDiscordReaction(o.emoji || "✅"));
     if (new Set(reactionEmojis).size !== reactionEmojis.length) return jsonError("Эмодзи реакций должны быть уникальными.");
   }
   if (value.roleLimit !== undefined && value.roleLimit !== null && !Number.isInteger(Number(value.roleLimit))) return jsonError("Некорректный лимит ролей.");
@@ -117,7 +107,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
         throw new Error("panel deleted concurrently");
       rolesQueries.optionsDelete.run(panelId);
       for (const option of options) {
-        const emoji = option.emoji ? option.emoji.replace(/[\uFE0E\uFE0F]/g, "").slice(0, 96) : "";
+        const emoji = option.emoji ? stripVariationSelectors(option.emoji).slice(0, 96) : "";
         rolesQueries.optionInsert.run(panelId, option.roleId, (option.label || embed.name).slice(0, 80), emoji || null, option.buttonColor);
       }
     });
@@ -128,16 +118,16 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     for (const option of options) {
       // Каждая реакция проверяется: rate limit на первой не маскируется
       // успешной третьей.
-      const added = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}/reactions/${encodeURIComponent(reactionEmoji(option.emoji || undefined))}/@me`, { method: "PUT" });
+      const added = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}/reactions/${encodeURIComponent(toDiscordReaction(option.emoji || "✅"))}/@me`, { method: "PUT" });
       if (!added.ok) throw new Error(`reaction ${added.status}`);
     }
   } else if (style === "select") {
     const maxValues = roleLimit <= 0 ? Math.min(options.length, SELECT_OPTION_LIMIT) : Math.min(roleLimit, options.length);
-    const component = { type: 3, custom_id: `roles:${panelId}`, placeholder: "Выберите роли", min_values: 0, max_values: maxValues, options: options.map(o => ({ label: (o.label || embed.name).slice(0, 100), value: o.roleId, emoji: discordEmoji(o.emoji || undefined) })) };
+    const component = { type: 3, custom_id: `roles:${panelId}`, placeholder: "Выберите роли", min_values: 0, max_values: maxValues, options: options.map(o => ({ label: (o.label || embed.name).slice(0, 100), value: o.roleId, emoji: toDiscordEmoji(o.emoji) })) };
     const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [{ type: 1, components: [component] }] }) });
     if (!response.ok) throw new Error(`patch ${response.status}`);
   } else {
-    const buttons = options.map(o => ({ type: 2, style: buttonStyleId(o.buttonColor), label: (o.label || embed.name).slice(0, 80), custom_id: `role:${panelId}:${o.roleId}`, emoji: discordEmoji(o.emoji || undefined) }));
+    const buttons = options.map(o => ({ type: 2, style: buttonStyleId(o.buttonColor), label: (o.label || embed.name).slice(0, 80), custom_id: `role:${panelId}:${o.roleId}`, emoji: toDiscordEmoji(o.emoji) }));
     const rows = [];
     for (let i = 0; i < buttons.length; i += 5) rows.push({ type: 1, components: buttons.slice(i, i + 5) });
     const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: rows }) });
@@ -195,7 +185,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   if (panel.style === "reaction") {
     const options = rolesQueries.emojis.all(id) as { emoji: string | null }[];
     for (const option of options) {
-      const current = await discordFetch(`/channels/${panel.channel_id}/messages/${panel.message_id}/reactions/${encodeURIComponent(reactionEmoji(option.emoji ?? undefined))}/@me`, { method: "DELETE" });
+      const current = await discordFetch(`/channels/${panel.channel_id}/messages/${panel.message_id}/reactions/${encodeURIComponent(toDiscordReaction(option.emoji ?? "✅"))}/@me`, { method: "DELETE" });
       if (response === undefined && !current.ok && current.status !== 404) response = current;
     }
   } else {

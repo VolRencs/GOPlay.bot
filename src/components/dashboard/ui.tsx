@@ -2,6 +2,7 @@
 
 import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { stripVariationSelectors } from "goemoji/discord";
 import { ArrowDown, ArrowRight, Check, ChevronDown, Smile } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
 import { safeJson, stableJson } from "../../lib/json.ts";
@@ -186,7 +187,7 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
     return next;
   });
   useDismissOnOutside(rootRef, open, () => setOpen(false), "mousedown");
-  const select=(emoji:string)=>{onChange(emoji.replace(/[\uFE0E\uFE0F]/g, ""));setOpen(false);};
+  const select=(emoji:string)=>{onChange(stripVariationSelectors(emoji));setOpen(false);};
   return (
     <div className="emoji-picker" ref={rootRef}>
       <div className="emoji-current">

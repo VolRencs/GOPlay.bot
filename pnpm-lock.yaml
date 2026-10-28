@@ -179,8 +179,8 @@ importers:
         specifier: ^14.27.0
         version: 14.27.0
       goemoji:
-        specifier: ^0.3.0
-        version: 0.3.0(react@19.3.1)
+        specifier: ^0.3.1
+        version: 0.3.1(react@19.3.1)
       lucide-react:
         specifier: ^1.61.0
         version: 1.61.0(@types/react@19.3.0)(react@19.3.1)
@@ -986,8 +986,8 @@ packages:
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
-  goemoji@0.3.0:
-    resolution: {integrity: sha512-KSHfX6n2Z7W7dmoM33q2bmzX+LXBAU/B6V/2TsgQiwDXT7pLQiO4zW4Aph+hOeQ22/3Hb0EXUDrTveIYQ4Nouw==}
+  goemoji@0.3.1:
+    resolution: {integrity: sha512-7q+dqu4XYDUlejP6fOgAefP0G+pjXlVdvrICh+iyG83L9rpeQW0NwCg+RDwlvCD2r+qSh9iBgyOuiiTCRHVDYA==}
     engines: {node: '>=24'}
     peerDependencies:
       react: ^19
@@ -1713,7 +1713,7 @@ snapshots:
 
   fast-deep-equal@3.1.3: {}
 
-  goemoji@0.3.0(react@19.3.1):
+  goemoji@0.3.1(react@19.3.1):
     dependencies:
       react: 19.3.1
 
