@@ -135,7 +135,7 @@ scripts/              migrate-auth.ts, run-both.ts (bot + web supervisor)
 deploy/               nginx-ip-https.conf (reverse-proxy example)
 test/                 *.test.ts (node --test)
 data/                 SQLite, logs, uploads (not in git, except .gitkeep)
-public/               bot-logo.png, fonts/, uploads/ (welcome backgrounds, not in git)
+public/               bot-logo.avif, fonts/, uploads/ (welcome backgrounds, not in git)
 ```
 
 ## Production
@@ -179,4 +179,4 @@ Licensed under **GPL-3.0** — see [`LICENSE`](LICENSE).
 Copyright (C) 2026 VolRen.
 
 - Fonts in `public/fonts/` — Onest 2.001 and Geist Mono, both under the SIL Open Font License.
-- `public/bot-logo.png`, `app/icon.png` — original project assets.
+- `public/bot-logo.avif`, `app/icon.png` — original project assets.

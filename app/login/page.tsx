@@ -18,7 +18,7 @@ export default function Login() {
   return (
     <main className="auth-page">
       <section className="card auth-card">
-        <a className="brand" href="/"><img src="/bot-logo.png" alt="GOPlay"/><span>GOPlay</span></a>
+        <a className="brand" href="/"><img src="/bot-logo.avif" alt="GOPlay"/><span>GOPlay</span></a>
         <span className="tile"><ShieldCheck size={24}/></span>
         <h1>Вход в Dashboard</h1>
         <p className="muted">Авторизуйтесь через Discord, чтобы настроить серверы, которыми вы управляете.</p>

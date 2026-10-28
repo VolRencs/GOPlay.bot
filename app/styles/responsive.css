@@ -55,8 +55,8 @@
   .hero .lead { margin-inline: auto; }
   .hero-cta { justify-content: center; }
   .hero-art { order: -1; }
-  .hero-art img { width: 210px; }
-  .hero-ring { width: 280px; }
+  .hero-art::before { width: 100%; }
+  .hero-panel { width: 360px; --hero-panel-scale: .45; }
 
   .landing-footer { justify-content: center; text-align: center; }
 
@@ -70,6 +70,7 @@
 }
 
 @media (max-width: 480px) {
+  .hero-panel { width: 320px; --hero-panel-scale: .4; }
   .emoji-popover { right: auto; left: 0; }
   .user-menu-dropdown {
     min-width: 0;

@@ -26,7 +26,7 @@ function PreviewFrame({ hint, children }: { hint: string; children: ReactNode })
 function DiscordMessageShell({ children }: { children: ReactNode }) {
   return (
     <div className="message-preview">
-      <img className="preview-avatar" src="/bot-logo.png" alt="GOPlay"/>
+      <img className="preview-avatar" src="/bot-logo.avif" alt="GOPlay"/>
       <div className="preview-message-body">
         <strong>GOPlay</strong>
         <span className="muted"> сегодня</span>
@@ -157,7 +157,7 @@ export function WelcomePreview({ message, config: committed, background, enabled
     backgroundHref: background,
     backgroundWidth: size.width,
     backgroundHeight: size.height,
-    avatarHref: "/bot-logo.png",
+    avatarHref: "/bot-logo.avif",
     title: render(live.title),
     subtitle: render(live.subtitle),
     config: live,

@@ -23,11 +23,11 @@ export default function UserMenu({ access }: { access: AccountAccess }) {
 
   return <div className="user-menu" ref={root}>
     <button type="button" className="user-menu-trigger" aria-haspopup="menu" aria-expanded={open} aria-label="Меню аккаунта" onClick={() => setOpen((value) => !value)}>
-      <img className="user-menu-avatar" src={access.image || "/bot-logo.png"} alt="" />
+      <img className="user-menu-avatar" src={access.image || "/bot-logo.avif"} alt="" />
     </button>
     {open && <div className="user-menu-dropdown" role="menu">
       <div className="user-menu-header">
-        <img className="user-menu-avatar large" src={access.image || "/bot-logo.png"} alt="" />
+        <img className="user-menu-avatar large" src={access.image || "/bot-logo.avif"} alt="" />
         <div>
           <strong>{access.name}</strong>
           <code>Discord ID: {access.discordId}</code>

@@ -136,7 +136,7 @@ scripts/              migrate-auth.ts, run-both.ts (супервизор бот�
 deploy/               nginx-ip-https.conf (пример reverse-proxy)
 test/                 *.test.ts (node --test)
 data/                 SQLite, логи, загрузки (не в git, кроме .gitkeep)
-public/               bot-logo.png, fonts/, uploads/ (фоны приветствий, не в git)
+public/               bot-logo.avif, fonts/, uploads/ (фоны приветствий, не в git)
 ```
 
 ## Продакшн
@@ -180,4 +180,4 @@ pnpm start
 Copyright (C) 2026 VolRen.
 
 - Шрифты в `public/fonts/` — Onest 2.001 и Geist Mono под SIL Open Font License.
-- `public/bot-logo.png`, `app/icon.png` — собственные ассеты проекта.
+- `public/bot-logo.avif`, `app/icon.png` — собственные ассеты проекта.

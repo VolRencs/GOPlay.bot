@@ -1,4 +1,5 @@
 import { Bot, CalendarDays, Medal, Music, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
+import { HeroPanelPreview } from "../src/components/HeroPanelPreview.tsx";
 import { SiteHeader } from "../src/components/site-header.tsx";
 import { accountAccess } from "../src/lib/access.ts";
 import { discordInviteUrl } from "../src/lib/constants.ts";
@@ -50,8 +51,7 @@ export default async function Home() {
         </ul>
       </div>
       <div className="hero-art">
-        <span className="hero-ring"/><span className="hero-ring second"/>
-        <img src="/bot-logo.png" alt="GOPlay"/>
+        <HeroPanelPreview />
       </div>
     </section>
     <section className="features">

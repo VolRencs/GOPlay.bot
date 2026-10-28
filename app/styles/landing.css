@@ -51,48 +51,171 @@
   display: grid;
   place-items: center;
   justify-self: center;
+  perspective: 1400px;
 }
 
 .hero-art::before {
   content: "";
   position: absolute;
-  width: 84%;
+  width: 88%;
   aspect-ratio: 1;
-  background: radial-gradient(circle, rgba(255, 44, 189, .3), transparent 65%);
+  background: radial-gradient(circle, rgba(255, 44, 189, .28), transparent 65%);
   filter: blur(14px);
 }
 
-.hero-art img {
+.hero-panel {
+  --hero-panel-scale: .525;
   position: relative;
   z-index: 1;
-  width: min(300px, 34vw);
-  border: 1px solid rgba(255, 177, 249, .55);
-  border-radius: 26%;
-  box-shadow: 0 0 32px rgba(244, 42, 188, .5), 0 0 80px rgba(128, 31, 255, .35);
-  animation: hero-float 6s ease-in-out infinite;
+  width: 420px;
+  aspect-ratio: 800 / 740;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--ink);
+  box-shadow:
+    0 30px 80px rgba(4, 2, 16, .6),
+    0 0 70px rgba(135, 44, 255, .16),
+    -18px 26px 50px rgba(4, 2, 16, .35);
+  transform: rotateY(-10deg) rotateX(5deg) rotateZ(-.8deg);
+  transform-style: preserve-3d;
+  pointer-events: none;
+  user-select: none;
 }
 
-.hero-ring {
+.hero-panel::before {
+  content: "";
   position: absolute;
-  width: min(400px, 48vw);
-  aspect-ratio: 1;
-  border: 1px solid rgba(244, 75, 220, .45);
-  border-radius: 50%;
-  animation: hero-pulse 3.4s ease-in-out infinite;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgba(255, 255, 255, .09) 0%, rgba(255, 255, 255, .02) 24%, transparent 42%);
+  pointer-events: none;
 }
 
-.hero-ring.second { animation-delay: 1.7s; }
-
-@keyframes hero-pulse {
-  50% {
-    transform: scale(1.07);
-    box-shadow: 0 0 0 20px rgba(177, 48, 255, .05), 0 0 44px rgba(245, 39, 191, .22);
-    opacity: .65;
-  }
+.hero-panel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border: 1px solid var(--line);
+  border-radius: inherit;
+  pointer-events: none;
 }
 
-@keyframes hero-float {
-  50% { transform: translateY(-8px); }
+.hero-panel-canvas {
+  width: 800px;
+  height: 740px;
+  transform: scale(var(--hero-panel-scale));
+  transform-origin: top left;
+}
+
+/* Превью всегда остаётся в десктопной раскладке панели,
+   даже когда сама страница открыта с мобильной шириной. */
+.hero-panel .settings-shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  height: 740px;
+  min-height: 0;
+}
+
+.hero-panel .sidebar {
+  position: static;
+  height: 100%;
+  padding: 1rem .75rem;
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.hero-panel .sidebar .brand {
+  margin: 0 .4rem 1.35rem;
+}
+
+.hero-panel .sidebar-groups {
+  display: grid;
+  gap: .55rem;
+  overflow: visible;
+  padding-bottom: 0;
+}
+
+.hero-panel .sidebar-group {
+  display: grid;
+  gap: .2rem;
+}
+
+.hero-panel .sidebar-group-label {
+  display: block;
+  margin: .12rem .8rem .05rem;
+}
+
+.hero-panel .sidebar-group-items {
+  display: grid;
+  gap: .12rem;
+}
+
+.hero-panel .nav-item {
+  flex: none;
+  min-height: 36px;
+  padding: .48rem .8rem;
+  gap: .6rem;
+  font-size: .86rem;
+  white-space: normal;
+}
+
+.hero-panel .settings-content {
+  width: 100%;
+  max-width: none;
+  height: 740px;
+  margin: 0;
+  padding: 1.2rem 2rem 1.1rem;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(255, 255, 255, .018) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, rgba(255, 255, 255, .018) 1px, transparent 1px) 0 0 / 40px 40px,
+    radial-gradient(circle at 85% -8%, rgba(69, 17, 111, .55), transparent 30rem),
+    var(--ink);
+}
+
+.hero-panel .settings-top {
+  margin-bottom: 1rem;
+  padding-bottom: .8rem;
+}
+
+.hero-panel .panel-stack {
+  gap: .65rem;
+}
+
+.hero-panel .server-heading h1 {
+  font-size: 2.1rem;
+}
+
+.hero-panel .stat-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.hero-panel .stat-card {
+  padding: .9rem .7rem;
+}
+
+.hero-panel .stat-card strong {
+  font-size: 1.5rem;
+}
+
+.hero-panel .activity-chart {
+  height: 180px;
+}
+
+@media (max-width: 1200px) {
+  .hero-panel { width: 390px; --hero-panel-scale: .4875; }
+}
+
+@media (max-width: 1024px) {
+  .hero-panel { width: 360px; --hero-panel-scale: .45; }
+}
+
+@media (max-width: 900px) {
+  .hero-panel { width: 320px; --hero-panel-scale: .4; }
 }
 
 .features { margin-top: clamp(.5rem, 2vh, 1.2rem); }
