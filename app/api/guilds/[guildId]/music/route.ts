@@ -23,6 +23,7 @@ const isValidCommandChannel = (value: unknown): boolean =>
 export const PUT = guildRoute(async (request, { guildId, user }) => {
   const body = await readJson<MusicSettings>(request);
   if (!body || typeof body !== "object" || Array.isArray(body)) return jsonError("Некорректное тело запроса.");
+  const current = readRow(guildId);
 
   const ids = body.voice_channel_ids ?? [];
   const roles = body.allowed_role_ids ?? [];
@@ -32,6 +33,14 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     return jsonError("Некорректный ID канала или роли.");
   if (new Set(ids).size !== ids.length)
     return jsonError("Голосовые каналы повторяются.");
+  const currentPlaylistRoles = current ? safeJson<string[]>(current.playlist_role_ids_json, []) : [];
+  const playlistRoles = body.playlist_role_ids ?? currentPlaylistRoles;
+  if (!Array.isArray(playlistRoles) || !playlistRoles.every(role => isSnowflake(role)))
+    return jsonError("Некорректный ID роли для плейлистов.");
+  const playlistsEnabled = body.playlists_enabled === undefined
+    ? (current ? current.playlists_enabled !== 0 : true)
+    : body.playlists_enabled;
+  if (typeof playlistsEnabled !== "boolean") return jsonError("Некорректная настройка плейлистов.");
 
   const secondsRaw = Number(body.leave_after_seconds ?? DEFAULT_MUSIC_LEAVE_SECONDS);
   if (!Number.isInteger(secondsRaw)) return jsonError("Некорректный таймаут.");
@@ -42,21 +51,24 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     return jsonError("Некорректный ID канала.");
   const commandChannelId = body.command_channel_id ? body.command_channel_id : null;
 
-  const current = readRow(guildId);
   const next = {
     command_channel_id: commandChannelId,
     voice_channel_ids_json: JSON.stringify([...new Set(ids)]),
     allowed_role_ids_json: JSON.stringify([...new Set(roles)]),
     leave_after_seconds: leaveAfterSeconds,
+    playlists_enabled: +playlistsEnabled,
+    playlist_role_ids_json: JSON.stringify([...new Set(playlistRoles)]),
   };
   if (
     current && current.command_channel_id === next.command_channel_id &&
     current.voice_channel_ids_json === next.voice_channel_ids_json &&
     current.allowed_role_ids_json === next.allowed_role_ids_json &&
-    current.leave_after_seconds === next.leave_after_seconds
+    current.leave_after_seconds === next.leave_after_seconds &&
+    current.playlists_enabled === next.playlists_enabled &&
+    current.playlist_role_ids_json === next.playlist_role_ids_json
   ) return NextResponse.json({ ok: true, unchanged: true });
 
-  musicQueries.upsert.run(guildId, next.command_channel_id, next.voice_channel_ids_json, next.allowed_role_ids_json, next.leave_after_seconds);
+  musicQueries.upsert.run(guildId, next.command_channel_id, next.voice_channel_ids_json, next.allowed_role_ids_json, next.leave_after_seconds, next.playlists_enabled, next.playlist_role_ids_json);
   invalidateMusicSettings(guildId);
 
   recordDashboardDiff(guildId, user, AUDIT_SECTION.music, "Настройки музыки: ",
@@ -64,12 +76,16 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
       "Канал команд": current?.command_channel_id ? channelRef(current.command_channel_id) : null,
       "Голосовые каналы": current ? safeJson<string[]>(current.voice_channel_ids_json, []).map(channelRef) : [],
       "Разрешённые роли": current ? safeJson<string[]>(current.allowed_role_ids_json, []).map(roleRef) : [],
+      "Плейлисты": current ? current.playlists_enabled !== 0 : true,
+      "Роли плейлистов": current ? safeJson<string[]>(current.playlist_role_ids_json, []).map(roleRef) : [],
       "Автовыход": current ? formatLeaveAfter(current.leave_after_seconds) : null,
     },
     {
       "Канал команд": next.command_channel_id ? channelRef(next.command_channel_id) : null,
       "Голосовые каналы": ids.map(channelRef),
       "Разрешённые роли": roles.map(roleRef),
+      "Плейлисты": playlistsEnabled,
+      "Роли плейлистов": [...new Set(playlistRoles)].map(roleRef),
       "Автовыход": formatLeaveAfter(leaveAfterSeconds),
     });
   return NextResponse.json({ ok: true });

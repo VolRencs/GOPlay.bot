@@ -56,5 +56,7 @@ export function buildMusicPutBody(m: MusicSettings): MusicSettings {
     allowed_role_ids: [...m.allowed_role_ids],
     // 0 = автовыход выключен; остальное клампится в рабочий диапазон.
     leave_after_seconds: m.leave_after_seconds === 0 ? 0 : clampMusicSeconds(Math.round(m.leave_after_seconds) || DEFAULT_MUSIC_LEAVE_SECONDS),
+    playlists_enabled: m.playlists_enabled,
+    playlist_role_ids: [...m.playlist_role_ids],
   };
 }

@@ -86,7 +86,7 @@ export const langQueries = {
 };
 
 export const musicQueries = {
-  upsert: db.prepare("INSERT INTO music_settings(guild_id,command_channel_id,voice_channel_ids_json,allowed_role_ids_json,leave_after_seconds) VALUES(?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET command_channel_id=excluded.command_channel_id,voice_channel_ids_json=excluded.voice_channel_ids_json,allowed_role_ids_json=excluded.allowed_role_ids_json,leave_after_seconds=excluded.leave_after_seconds"),
+  upsert: db.prepare("INSERT INTO music_settings(guild_id,command_channel_id,voice_channel_ids_json,allowed_role_ids_json,leave_after_seconds,playlists_enabled,playlist_role_ids_json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET command_channel_id=excluded.command_channel_id,voice_channel_ids_json=excluded.voice_channel_ids_json,allowed_role_ids_json=excluded.allowed_role_ids_json,leave_after_seconds=excluded.leave_after_seconds,playlists_enabled=excluded.playlists_enabled,playlist_role_ids_json=excluded.playlist_role_ids_json"),
 };
 
 export const tempchannelQueries = {

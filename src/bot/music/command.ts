@@ -51,6 +51,13 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     }
 
     const query = i.options.getString("link", true).trim();
+    const playlistAllowed = settings.playlists_enabled && (
+      settings.playlist_role_ids.length === 0 ||
+      isAdminInteraction(i) ||
+      memberHasAllowedRole(member, settings.playlist_role_ids)
+    );
+    const playlistLimit = playlistAllowed ? undefined : 1;
+    const playlistNotice = !settings.playlists_enabled ? "playlistLimitedOff" : "playlistLimitedRole";
     count("music.play");
     const t0 = performance.now();
     // Подключаемся ДО проб: handshake идёт параллельно с проверками окружения.
@@ -63,14 +70,16 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
 
     let tracks: Track[];
     let fastPath = false;
+    let limitedPlaylist = false;
     if (isSingleYouTubeVideoUrl(query)) {
       fastPath = true;
       tracks = [{ query, title: query, requestedBy: i.user.id }];
     } else {
       const resolveStart = performance.now();
-      const resolved = await resolveTracks(query, i.user.id);
+      const resolved = await resolveTracks(query, i.user.id, playlistLimit);
       time("music.resolve", performance.now() - resolveStart);
-      tracks = resolved.tracks;
+      limitedPlaylist = resolved.playlist && !playlistAllowed;
+      tracks = limitedPlaylist ? resolved.tracks.slice(0, 1) : resolved.tracks;
       if (tracks.length === 0) {
         await i.editReply(
           resolved.error === "botcheck" ? t("botCheck")
@@ -95,7 +104,9 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       const started = playNext(i.guildId!);
       if (started) {
         if (fastPath) hydrateTrackMeta(started, i.guildId!);
-        await i.editReply(fastPath ? t("launching") : t("nowPlaying", { title: started.title }));
+        await i.editReply(limitedPlaylist
+          ? t(playlistNotice, { title: firstTitle })
+          : fastPath ? t("launching") : t("nowPlaying", { title: started.title }));
         return true;
       }
     }
@@ -103,6 +114,10 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       // Fast-path — ровно один трек: гидрация подтянет название/длину в панель.
       hydrateTrackMeta(tracks[0]!, i.guildId!);
       await i.editReply(t("launching"));
+      return true;
+    }
+    if (limitedPlaylist) {
+      await i.editReply(t(playlistNotice, { title: firstTitle }));
       return true;
     }
     await i.editReply(tracks.length > 1

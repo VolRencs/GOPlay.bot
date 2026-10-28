@@ -62,6 +62,26 @@ export function MusicSettingsCard({ channels, voiceChannels, roles, value, onCha
 
           <section className="music-section music-section-wide">
             <div>
+              <span className="field-label">Плейлисты и миксы</span>
+              <p className="hint">Если выключено, из плейлиста будет добавлен только первый трек.</p>
+            </div>
+            <label className="check-row">
+              <input type="checkbox" checked={value.playlists_enabled}
+                onChange={e => onChange({ ...value, playlists_enabled: e.target.checked })}/>
+              Разрешать добавление плейлистов
+            </label>
+            {value.playlists_enabled && (
+              <div>
+                <span className="field-label">Кому разрешены плейлисты</span>
+                <CheckList items={roles} selected={value.playlist_role_ids} label="Роли для плейлистов"
+                  onChange={ids => onChange({ ...value, playlist_role_ids: ids })}/>
+                <p className="hint">Пусто — все, у кого есть доступ к /play. Администраторы могут всегда.</p>
+              </div>
+            )}
+          </section>
+
+          <section className="music-section music-section-wide">
+            <div>
               <span className="field-label">Автовыход при бездействии</span>
               <p className="hint">Бездействие: в канале нет слушателей, играет тишина или плеер на паузе.</p>
             </div>

@@ -132,17 +132,18 @@ async function withResolveSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-function runYtDlpJson(query: string): Promise<{ meta: Record<string, unknown> | null; error?: string }> {
-  return withResolveSlot(() => runYtDlpJsonOnce(query));
+function runYtDlpJson(query: string, playlistLimit = MAX_PLAYLIST): Promise<{ meta: Record<string, unknown> | null; error?: string }> {
+  return withResolveSlot(() => runYtDlpJsonOnce(query, playlistLimit));
 }
 
-function runYtDlpJsonOnce(query: string): Promise<{ meta: Record<string, unknown> | null; error?: string }> {
+function runYtDlpJsonOnce(query: string, playlistLimit: number): Promise<{ meta: Record<string, unknown> | null; error?: string }> {
   return new Promise(resolve => {
     const target = safeYtDlpTarget(query);
     if (!target) return resolve({ meta: null, error: "unsupported-url" });
     // Кап плейлиста отдаём yt-dlp (--playlist-items): бесконечные Mix'ы иначе
     // рвут JSON на RAM-капе и не парсятся. Watchdog против зависшего спавна.
-    const proc = spawn(YT_DLP, ytDlpArgs("--skip-download", "--flat-playlist", "--playlist-items", `1-${MAX_PLAYLIST}`, "-J", target), { windowsHide: true, signal: AbortSignal.timeout(60_000) });
+    const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
+    const proc = spawn(YT_DLP, ytDlpArgs("--skip-download", "--flat-playlist", "--playlist-items", `1-${limit}`, "-J", target), { windowsHide: true, signal: AbortSignal.timeout(60_000) });
     const chunks: Buffer[] = [];
     let size = 0, errTail = "", capped = false;
     proc.stdout.on("data", (chunk: Buffer) => {
@@ -217,16 +218,24 @@ function trackFromFullMeta(meta: Record<string, unknown>, fallbackQuery: string,
   return track;
 }
 
-/** Ссылка → треки: плейлист до MAX_PLAYLIST позиций, результат кэшируется. */
-export async function resolveTracks(query: string, requestedBy: string): Promise<{ tracks: Track[]; error: string | null }> {
+export type ResolveResult = { tracks: Track[]; error: string | null; playlist: boolean };
+
+/** Ссылка → треки: плейлист до MAX_PLAYLIST позиций, результат кэшируется.
+ *  playlistLimit=1 используется, когда сервер разрешает только первый трек. */
+export async function resolveTracks(query: string, requestedBy: string, playlistLimit = MAX_PLAYLIST): Promise<ResolveResult> {
+  const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
+  const limited = limit < MAX_PLAYLIST;
   const cacheKey = normalizeTrackKey(query);
   const cached = listMeta.get(cacheKey);
-  if (cached && Date.now() - cached.at < LIST_META_TTL) return { tracks: cached.tracks.map(track => ({ ...track, requestedBy })), error: null };
-  const { meta, error } = await runYtDlpJson(query);
-  if (!meta) return { tracks: [], error: isBotcheckError(error ?? "") ? "botcheck" : error ?? "unknown" };
+  if (cached && Date.now() - cached.at < LIST_META_TTL) {
+    const tracks = cached.tracks.map(track => ({ ...track, requestedBy }));
+    return { tracks: limited ? tracks.slice(0, limit) : tracks, error: null, playlist: true };
+  }
+  const { meta, error } = await runYtDlpJson(query, limit);
+  if (!meta) return { tracks: [], error: isBotcheckError(error ?? "") ? "botcheck" : error ?? "unknown", playlist: false };
   if (meta._type !== "playlist") {
     const track = trackFromFullMeta(meta, query, requestedBy);
-    return track ? { tracks: [track], error: null } : { tracks: [], error: "too-long" };
+    return track ? { tracks: [track], error: null, playlist: false } : { tracks: [], error: "too-long", playlist: false };
   }
   const entries = Array.isArray(meta.entries) ? meta.entries : [];
   // Одиночная flat-запись приходит без форматов: добираем полный -J.
@@ -234,15 +243,15 @@ export async function resolveTracks(query: string, requestedBy: string): Promise
     const raw = String(entries[0]!.url ?? entries[0]!.id ?? "");
     if (raw) {
       const target = raw.startsWith("http") ? raw : `https://www.youtube.com/watch?v=${raw}`;
-      const full = await runYtDlpJson(target);
+      const full = await runYtDlpJson(target, limit);
       if (full.meta && full.meta._type !== "playlist") {
         const track = trackFromFullMeta(full.meta, target, requestedBy);
-        if (track) return { tracks: [track], error: null };
+        if (track) return { tracks: [track], error: null, playlist: true };
       }
     }
   }
   const tracks: Track[] = [];
-  for (const entry of entries.slice(0, MAX_PLAYLIST)) {
+  for (const entry of entries.slice(0, limit)) {
     const raw = String(entry.url ?? entry.id ?? "");
     if (!raw) continue;
     const duration = typeof entry.duration === "number" && entry.duration > 0 ? entry.duration : undefined;
@@ -257,11 +266,11 @@ export async function resolveTracks(query: string, requestedBy: string): Promise
       ...(thumbnail ? { thumbnail } : {}),
     });
   }
-  if (tracks.length) {
+  if (!limited && tracks.length) {
     evictOldest(listMeta);
     listMeta.set(cacheKey, { at: Date.now(), tracks });
   }
-  return { tracks, error: null };
+  return { tracks, error: null, playlist: true };
 }
 
 // Политика «превышение длительности» принадлежит сессии; резолвер только сообщает.

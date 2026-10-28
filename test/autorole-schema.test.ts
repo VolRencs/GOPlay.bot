@@ -9,6 +9,8 @@ const legacy = new DatabaseSync(dbPath);
 legacy.exec("CREATE TABLE _migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)");
 legacy.prepare("INSERT INTO _migrations VALUES (?,?)").run("001_init.sql", 1);
 legacy.exec("CREATE TABLE guilds (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, updated_at INTEGER NOT NULL)");
+// 004_music_playlists.sql мигрирует эту таблицу; в реальной БД 001 уже её создала.
+legacy.exec("CREATE TABLE music_settings (guild_id TEXT PRIMARY KEY, command_channel_id TEXT, voice_channel_ids_json TEXT NOT NULL DEFAULT '[]', allowed_role_ids_json TEXT NOT NULL DEFAULT '[]', leave_after_seconds INTEGER NOT NULL DEFAULT 300)");
 legacy.exec("CREATE TABLE autorole_settings (guild_id TEXT PRIMARY KEY REFERENCES guilds(id) ON DELETE CASCADE, enabled INTEGER NOT NULL DEFAULT 0, role_ids_json TEXT NOT NULL DEFAULT '[]', updated_at INTEGER NOT NULL)");
 legacy.prepare("INSERT INTO guilds VALUES (?,?,?,?)").run("g1", "Тест", null, 1);
 legacy.prepare("INSERT INTO autorole_settings VALUES (?,?,?,?)").run("g1", 1, '["123456789012345678"]', 1);

@@ -68,7 +68,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
   const [tab, setTab] = useState<TabKey>("stats");
   const [, startTransition] = useTransition();
   const langDraft = useConfigDraft<"ru" | "en">("ru");
-  const musicDraft = useConfigDraft<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: DEFAULT_MUSIC_LEAVE_SECONDS });
+  const musicDraft = useConfigDraft<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: DEFAULT_MUSIC_LEAVE_SECONDS, playlists_enabled: true, playlist_role_ids: [] });
   const autoroleDraft = useConfigDraft<AutoroleGet>({ enabled: false, roleId: null });
   const serverLang = langDraft.value, setServerLang = langDraft.setValue;
   const music = musicDraft.value, setMusic = musicDraft.setValue;

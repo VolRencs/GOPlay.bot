@@ -207,8 +207,13 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
       await i.reply({ content: t("playerGone"), flags: MessageFlags.Ephemeral }).catch(() => null);
       return;
     }
+    const queueViewPage = /^music:queue:(\d+)$/.exec(i.customId);
+    if (queueViewPage) {
+      await openQueueView(i, Number(queueViewPage[1]), true);
+      return;
+    }
     if (i.customId === "music:queue") {
-      await i.reply({ content: queueView(guildId, guildLang(guildId)), flags: MessageFlags.Ephemeral }).catch(() => null);
+      await openQueueView(i, 0, false);
       return;
     }
     const isAdmin = isAdminInteraction(i);
@@ -293,6 +298,29 @@ async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", re
     ));
   }
   const payload = { content: prompt, components };
+  if (update) await i.update(payload).catch(() => null);
+  else await i.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => null);
+}
+
+async function openQueueView(i: ButtonInteraction, requestedPage: number, update: boolean): Promise<void> {
+  const t = musicTFor(i.guildId ?? "");
+  const view = queueView(i.guildId!, guildLang(i.guildId!), requestedPage);
+  const components: ActionRowBuilder<ButtonBuilder>[] = [];
+  if (view.pages > 1) {
+    components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`music:queue:${view.page - 1}`)
+        .setLabel(t("queuePrev"))
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(view.page === 0),
+      new ButtonBuilder()
+        .setCustomId(`music:queue:${view.page + 1}`)
+        .setLabel(t("queueNext"))
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(view.page >= view.pages - 1),
+    ));
+  }
+  const payload = { content: view.content, components };
   if (update) await i.update(payload).catch(() => null);
   else await i.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => null);
 }

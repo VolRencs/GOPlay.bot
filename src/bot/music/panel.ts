@@ -15,10 +15,11 @@ import { fmtTime, getQueueSnapshot, type LoopMode, type Track } from "../../lib/
 import { trFor } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
-import { SELECT_OPTION_LIMIT } from "../../lib/limits.ts";
 import { userRef } from "../../lib/mentions.ts";
 
 /** Компактная строка трека: панель не должна падать от длинного названия YouTube. */
+export const QUEUE_PAGE_SIZE = 10;
+
 export const trackLabel = (title: string, limit = 180): string => {
   const flat = title.replace(/\s+/g, " ").trim();
   return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat;
@@ -40,16 +41,26 @@ const progressBar = (position: number, duration: number): string => {
   return `${"▰".repeat(filled)}${"▱".repeat(width - filled)}`;
 };
 
-export function queueView(guildId: string, lang: Locale): string {
+export type QueueView = { content: string; page: number; pages: number };
+
+export function queueView(guildId: string, lang: Locale, requestedPage = 0): QueueView {
   const t = trFor(musicTr, lang);
   const { current, queue } = getQueueSnapshot(guildId);
-  if (!current && queue.length === 0) return t("queueEmpty");
+  if (!current && queue.length === 0) return { content: t("queueEmpty"), page: 0, pages: 1 };
+  const pages = Math.max(1, Math.ceil(queue.length / QUEUE_PAGE_SIZE));
+  const page = Math.min(pages - 1, Math.max(0, Math.trunc(requestedPage)));
+  const start = page * QUEUE_PAGE_SIZE;
   const duration = (track: Track) => track.duration && track.duration > 0 ? ` · ${fmtTime(track.duration)}` : "";
   const lines = [
     current ? t("queueNow", { title: `${trackLabel(current.title, 90)}${duration(current)}` }) : "",
-    ...queue.slice(0, SELECT_OPTION_LIMIT).map((track, index) => `${index + 1}. ${trackLabel(track.title, 90)}${duration(track)}`),
+    ...queue.slice(start, start + QUEUE_PAGE_SIZE).map((track, index) => `${start + index + 1}. ${trackLabel(track.title, 90)}${duration(track)}`),
   ];
-  return `${t("queueHeader", { n: String(queue.length) })}\n${lines.filter(Boolean).join("\n").slice(0, 1900)}`;
+  const pageNote = pages > 1 ? `\n${t("queuePage", { page: String(page + 1), pages: String(pages) })}` : "";
+  return {
+    content: `${t("queueHeader", { n: String(queue.length) })}\n${lines.filter(Boolean).join("\n")}${pageNote}`.slice(0, 1900),
+    page,
+    pages,
+  };
 }
 
 /** Современная панель плеера на Components V2: один контейнер вместо embed + строк. */
@@ -64,7 +75,7 @@ export function renderMusicPanel(state: MusicPanelState, lang: Locale) {
   const progress = duration > 0 ? `\n\`${progressBar(position, duration)}\`` : "";
   const body = `${title}\n${meta}${progress}`;
   const queueText = state.queueLength
-    ? `${t("panelUpNext")}\n${state.queuePreview.map((track, index) => {
+    ? `${t("panelUpNextCount", { n: String(state.queueLength) })}\n${state.queuePreview.map((track, index) => {
       const trackDuration = track.duration && track.duration > 0 ? ` · ${fmtTime(track.duration)}` : "";
       return `${index + 1}. ${trackLabel(track.title, 90)}${trackDuration}`;
     }).join("\n")}`
