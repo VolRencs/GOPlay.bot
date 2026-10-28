@@ -1,4 +1,4 @@
-import { Bot, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
+import { Bot, CalendarDays, Medal, Music, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
 import { SiteHeader } from "../src/components/site-header.tsx";
 import { accountAccess } from "../src/lib/access.ts";
 import { discordInviteUrl } from "../src/lib/constants.ts";
@@ -25,6 +25,12 @@ const features = [
   [PanelsTopLeft, "Сообщения", "Embed-сообщения, медиа и сохранённые шаблоны."],
 ] as const;
 
+const modules = [
+  [Music, "Музыка"],
+  [CalendarDays, "События"],
+  [Medal, "Уровни"],
+] as const;
+
 export default async function Home() {
   const access = await accountAccess();
 
@@ -32,12 +38,16 @@ export default async function Home() {
     <SiteHeader access={access} />
     <section className="hero">
       <div>
+        <p className="eyebrow">Discord-бот и панель управления</p>
         <h1>Управляйте сервером проще.</h1>
         <p className="lead">Один бот и одна понятная панель: приветствия, автомодерация, роли, события, музыка и статистика.</p>
         <div className="hero-cta">
           <a className="btn lg" href={discordInviteUrl()}><Bot size={18}/>Добавить бота</a>
           <a className="btn secondary lg" href="/dashboard">Открыть панель</a>
         </div>
+        <ul className="hero-modules" aria-label="Модули бота">
+          {modules.map(([Icon, label]) => <li key={label}><Icon size={15}/>{label}</li>)}
+        </ul>
       </div>
       <div className="hero-art">
         <span className="hero-ring"/><span className="hero-ring second"/>

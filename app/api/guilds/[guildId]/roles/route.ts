@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server.js";
 import { discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { db, withTransaction } from "../../../../../src/db/database.ts";
+import { withTransaction } from "../../../../../src/db/database.ts";
+import { rolesQueries } from "../../../../../src/db/queries.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
 import { logger } from "../../../../../src/lib/logger.ts";
 import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId, type ButtonStyleName } from "../../../../../src/lib/constants.ts";
-import type { RolePanelRow } from "../../../../../src/components/dashboard/types.ts";
+import { roleModeLabels, roleStyleLabels } from "../../../../../src/lib/labels.ts";
+import { roleRef } from "../../../../../src/lib/mentions.ts";
+import { REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT } from "../../../../../src/lib/limits.ts";
+import type { RolePanelRow } from "../../../../../src/contracts/dashboard.ts";
 import { parseCustomEmoji } from "goemoji/discord";
 
 type PanelPayload = {
@@ -15,20 +20,6 @@ type PanelPayload = {
 };
 type DiscordRole = { id: string; managed: boolean; position: number };
 type DiscordMember = { roles: string[] };
-const styleLabels: Record<string, string> = { buttons: "кнопки", select: "список", reaction: "реакции" };
-const roleModeLabels: Record<string, string> = { toggle: "переключение", add: "только выдача", remove: "только снятие" };
-const panelListStmt = db.prepare("SELECT p.*,o.role_id,o.label,o.emoji,o.button_color FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? ORDER BY p.updated_at DESC");
-const embedTemplateStmt = db.prepare("SELECT name FROM embeds WHERE id=? AND guild_id=?");
-const panelGetStmt = db.prepare("SELECT title,style,role_limit,role_mode,notify_enabled,notify_template FROM self_role_panels WHERE id=? AND guild_id=?");
-const panelOptionsStmt = db.prepare("SELECT role_id FROM self_role_options WHERE panel_id=?");
-const panelInsertStmt = db.prepare("INSERT INTO self_role_panels(guild_id,channel_id,message_id,title,style,role_limit,role_mode,notify_enabled,notify_template,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)");
-const panelUpdateStmt = db.prepare("UPDATE self_role_panels SET channel_id=?,message_id=?,title=?,style=?,role_limit=?,role_mode=?,notify_enabled=?,notify_template=?,updated_at=? WHERE id=? AND guild_id=?");
-const panelRollbackDeleteStmt = db.prepare("DELETE FROM self_role_panels WHERE id=?");
-const panelDeleteStmt = db.prepare("DELETE FROM self_role_panels WHERE id=? AND guild_id=?");
-const panelOptionsDeleteStmt = db.prepare("DELETE FROM self_role_options WHERE panel_id=?");
-const panelOptionInsertStmt = db.prepare("INSERT INTO self_role_options(panel_id,role_id,label,emoji,button_color) VALUES(?,?,?,?,?)");
-const panelForDeleteStmt = db.prepare("SELECT p.channel_id,p.message_id,p.style,p.title FROM self_role_panels p WHERE p.id=? AND p.guild_id=?");
-const panelEmojisStmt = db.prepare("SELECT emoji FROM self_role_options WHERE panel_id=?");
 function discordEmoji(value?: string) {
   if (!value) return undefined;
   const custom = parseCustomEmoji(value);
@@ -45,7 +36,7 @@ const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value
 function readOptions(value: PanelPayload) {
   const valid = (raw: { roleId: string; label: string; emoji: string; buttonColor: string }[]) => raw
     .filter(o => Boolean(o) && typeof o === "object" && typeof o.roleId === "string" && o.roleId)
-    .slice(0, 25)
+    .slice(0, SELECT_OPTION_LIMIT)
     .map(o => ({
       roleId: o.roleId,
       label: String(o.label ?? ""),
@@ -70,7 +61,7 @@ async function assignableRoleIds(guildId: string, roleIds: string[]): Promise<Se
 }
 
 export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json(panelListStmt.all(guildId) as RolePanelRow[]);
+  return NextResponse.json(rolesQueries.list.all(guildId) as RolePanelRow[]);
 });
 
 export const POST = guildRoute(async (request, { guildId, user }) => {
@@ -83,7 +74,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   // возвращается из custom_id кнопок в roles.add) — только snowflake.
   if ((value.channelId && !isSnowflake(value.channelId)) || (value.messageId && !isSnowflake(value.messageId)) || options.some(o => !isSnowflake(o.roleId)))
     return jsonError("Некорректный канал или роль.");
-  const tpl = embedTemplateStmt.get(value.embedId, guildId) as {name:string}|undefined;
+  const tpl = rolesQueries.embedTemplate.get(value.embedId, guildId) as {name:string}|undefined;
   if (!tpl?.name) return jsonError("Шаблон не найден", 404);
   if (!value.channelId || !value.messageId) return jsonError("Выберите уже отправленное сообщение.");
   const embed = { channel_id: value.channelId, message_id: value.messageId, name: tpl.name };
@@ -92,15 +83,18 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const assignable = await assignableRoleIds(guildId, options.map(o => o.roleId));
   if (assignable === null) return jsonError("Не удалось проверить иерархию ролей в Discord.", 502);
   if (options.some(o => !assignable.has(o.roleId))) return jsonError("Некоторые роли нельзя выдавать: переместите роль бота выше них в Discord.");
-  const style = ["buttons", "select", "reaction"].includes(value.style) ? value.style : "buttons";
+  const style = value.style === undefined ? "buttons" : value.style;
+  if (!["buttons", "select", "reaction"].includes(style)) return jsonError("Некорректный тип панели.");
   if (style === "reaction") {
+    if (options.length > REACTION_OPTION_LIMIT) return jsonError(`Для реакций доступно не более ${REACTION_OPTION_LIMIT} ролей.`);
     const reactionEmojis = options.map(o => reactionEmoji(o.emoji || undefined));
     if (new Set(reactionEmojis).size !== reactionEmojis.length) return jsonError("Эмодзи реакций должны быть уникальными.");
   }
   if (value.roleLimit !== undefined && value.roleLimit !== null && !Number.isInteger(Number(value.roleLimit))) return jsonError("Некорректный лимит ролей.");
   if (value.notifyTemplate !== undefined && value.notifyTemplate !== null && typeof value.notifyTemplate !== "string") return jsonError("Некорректный шаблон уведомления.");
-  const roleLimit = Math.max(0, Math.min(25, Number(value.roleLimit) || 0));
-  const roleMode = ["toggle", "add", "remove"].includes(value.roleMode ?? "") ? value.roleMode! : "toggle";
+  const roleLimit = Math.max(0, Math.min(SELECT_OPTION_LIMIT, Number(value.roleLimit) || 0));
+  const roleMode = value.roleMode === undefined ? "toggle" : value.roleMode;
+  if (!["toggle", "add", "remove"].includes(roleMode)) return jsonError("Некорректный режим выдачи ролей.");
   const template = (typeof value.notifyTemplate === "string" ? value.notifyTemplate.slice(0, 500) : "") || "✅ Выдана роль **{role}**";
   // Свежая строка панели создаётся первой: custom_id компонентов содержит её id
   // (`role:<panelId>:<roleId>`); при сбое Discord строка удаляется обратно.
@@ -109,22 +103,22 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   let beforePanel: { title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null } | undefined;
   let beforeRoleIds: string[] = [];
   if (value.panelId) {
-    beforePanel = panelGetStmt.get(value.panelId, guildId) as typeof beforePanel;
+    beforePanel = rolesQueries.panelGet.get(value.panelId, guildId) as typeof beforePanel;
     if (!beforePanel) return jsonError("Панель не найдена", 404);
     panelId = value.panelId;
-    beforeRoleIds = (panelOptionsStmt.all(panelId) as { role_id: string }[]).map(row => row.role_id);
+    beforeRoleIds = (rolesQueries.panelOptions.all(panelId) as { role_id: string }[]).map(row => row.role_id);
   } else {
-    panelId = Number(panelInsertStmt.run(guildId, embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now()).lastInsertRowid);
+    panelId = Number(rolesQueries.insert.run(guildId, embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now()).lastInsertRowid);
     created = true;
   }
   const persistOptions = () => {
     withTransaction(() => {
-      if (!created && panelUpdateStmt.run(embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now(), panelId, guildId).changes === 0)
+      if (!created && rolesQueries.update.run(embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now(), panelId, guildId).changes === 0)
         throw new Error("panel deleted concurrently");
-      panelOptionsDeleteStmt.run(panelId);
+      rolesQueries.optionsDelete.run(panelId);
       for (const option of options) {
         const emoji = option.emoji ? option.emoji.replace(/[\uFE0E\uFE0F]/g, "").slice(0, 96) : "";
-        panelOptionInsertStmt.run(panelId, option.roleId, (option.label || embed.name).slice(0, 80), emoji || null, option.buttonColor);
+        rolesQueries.optionInsert.run(panelId, option.roleId, (option.label || embed.name).slice(0, 80), emoji || null, option.buttonColor);
       }
     });
   };
@@ -138,7 +132,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       if (!added.ok) throw new Error(`reaction ${added.status}`);
     }
   } else if (style === "select") {
-    const maxValues = roleLimit <= 0 ? Math.min(options.length, 25) : Math.min(roleLimit, options.length);
+    const maxValues = roleLimit <= 0 ? Math.min(options.length, SELECT_OPTION_LIMIT) : Math.min(roleLimit, options.length);
     const component = { type: 3, custom_id: `roles:${panelId}`, placeholder: "Выберите роли", min_values: 0, max_values: maxValues, options: options.map(o => ({ label: (o.label || embed.name).slice(0, 100), value: o.roleId, emoji: discordEmoji(o.emoji || undefined) })) };
     const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [{ type: 1, components: [component] }] }) });
     if (!response.ok) throw new Error(`patch ${response.status}`);
@@ -151,7 +145,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   } catch (error) {
     logger.warn("[ROLES] Привязка панели к сообщению не удалась", guildId, error);
-    if (created) panelRollbackDeleteStmt.run(panelId);
+    if (created) rolesQueries.rollbackDelete.run(panelId);
     return jsonError("Не удалось привязать элементы к исходному сообщению", 502);
   }
   try {
@@ -161,13 +155,13 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     void discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [] }) }).catch(() => null);
     return jsonError("Панель была удалена другим модератором во время сохранения.", 409);
   }
-  const styleLabel = styleLabels[style] ?? style;
+  const styleLabel = roleStyleLabels[style] ?? style;
   if (beforePanel) {
-    recordDashboardDiff(guildId, user, "Роли", `Панель «${embed.name}»: `,
+    recordDashboardDiff(guildId, user, AUDIT_SECTION.roles, `Панель «${embed.name}»: `,
       {
         "Название": beforePanel.title,
-        "Роли": beforeRoleIds.map(id => `<@&${id}>`),
-        "Стиль": styleLabels[beforePanel.style] ?? beforePanel.style,
+        "Роли": beforeRoleIds.map(roleRef),
+        "Стиль": roleStyleLabels[beforePanel.style] ?? beforePanel.style,
         "Лимит ролей": beforePanel.role_limit > 0 ? beforePanel.role_limit : "без лимита",
         "Режим": roleModeLabels[beforePanel.role_mode] ?? beforePanel.role_mode,
         "Уведомления": Boolean(beforePanel.notify_enabled),
@@ -175,7 +169,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       },
       {
         "Название": embed.name,
-        "Роли": options.map(o => `<@&${o.roleId}>`),
+        "Роли": options.map(o => roleRef(o.roleId)),
         "Стиль": styleLabel,
         "Лимит ролей": roleLimit > 0 ? roleLimit : "без лимита",
         "Режим": roleModeLabels[roleMode] ?? roleMode,
@@ -183,7 +177,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
         "Шаблон уведомления": template,
       });
   } else {
-    recordDashboardChange(guildId, user, "Роли", `Создана панель «${embed.name}» · ${options.length} ${styleLabel}`);
+    recordDashboardChange(guildId, user, AUDIT_SECTION.roles, `Создана панель «${embed.name}» · ${options.length} ${styleLabel}`);
   }
   return NextResponse.json({ ok: true, panelId });
 });
@@ -191,7 +185,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
 export const DELETE = guildRoute(async (request, { guildId, user }) => {
   const id = Number(new URL(request.url).searchParams.get("id"));
   if (!Number.isInteger(id) || id < 1) return jsonError("Некорректный идентификатор панели.");
-  const panel = panelForDeleteStmt.get(id, guildId) as { channel_id: string; message_id: string; style: string; title: string } | undefined;
+  const panel = rolesQueries.forDelete.get(id, guildId) as { channel_id: string; message_id: string; style: string; title: string } | undefined;
   if (!panel) return jsonError("Панель не найдена.", 404);
   const token = process.env.DISCORD_TOKEN;
   if (!token) return jsonError(BOT_TOKEN_ERROR, 503);
@@ -199,7 +193,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   let response: Response | undefined;
   try {
   if (panel.style === "reaction") {
-    const options = panelEmojisStmt.all(id) as { emoji: string | null }[];
+    const options = rolesQueries.emojis.all(id) as { emoji: string | null }[];
     for (const option of options) {
       const current = await discordFetch(`/channels/${panel.channel_id}/messages/${panel.message_id}/reactions/${encodeURIComponent(reactionEmoji(option.emoji ?? undefined))}/@me`, { method: "DELETE" });
       if (response === undefined && !current.ok && current.status !== 404) response = current;
@@ -208,8 +202,8 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
     response = await discordFetch(`/channels/${panel.channel_id}/messages/${panel.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [] }) });
   }
   } catch { response = undefined; }
-  panelDeleteStmt.run(id, guildId);
-  recordDashboardChange(guildId, user, "Роли", `Удалена панель «${panel.title}»`);
+  rolesQueries.delete.run(id, guildId);
+  recordDashboardChange(guildId, user, AUDIT_SECTION.roles, `Удалена панель «${panel.title}»`);
   if (response && !response.ok && response.status !== 404) return NextResponse.json({ ok: true, warning: "Панель удалена из dashboard, но Discord не подтвердил удаление элементов." });
   return NextResponse.json({ ok: true });
 });

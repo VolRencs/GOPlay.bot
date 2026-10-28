@@ -9,6 +9,7 @@ import { isSnowflake } from "../../lib/ids.ts";
 import { DEFAULT_SETTINGS, type TempConfig, type TempPresetRow } from "../../lib/tempchannels.ts";
 import { stopAndLeave } from "../../lib/player/session.ts";
 import { tempTr, guildTr } from "../../lib/i18n/bot.ts";
+import { BRAND_COLOR } from "../../lib/colors.ts";
 import { failInteraction, isMissingDiscordResource } from "../../lib/errors.ts";
 import { fetchMember } from "../utils/members.ts";
 
@@ -38,12 +39,14 @@ export function getConfig(guildId: string, sourceChannelId: string | null): Temp
 }
 
 export function renderName(template: string, member: { user: { username: string }; displayName: string }): string {
-  return template.replace(/\{username\}/g, member.user.username).replace(/\{displayName\}/g, member.displayName).replace(/\{user\}/g, member.user.username).slice(0, 100);
+  return template.replace(/\{(username|displayName|user)\}/g, (_token, key: string) =>
+    key === "displayName" ? member.displayName : member.user.username,
+  ).slice(0, 100);
 }
 
 export function registerTempChannels(client: Client) {
   client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("TEMP_VOICE", () => handleVoiceState(oldState, newState)));
-  client.on(Events.InteractionCreate, (i) => void handleInteraction(i));
+  client.on(Events.InteractionCreate, (i) => guard("TEMP_INTERACTION", () => handleInteraction(i)));
   // Вышедший владелец → канал передаётся первому оставшемуся участнику, а если
   // он пуст — удаляется. Иначе строка навсегда остаётся с мёртвым owner_id.
   client.on(Events.GuildMemberRemove, (member) => guard("TEMP_OWNER_LEAVE", () => handleOwnerLeave(member.guild, member.id)));
@@ -217,7 +220,7 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
 async function sendPanel(guild: Guild, channel: VoiceChannel) {
   const t = guildTr(tempTr, guild.id);
   const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
+    .setColor(BRAND_COLOR)
     .setTitle(t("panelTitle"))
     .setDescription(t("panelDesc"));
   const buttons = (items: readonly (readonly [string, string, ButtonStyle])[]) =>

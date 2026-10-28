@@ -5,11 +5,12 @@ import { stmt } from "../db/statements.ts";
 import { resolveChannel } from "./logging/index.ts";
 import { logger } from "../lib/logger.ts";
 import { time } from "../lib/perf.ts";
+import { userRef } from "../lib/mentions.ts";
 
 function memberTemplate(template: string, member: GuildMember) {
   return renderWelcomeTemplate(template.replace(/\r\n?/g, "\n"), {
     ...welcomeValues({ name: member.displayName, username: member.user.username, userId: member.id, server: member.guild.name, count: member.guild.memberCount, avatar: member.user.displayAvatarURL() }),
-    user: `<@${member.id}>`,
+    user: userRef(member.id),
     serverIcon: member.guild.iconURL() ?? "",
   });
 }

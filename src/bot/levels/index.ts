@@ -8,6 +8,8 @@ import { levelFromXp, levelProgress, type LevelReward, type LevelSettings } from
 import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import { levelsTr } from "../../lib/i18n/bot/levels.ts";
+import { BRAND_COLOR } from "../../lib/colors.ts";
+import { userRef } from "../../lib/mentions.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { fetchMember } from "../utils/members.ts";
 
@@ -145,7 +147,7 @@ async function applyRewards(guild: Guild, userId: string, level: number, rewards
 
 async function notifyLevelUp(client: Client, guild: Guild, settings: LevelSettings, up: LevelUp): Promise<void> {
   if (settings.notify_mode === "off") return;
-  const text = levelsTr(guildLang(guild.id), "levelUp", { user: `<@${up.userId}>`, level: String(up.level), server: guild.name });
+  const text = levelsTr(guildLang(guild.id), "levelUp", { user: userRef(up.userId), level: String(up.level), server: guild.name });
   if (settings.notify_mode === "dm") {
     void client.users.send(up.userId, text).catch(() => null); // закрытые ЛС — не ошибка
     return;
@@ -222,9 +224,9 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
     }
     if (i.commandName === "top") {
       const rows = stmt.levelTop.all(guild.id, 10) as { user_id: string; xp: number }[];
-      const embed = new EmbedBuilder().setColor(0x5865f2).setTitle(t("topTitle"));
+      const embed = new EmbedBuilder().setColor(BRAND_COLOR).setTitle(t("topTitle"));
       if (!rows.length) embed.setDescription(t("topEmpty"));
-      else embed.setDescription(rows.map((row, index) => t("topLine", { rank: String(index + 1), user: `<@${row.user_id}>`, level: String(levelFromXp(row.xp, settings.base_xp, settings.growth_percent)), xp: String(row.xp) })).join("\n"));
+      else embed.setDescription(rows.map((row, index) => t("topLine", { rank: String(index + 1), user: userRef(row.user_id), level: String(levelFromXp(row.xp, settings.base_xp, settings.growth_percent)), xp: String(row.xp) })).join("\n"));
       // Оба ответа видны только вызвавшему: топ и уровень — личная информация.
       await i.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       return true;
@@ -241,7 +243,7 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
     const rank = (stmt.levelRank.get(guild.id, xp) as { rank: number }).rank;
     const voiceSeconds = row?.voice_seconds ?? 0;
     const embed = new EmbedBuilder()
-      .setColor(0x5865f2)
+      .setColor(BRAND_COLOR)
       .setTitle(t("title", { user: member.displayName }))
       .addFields(
         { name: t("fieldLevel"), value: String(progress.level), inline: true },

@@ -43,7 +43,7 @@ async function applyPanelRole(guildId: string, panelId: number, roleId: string, 
       if (options.map(x => x.role_id).filter(id => member.roles.cache.has(id)).length >= panel.role_limit) return { text: automodTr(guildLang(guildId), "roleLimitReached", { n: String(panel.role_limit) }), notify: true };
     }
     await member.roles[action](role);
-    return { text: panel.notify_template.replace(/\{role\}/g, role.name), notify: Boolean(panel.notify_enabled) };
+    return { text: panel.notify_template.replaceAll("{role}", () => role.name), notify: Boolean(panel.notify_enabled) };
   });
 }
 

@@ -4,13 +4,13 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.9.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.14.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-Discord-бот и веб-панель управления сервером в одном репозитории и одном процессе:
-бот на `discord.js` + дашборд на `Next.js` с входом через Discord OAuth.
-Стек (зафиксирован в `package.json`): Node **≥ 26**, pnpm **12.9.0**,
-Next.js **16.3.8**, React **19.3.0**, TypeScript **7.0.2**, нативное
+Discord-бот и веб-панель управления сервером в одном репозитории, но в двух
+процессах под общим supervisor (Next.js + бот), с одной SQLite-базой. Стек
+(зафиксирован в `package.json`): Node **≥ 26**, pnpm **12.14.0**,
+Next.js **16.4.3**, React **19.3.1**, TypeScript **7.0.2**, нативное
 снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
 
 > Полная английская версия: [README.md](README.md).
@@ -50,7 +50,7 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Быстрый старт (локально)
 
-Требования: **Node ≥ 26**, **pnpm 12.9.0**, **ffmpeg с libopus**,
+Требования: **Node ≥ 26**, **pnpm 12.14.0**, **ffmpeg с libopus**,
 **yt-dlp** в PATH.
 
 ```bash
@@ -73,7 +73,7 @@ cp .env.example .env
 # - Bot → Reset Token → включите intents Server Members и Message Content
 # - OAuth2 → Redirects → http://localhost:3000/api/auth/callback/discord
 
-# 5. Запуск (бот + веб в одном процессе, лог — data/logs/bot.log)
+# 5. Запуск (бот + веб через supervisor, лог — data/logs/bot.log)
 pnpm migrate:auth && pnpm dev
 # открыть http://localhost:3000
 ```
@@ -123,12 +123,13 @@ pnpm test    # node --test test/*.test.ts
 ```
 app/                  Next.js App Router: лендинг, /dashboard, /admin,
                       /login, API (/api/guilds, /api/admin, /api/auth),
-                      раздача загрузок (/uploads/...)
+                      раздача загрузок (/uploads/...); styles/ — токены и CSS
 src/bot/              Точка входа бота (index.ts) + модули:
-                      moderation, automod, appeals, logging,
-                      tempchannels, music, events, levels, db, utils
-src/db/               database.ts (node:sqlite, WAL) + migrations/*.sql
+                      commands, moderation, automod, appeals, logging,
+                      tempchannels, music (panel/command/shared), events, levels, utils
+src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
 src/lib/              Общая логика: auth, guild-access, automod, welcome,
+                      colors/format/mentions/limits,
                       appeals, levels, uploads, player/* (yt-dlp/ffmpeg стек), i18n
 src/components/       React: user-menu + dashboard/* (панели вкладок)
 scripts/              migrate-auth.ts, run-both.ts (супервизор бота и веба)

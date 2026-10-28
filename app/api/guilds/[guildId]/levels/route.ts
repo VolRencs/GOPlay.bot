@@ -6,6 +6,8 @@ import { stableJson } from "../../../../../src/lib/json.ts";
 import { MAX_LEVEL, MAX_REWARDS, levelRanges, notifyModes, type LevelReward, type LevelSettings, type LevelsGet, type NotifyMode } from "../../../../../src/lib/levels.ts";
 import { levelRewardsFor, levelSettingsFor } from "../../../../../src/lib/levels-store.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
+import { channelRef, roleRef } from "../../../../../src/lib/mentions.ts";
 
 const notifyModeLabels: Record<NotifyMode, string> = { off: "выключены", dm: "в личные сообщения", channel: "в канал" };
 
@@ -75,7 +77,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     stmt.levelRewardsDelete.run(guildId);
     for (const reward of rewards) stmt.levelRewardsInsert.run(guildId, reward.level, reward.role_id);
   });
-  recordDashboardDiff(guildId, user, "Уровни", "Система уровней: ",
+  recordDashboardDiff(guildId, user, AUDIT_SECTION.levels, "Система уровней: ",
     {
       "Система уровней": current.settings.enabled,
       "XP за сообщение": current.settings.xp_per_message,
@@ -84,11 +86,11 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
       "XP за минуту голоса": current.settings.xp_per_voice_minute,
       "Базовый XP": current.settings.base_xp,
       "Рост, %": current.settings.growth_percent,
-      "Исключённые каналы": current.settings.ignored_channel_ids.map(id => `<#${id}>`),
-      "Исключённые роли": current.settings.ignored_role_ids.map(id => `<@&${id}>`),
+      "Исключённые каналы": current.settings.ignored_channel_ids.map(channelRef),
+      "Исключённые роли": current.settings.ignored_role_ids.map(roleRef),
       "Уведомления": notifyModeLabels[current.settings.notify_mode],
-      "Канал уведомлений": current.settings.notify_channel_id ? `<#${current.settings.notify_channel_id}>` : null,
-      "Награды": current.rewards.map(reward => `ур. ${reward.level} → <@&${reward.role_id}>`),
+      "Канал уведомлений": current.settings.notify_channel_id ? channelRef(current.settings.notify_channel_id) : null,
+      "Награды": current.rewards.map(reward => `ур. ${reward.level} → ${roleRef(reward.role_id)}`),
     },
     {
       "Система уровней": settings.enabled,
@@ -98,11 +100,11 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
       "XP за минуту голоса": settings.xp_per_voice_minute,
       "Базовый XP": settings.base_xp,
       "Рост, %": settings.growth_percent,
-      "Исключённые каналы": settings.ignored_channel_ids.map(id => `<#${id}>`),
-      "Исключённые роли": settings.ignored_role_ids.map(id => `<@&${id}>`),
+      "Исключённые каналы": settings.ignored_channel_ids.map(channelRef),
+      "Исключённые роли": settings.ignored_role_ids.map(roleRef),
       "Уведомления": notifyModeLabels[settings.notify_mode],
-      "Канал уведомлений": settings.notify_channel_id ? `<#${settings.notify_channel_id}>` : null,
-      "Награды": rewards.map(reward => `ур. ${reward.level} → <@&${reward.role_id}>`),
+      "Канал уведомлений": settings.notify_channel_id ? channelRef(settings.notify_channel_id) : null,
+      "Награды": rewards.map(reward => `ур. ${reward.level} → ${roleRef(reward.role_id)}`),
     });
   return NextResponse.json({ ok: true });
 });

@@ -1,0 +1,348 @@
+.user-menu { position: relative; }
+
+.user-menu-trigger {
+  display: flex;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.user-menu-avatar {
+  display: block;
+  width: 38px;
+  height: 38px;
+  border: 2px solid rgba(239, 147, 255, .4);
+  border-radius: 50%;
+  box-shadow: 0 0 16px rgba(213, 56, 255, .28);
+  object-fit: cover;
+}
+
+.user-menu-avatar.large { width: 46px; height: 46px; }
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + .6rem);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: .55rem;
+  min-width: 278px;
+  padding: .85rem;
+  background: linear-gradient(145deg, rgba(35, 17, 63, .97), rgba(10, 6, 23, .98));
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  box-shadow: var(--shadow-pop);
+}
+
+.user-menu-header {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  margin-bottom: .2rem;
+  padding: .1rem .1rem .6rem;
+  border-bottom: 1px solid rgba(193, 94, 255, .16);
+}
+
+.user-menu-header strong {
+  display: block;
+  max-width: 210px;
+  overflow: hidden;
+  font-size: .95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-header code {
+  color: var(--muted);
+  font-size: .7rem;
+}
+
+.user-menu-statuses {
+  display: grid;
+  gap: .35rem;
+}
+
+
+
+
+.guild-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.guild-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 92px;
+  padding: 1.05rem 1.1rem;
+  background: linear-gradient(145deg, rgba(29, 17, 53, .78), rgba(13, 8, 27, .84));
+  color: inherit;
+  text-decoration: none;
+  transition: var(--t);
+}
+
+.guild-card:hover,
+.feature-card:hover {
+  border-color: var(--line-hover);
+  box-shadow: 0 15px 34px rgba(177, 44, 255, .2);
+  transform: translateY(-2px);
+}
+
+
+.guild-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  background: var(--grad);
+  border: 1px solid rgba(239, 147, 255, .2);
+  border-radius: var(--r-3);
+  box-shadow: 0 0 20px rgba(213, 56, 255, .25);
+  font-weight: 800;
+}
+
+.guild-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.panel-stack,
+.event-settings,
+.event-grid,
+.chart-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding: 1.35rem .9rem;
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(14, 7, 29, .97), rgba(7, 4, 16, .97));
+  border-right: 1px solid var(--line);
+  scrollbar-width: thin;
+}
+
+
+.sidebar nav {
+  display: grid;
+  gap: .25rem;
+}
+
+.settings-content {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding: 2.25rem clamp(1.25rem, 3vw, 3.25rem) 3rem;
+}
+
+.settings-top {
+  margin-bottom: 2rem;
+  padding-bottom: 1.35rem;
+  border-bottom: 1px solid var(--inset-line);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  width: 100%;
+  min-height: 42px;
+  padding: .62rem .95rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-2);
+  color: var(--label);
+  font-size: .92rem;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--t);
+}
+
+.nav-item svg {
+  flex: none;
+  opacity: .9;
+}
+
+.nav-item:hover, .nav-item.active {
+  background: var(--grad-active);
+  color: #fff;
+}
+
+.nav-item.active {
+  box-shadow: inset 3px 0 0 rgba(219, 74, 255, .85), 0 0 22px rgba(135, 44, 255, .12);
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: .8rem;
+  color: #b8c2ff;
+  font-size: .9rem;
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+
+.back-link:hover { color: #fff; }
+
+.server-heading {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.server-heading h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.35rem); }
+
+.server-heading-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  overflow: hidden;
+  background: var(--grad);
+  border: 1px solid rgba(239, 147, 255, .28);
+  border-radius: var(--r-3);
+  box-shadow: 0 0 28px rgba(135, 44, 255, .18);
+}
+
+.server-heading-icon img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.unsaved-float {
+  position: fixed;
+  left: 50%;
+  bottom: 1.1rem;
+  transform: translateX(-50%);
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .4rem .6rem;
+  max-width: min(92vw, 31rem);
+  padding: .45rem .55rem .45rem .8rem;
+  background: var(--panel-solid);
+  border: 1px solid #8d671d;
+  border-radius: var(--r-full);
+  box-shadow: 0 14px 38px rgba(4, 2, 16, .5);
+  color: #fff;
+  font-size: .8rem;
+  animation: unsaved-in .22s ease-out;
+}
+
+.unsaved-float .btn {
+  padding: .38rem .65rem;
+  font-size: .76rem;
+}
+
+.warn-dot {
+  flex: none;
+  width: .45rem;
+  height: .45rem;
+  border-radius: 50%;
+  background: #ffd668;
+  box-shadow: 0 0 10px rgba(255, 214, 104, .8);
+}
+
+@keyframes unsaved-in {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+}
+
+
+.sidebar-groups {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.sidebar-group {
+  display: grid;
+  gap: .3rem;
+}
+
+.sidebar-group-label {
+  margin: .15rem .95rem .1rem;
+  color: #7f8aa3;
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.sidebar-group-items {
+  display: grid;
+  gap: .18rem;
+}
+
+.server-heading-copy {
+  min-width: 0;
+}
+
+.server-heading-copy h1 {
+  line-height: 1.12;
+}
+
+.page-description {
+  max-width: 68ch;
+  margin: .4rem 0 0;
+  color: var(--muted);
+  font-size: .92rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: static;
+    height: auto;
+    overflow: visible;
+  }
+
+  .sidebar-groups {
+    display: flex;
+    gap: .75rem;
+    overflow-x: auto;
+    padding-bottom: .15rem;
+  }
+
+  .sidebar-group {
+    display: contents;
+  }
+
+  .sidebar-group-label {
+    display: none;
+  }
+
+  .sidebar-group-items {
+    display: flex;
+    flex: none;
+    gap: .35rem;
+  }
+
+  .settings-content {
+    padding: 1.35rem 1rem 2.5rem;
+  }
+}

@@ -32,6 +32,7 @@ import { logTr } from "../lib/i18n/bot/logs.ts";
 import { wipeGuildData } from "../lib/server-cleanup.ts";
 import { deleteGuildFiles } from "../lib/uploads.ts";
 import { fetchMember, memberRoleDiff } from "./utils/members.ts";
+import { channelRef } from "../lib/mentions.ts";
 const automodRuleTitles = { ru: automodRulesFor("ru"), en: automodRulesFor("en") } as const;
 const token = process.env.DISCORD_TOKEN; if (!token) throw new Error("DISCORD_TOKEN is required");
 process.on("unhandledRejection", (reason) => { logger.error("[PROCESS] Unhandled rejection:", reason); });
@@ -305,7 +306,7 @@ client.on(Events.GuildMemberUpdate, (oldMember, newMember) => guard("MEMBER_UPDA
 const editPending = new Map<string, { before: string; after: string; timer: ReturnType<typeof setTimeout> }>();
 const EDIT_DEBOUNCE_MS = 2_000;
 const code = (value: string) => `\`\`\`${value.replace(/```/g, "ˋˋˋ") || "—"}\`\`\``;
-client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
+client.on(Events.MessageUpdate, (oldMessage, newMessage) => guard("MESSAGE_UPDATE", () => {
   count("events.message_edit");
   if (!newMessage.guild || !newMessage.author || newMessage.author.bot) return;
   const key = `${newMessage.guildId}:${newMessage.channelId}:${newMessage.id}`;
@@ -321,9 +322,9 @@ client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
     return;
   }
   editPending.set(key, { before, after, timer: setTimeout(() => { editPending.delete(key); guard("EDIT_LOG", () => fireEditLog(newMessage, before, after)); }, EDIT_DEBOUNCE_MS).unref() });
-});
+}));
 function fireEditLog(newMessage: Message, before: string, after: string) {
-  logAction({ guildId: newMessage.guild!.id, type: "message_edit", targetId: newMessage.author!.id, details: (() => { const l = guildLang(newMessage.guild!.id); return `${logTr(l, "channelField", { channel: `<#${newMessage.channelId}>` })}\n${logTr(l, "beforeLabel")}:\n${code(before.slice(0, 450))}\n${logTr(l, "afterLabel")}:\n${code(after.slice(0, 450))}`; })() });
+  logAction({ guildId: newMessage.guild!.id, type: "message_edit", targetId: newMessage.author!.id, details: (() => { const l = guildLang(newMessage.guild!.id); return `${logTr(l, "channelField", { channel: channelRef(newMessage.channelId) })}\n${logTr(l, "beforeLabel")}:\n${code(before.slice(0, 450))}\n${logTr(l, "afterLabel")}:\n${code(after.slice(0, 450))}`; })() });
 }
 client.on(Events.MessageDelete, message => guard("MESSAGE_DELETE", async () => {
   count("events.message_delete");
@@ -335,7 +336,7 @@ client.on(Events.MessageDelete, message => guard("MESSAGE_DELETE", async () => {
   const actor = await auditActor(message.guild, AuditLogEvent.MessageDelete, authorId, { retries: 0 });
   const content = (forgetMessage(message.id) ?? message.content ?? "").trim();
   const lDel = guildLang(message.guild.id);
-  let details = logTr(lDel, "channelField", { channel: `<#${message.channelId}>` });
+  let details = logTr(lDel, "channelField", { channel: channelRef(message.channelId) });
   if (content) details += `\n${logTr(lDel, "contentLabel", { content: content.slice(0, 500) })}`;
   const embeds = message.embeds.map(embed => renderEmbed(embed, lDel)).filter(Boolean);
   if (embeds.length) details += `\n${logTr(lDel, "attachmentsLabel")}\n${embeds.join("\n—\n").slice(0, 800)}`;

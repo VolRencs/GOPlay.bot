@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, isSnowflakeArray, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { db } from "../../../../../src/db/database.ts";
+import { automodQueries } from "../../../../../src/db/queries.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
 import { automodRulesM } from "../../../../../src/lib/labels.ts";
 import { automodActions, automodThresholdRanges, automodWindowRange, isAutomodSecurityPutBody, type AutomodGet, type AutomodPutBody, type AutomodRuleRow } from "../../../../../src/lib/automod.ts";
 import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../../../src/lib/constants.ts";
 import { stmt } from "../../../../../src/db/statements.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
+import { channelRef, roleRef } from "../../../../../src/lib/mentions.ts";
 
 const thresholdLabels: Record<string, string> = {
   messages: "Сообщений", repeatCount: "Повторов", minimumCharacters: "Минимум букв",
@@ -21,7 +23,7 @@ const modeValueLabels: Record<string, string> = {
 function thresholdDisplay(threshold: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(Object.entries(threshold).filter(([key]) => thresholdLabels[key]).map(([key, value]) => [
     thresholdLabels[key]!,
-    key === "channels" && Array.isArray(value) ? value.map(id => `<#${String(id)}>`) : typeof value === "string" ? (modeValueLabels[value] ?? value) : value,
+    key === "channels" && Array.isArray(value) ? value.map(id => channelRef(String(id))) : typeof value === "string" ? (modeValueLabels[value] ?? value) : value,
   ]));
 }
 
@@ -36,15 +38,11 @@ function isValidThreshold(threshold: Record<string, unknown>): boolean {
   }
   return true;
 }
-const securityUpsert=db.prepare("INSERT INTO guild_security_settings(guild_id,ignored_role_ids_json,protected_channel_id,updated_at) VALUES(?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET ignored_role_ids_json=excluded.ignored_role_ids_json,protected_channel_id=excluded.protected_channel_id,updated_at=excluded.updated_at");
-const rulesAllStmt=db.prepare("SELECT * FROM automod_rules WHERE guild_id=?");
-const ruleGetStmt=db.prepare("SELECT enabled,action_json,threshold_json,window_seconds,escalation FROM automod_rules WHERE guild_id=? AND kind=?");
-const ruleUpsertStmt=db.prepare("INSERT INTO automod_rules(guild_id,kind,enabled,action_json,threshold_json,window_seconds,escalation,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(guild_id,kind) DO UPDATE SET enabled=excluded.enabled,action_json=excluded.action_json,threshold_json=excluded.threshold_json,window_seconds=excluded.window_seconds,escalation=excluded.escalation,updated_at=excluded.updated_at");
 
 export const GET = guildRoute(async (_, { guildId }) => {
   const security=stmt.security.get(guildId) as {ignored_role_ids_json:string;protected_channel_id:string|null}|undefined;
   const ignoredRoleIds=safeJson<unknown>(security?.ignored_role_ids_json,[]);
-  const rules=rulesAllStmt.all(guildId) as AutomodRuleRow[];
+  const rules=automodQueries.rulesAll.all(guildId) as AutomodRuleRow[];
   return NextResponse.json<AutomodGet>({
     rules,
     ignoredRoleIds:isSnowflakeArray(ignoredRoleIds)?ignoredRoleIds:[],
@@ -64,15 +62,15 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     const storedRoles=(()=>{const parsed=safeJson<unknown>(savedSecurity?.ignored_role_ids_json,[]);return isSnowflakeArray(parsed)?parsed.toSorted():[]})();
     const unchangedSecurity=savedSecurity ? stableJson(storedRoles)===stableJson([...roles].sort())&&(savedSecurity.protected_channel_id??null)===channel : roles.length===0&&channel===null;
     if(unchangedSecurity)return NextResponse.json({ok:true,unchanged:true});
-    securityUpsert.run(guildId,JSON.stringify(roles),channel,Date.now());
-    recordDashboardDiff(guildId,user,"Автомодерация","Общие исключения: ",
+    automodQueries.securityUpsert.run(guildId,JSON.stringify(roles),channel,Date.now());
+    recordDashboardDiff(guildId,user,AUDIT_SECTION.automod,"Общие исключения: ",
       {
-        "Исключённые роли": storedRoles.map(id=>`<@&${id}>`),
-        "Защищённый канал": savedSecurity?.protected_channel_id ? `<#${savedSecurity.protected_channel_id}>` : null,
+        "Исключённые роли": storedRoles.map(roleRef),
+        "Защищённый канал": savedSecurity?.protected_channel_id ? channelRef(savedSecurity.protected_channel_id) : null,
       },
       {
-        "Исключённые роли": [...roles].map(id=>`<@&${id}>`),
-        "Защищённый канал": channel ? `<#${channel}>` : null,
+        "Исключённые роли": [...roles].map(roleRef),
+        "Защищённый канал": channel ? channelRef(channel) : null,
       });
     return NextResponse.json({ok:true});
   }
@@ -92,7 +90,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   if(!isValidThreshold(r.threshold))return jsonError("Некорректные числовые пороги правила.");
   if(JSON.stringify(r.threshold).length>10000)return jsonError("Слишком большой список порогов.");
   const duration=Number(r.threshold.durationSeconds??DEFAULT_TIMEOUT_SECONDS); if(!Number.isFinite(duration)||duration<1||duration>MAX_TIMEOUT_SECONDS)return jsonError("Тайм-аут может длиться от 1 секунды до 28 дней.");
-  const existingRule=ruleGetStmt.get(guildId,r.kind) as {enabled:number;action_json:string;threshold_json:string;window_seconds:number;escalation:number}|undefined;
+  const existingRule=automodQueries.ruleGet.get(guildId,r.kind) as {enabled:number;action_json:string;threshold_json:string;window_seconds:number;escalation:number}|undefined;
   const storedActions=safeJson<unknown>(existingRule?.action_json,[]);
   const cleanStoredActions=Array.isArray(storedActions)?storedActions.filter(x=>typeof x==="string"):[];
   const beforeThreshold=existingRule?safeJson<Record<string,unknown>>(existingRule.threshold_json,{}):{};
@@ -100,11 +98,11 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     const unchangedRule=existingRule.enabled===+r.enabled&&existingRule.window_seconds===r.window&&existingRule.escalation===+r.escalation&&stableJson(cleanStoredActions)===stableJson(r.actions)&&stableJson(beforeThreshold)===stableJson(r.threshold);
     if(unchangedRule)return NextResponse.json({ok:true,unchanged:true});
   }
-  ruleUpsertStmt.run(guildId,r.kind,+r.enabled,JSON.stringify(r.actions),JSON.stringify(r.threshold),r.window,+r.escalation,Date.now());
+  automodQueries.ruleUpsert.run(guildId,r.kind,+r.enabled,JSON.stringify(r.actions),JSON.stringify(r.threshold),r.window,+r.escalation,Date.now());
   const payload=(enabled:boolean,actions:string[],window:number,escalation:boolean,threshold:Record<string,unknown>)=>({
     "Включено":enabled, "Действия":actions, "Окно, с":window, "Эскалация":escalation, ...thresholdDisplay(threshold),
   });
-  recordDashboardDiff(guildId,user,"Автомодерация",`Правило «${automodRulesM[r.kind]?.title.ru ?? r.kind}»: `,
+  recordDashboardDiff(guildId,user,AUDIT_SECTION.automod,`Правило «${automodRulesM[r.kind]?.title.ru ?? r.kind}»: `,
     existingRule?payload(Boolean(existingRule.enabled),cleanStoredActions,existingRule.window_seconds,Boolean(existingRule.escalation),beforeThreshold):{},
     payload(r.enabled,r.actions,r.window,r.escalation,r.threshold));
   return NextResponse.json({ok:true});

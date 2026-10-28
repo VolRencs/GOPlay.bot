@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { db, withTransaction } from "../../../../../src/db/database.ts";
+import { withTransaction } from "../../../../../src/db/database.ts";
+import { tempchannelQueries } from "../../../../../src/db/queries.ts";
 import { parseStringArray, stableJson } from "../../../../../src/lib/json.ts";
 import { DEFAULT_SETTINGS, clampUserLimit, type TempChannelConfig, type TempPreset, type TempPresetRow, type TempPutBody, type TempchannelsGet } from "../../../../../src/lib/tempchannels.ts";
 import { stmt } from "../../../../../src/db/statements.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
-
-const presetsDelete = db.prepare("DELETE FROM temp_channel_presets WHERE guild_id=?");
-const presetsInsert = db.prepare("INSERT INTO temp_channel_presets(guild_id,name,trigger_channel_ids_json,category_id,name_template,user_limit,can_rename,can_manage_access,can_close,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)");
+import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
 
 function parseConfig(value: unknown): TempChannelConfig {
   const v = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
@@ -16,7 +15,9 @@ function parseConfig(value: unknown): TempChannelConfig {
     categoryId: typeof v.categoryId === "string" && isSnowflake(v.categoryId) ? v.categoryId : null,
     nameTemplate,
     userLimit: clampUserLimit(v.userLimit),
-    canRename: Boolean(v.canRename), canManageAccess: Boolean(v.canManageAccess), canClose: Boolean(v.canClose),
+    canRename: v.canRename === undefined ? true : Boolean(v.canRename),
+    canManageAccess: v.canManageAccess === undefined ? true : Boolean(v.canManageAccess),
+    canClose: v.canClose === undefined ? true : Boolean(v.canClose),
   };
 }
 
@@ -51,8 +52,8 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   }
   const timestamp = Date.now();
   withTransaction(() => {
-    presetsDelete.run(guildId);
-    for (const preset of presets) presetsInsert.run(guildId, preset.name, JSON.stringify(preset.triggers), preset.config.categoryId, preset.config.nameTemplate, preset.config.userLimit, preset.config.canRename ? 1 : 0, preset.config.canManageAccess ? 1 : 0, preset.config.canClose ? 1 : 0, timestamp);
+    tempchannelQueries.delete.run(guildId);
+    for (const preset of presets) tempchannelQueries.insert.run(guildId, preset.name, JSON.stringify(preset.triggers), preset.config.categoryId, preset.config.nameTemplate, preset.config.userLimit, preset.config.canRename ? 1 : 0, preset.config.canManageAccess ? 1 : 0, preset.config.canClose ? 1 : 0, timestamp);
   });
   const existingByName = new Map(existingRows.map((row, index) => [row.name, existing[index]!]));
   const nextNames = new Set(presets.map(preset => preset.name));
@@ -60,6 +61,6 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const removed = existingRows.filter(row => !nextNames.has(row.name)).map(row => `«${row.name}»`);
   const changed = presets.filter(preset => { const was = existingByName.get(preset.name); return was !== undefined && was !== canonical(preset); }).map(preset => `«${preset.name}»`);
   const parts = [added.length ? `добавлены ${added.join(", ")}` : "", removed.length ? `удалены ${removed.join(", ")}` : "", changed.length ? `изменены ${changed.join(", ")}` : ""].filter(Boolean);
-  recordDashboardChange(guildId, user, "Временные каналы", `Шаблоны: ${parts.join("; ")}`);
+  recordDashboardChange(guildId, user, AUDIT_SECTION.tempchannels, `Шаблоны: ${parts.join("; ")}`);
   return NextResponse.json({ ok: true, presets: (stmt.tempPresets.all(guildId) as TempPresetRow[]).map(toJson) });
 });

@@ -29,6 +29,10 @@ export default async function Dashboard() {
         <h1>Ваши серверы</h1>
         <p className="muted">Выберите сервер, чтобы настроить бота.</p>
       </div>
+      <div className="page-heading-actions">
+        {guilds.length > 0 && <span className="pill pill-accent">Серверов: {guilds.length}</span>}
+        <a className="btn secondary" href={discordInviteUrl()}><Bot size={18}/>Добавить бота</a>
+      </div>
     </div>
     {!access.allowed && <p className="error-note" role="alert">⚠ У этого аккаунта нет доступа к панели.</p>}
     {loadError && <p className="error-note" role="alert">⚠ {loadError}</p>}
@@ -36,10 +40,11 @@ export default async function Dashboard() {
       <section className="guild-grid">
         {guilds.map(guild => <a className="guild-card" href={`/dashboard/${guild.id}`} key={guild.id}>
           <div className="guild-avatar">{guild.icon ? <img src={`https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128`} alt=""/> : guild.name[0]}</div>
-          <div>
+          <div className="guild-card-copy">
             <h2>{guild.name}</h2>
-            <span className="muted">Настроить сервер →</span>
+            <span className="muted">Настроить сервер</span>
           </div>
+          <span className="guild-card-arrow" aria-hidden="true">→</span>
         </a>)}
       </section>
     ) : (

@@ -50,27 +50,54 @@ export const levelDefaults: LevelSettings = {
   notify_channel_id: null,
 };
 
-/** Суммарный XP, необходимый для достижения уровня (0 → 0). */
-export function xpForLevel(level: number, baseXp: number, growthPercent: number): number {
-  let total = 0;
-  let need = baseXp;
-  for (let current = 1; current <= level && current <= MAX_LEVEL; current++) {
-    total += need;
-    need = Math.round(need * (1 + growthPercent / 100));
-  }
-  return total;
-}
+// Пороговые таблицы не зависят от пользователя и переиспользуются между
+// сообщениями/флешами: линейный проход на каждый flush был лишней работой.
+const THRESHOLD_CACHE_MAX = 64;
+const thresholdCache = new Map<string, readonly number[]>();
 
-/** Один проход по порогам: уровень по XP, накопленный порог и шаг следующего. */
-function levelInfo(xp: number, baseXp: number, growthPercent: number): { level: number; floor: number; need: number } {
-  let floor = 0;
+function thresholds(baseXp: number, growthPercent: number): readonly number[] {
+  const key = `${baseXp}:${growthPercent}`;
+  const cached = thresholdCache.get(key);
+  if (cached) return cached;
+  const values: number[] = [0];
   let need = baseXp;
   for (let level = 1; level <= MAX_LEVEL; level++) {
-    if (xp < floor + need) return { level: level - 1, floor, need };
-    floor += need;
+    values.push(values[level - 1]! + need);
     need = Math.round(need * (1 + growthPercent / 100));
   }
-  return { level: MAX_LEVEL, floor: 0, need: 0 };
+  if (thresholdCache.size >= THRESHOLD_CACHE_MAX) {
+    const oldest = thresholdCache.keys().next().value;
+    if (oldest !== undefined) thresholdCache.delete(oldest);
+  }
+  thresholdCache.set(key, values);
+  return values;
+}
+
+/** Суммарный XP, необходимый для достижения уровня (0 → 0). */
+export function xpForLevel(level: number, baseXp: number, growthPercent: number): number {
+  const values = thresholds(baseXp, growthPercent);
+  return values[Math.min(MAX_LEVEL, Math.max(0, Math.floor(level)))] ?? 0;
+}
+
+/** Бинарный поиск уровня по накопленному XP. */
+function levelFromThresholds(xp: number, values: readonly number[]): number {
+  if (xp <= 0) return 0;
+  let low = 0;
+  let high = MAX_LEVEL;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if ((values[middle] ?? 0) <= xp) low = middle;
+    else high = middle - 1;
+  }
+  return low;
+}
+
+function levelInfo(xp: number, baseXp: number, growthPercent: number): { level: number; floor: number; need: number } {
+  const values = thresholds(baseXp, growthPercent);
+  const level = levelFromThresholds(xp, values);
+  if (level >= MAX_LEVEL) return { level: MAX_LEVEL, floor: 0, need: 0 };
+  const floor = values[level] ?? 0;
+  return { level, floor, need: (values[level + 1] ?? floor) - floor };
 }
 
 export function levelFromXp(xp: number, baseXp: number, growthPercent: number): number {

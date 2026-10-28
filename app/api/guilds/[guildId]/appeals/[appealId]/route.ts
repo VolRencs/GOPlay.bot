@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server.js";
 import { guildRoute, discordAccountOf, jsonError, readJson } from "../../../../../../src/lib/guild-access.ts";
 import { recordDashboardChange } from "../../../../../../src/lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "../../../../../../src/lib/audit-sections.ts";
 import { appealStatusMeta } from "../../../../../../src/lib/labels.ts";
 import { guildLang } from "../../../../../../src/lib/i18n/bot.ts";
 import { applyAppealReversal, notifyAppealStatus, reviewActions, reviewAppeal } from "../../../../../../src/lib/appeals.ts";
@@ -22,7 +23,7 @@ export const POST = guildRoute<{ guildId: string; appealId: string }>(async (req
   const reversalResult = reversal ? await applyAppealReversal(guildLang(guildId), guildId, appeal.user_id, reversal) : null;
   const notified = await notifyAppealStatus(appeal, reversalResult);
   const statusLabel = (status: string) => appealStatusMeta[status]?.label ?? status;
-  recordDashboardChange(guildId, user, "Апелляции", `Апелляция #${appeal.number}: «${statusLabel(previousStatus)}» → «${statusLabel(appeal.status)}»${comment ? ` · комментарий: ${comment}` : ""}`);
+  recordDashboardChange(guildId, user, AUDIT_SECTION.appeals, `Апелляция #${appeal.number}: «${statusLabel(previousStatus)}» → «${statusLabel(appeal.status)}»${comment ? ` · комментарий: ${comment}` : ""}`);
 
   return NextResponse.json({ ok: true, appeal, reversal: reversalResult ? { ...reversalResult, failed: !reversalResult.ok } : null, notified });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, use, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, Suspense, lazy, use, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { BarChart3, Bot, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, X } from "lucide-react";
 import { buildWelcomePutBody, welcomeDefaults, type WelcomeGet, type WelcomePutBody } from "../../../src/lib/welcome.ts";
 import { automodRules, buildLoggingPutBody, type LangGet, type LoggingGet, type LoggingPutBody } from "../../../src/lib/labels.ts";
@@ -8,7 +8,7 @@ import type { AutomodGet, AutomodRulePutBody, AutomodRuleRow, AutomodSecurityPut
 import type { TempchannelsGet, TempPutBody } from "../../../src/lib/tempchannels.ts";
 import { buildLevelsPutBody, levelDefaults, type LevelsGet } from "../../../src/lib/levels.ts";
 import { parseActions, safeJson } from "../../../src/lib/json.ts";
-import { SERVER_FALLBACK_NAME } from "../../../src/lib/constants.ts";
+import { DEFAULT_MUSIC_LEAVE_SECONDS, SERVER_FALLBACK_NAME } from "../../../src/lib/constants.ts";
 import type { MusicSettings } from "../../../src/lib/music-settings.ts";
 import type { AutoroleGet, AutorolePutBody } from "../../../src/lib/autorole.ts";
 import { buildMusicPutBody, type Channel, type LoggingState, type ResourcesGet, type Role, type ServerEmoji, type ServerIdentity, type ServerStats } from "../../../src/components/dashboard/types.ts";
@@ -21,26 +21,43 @@ import { LoggingSettings } from "../../../src/components/dashboard/LoggingPanel.
 import { DashboardAuditLog, ServerDataCleanup } from "../../../src/components/dashboard/AuditPanel.tsx";
 import { BotLanguageCard } from "../../../src/components/dashboard/BotLanguageCard.tsx";
 import { MusicSettingsCard } from "../../../src/components/dashboard/MusicSettingsCard.tsx";
-import { WelcomeSettings } from "../../../src/components/dashboard/WelcomePanel.tsx";
 import { AutoModSettings, defaultRule } from "../../../src/components/dashboard/AutomodPanel.tsx";
 import { RoleSettings } from "../../../src/components/dashboard/RolesPanel.tsx";
 import { AutoroleSettings } from "../../../src/components/dashboard/AutorolePanel.tsx";
-import { EmbedsPanel } from "../../../src/components/dashboard/EmbedsPanel.tsx";
 import { AppealsPanel } from "../../../src/components/dashboard/AppealsPanel.tsx";
-import { EventsPanel } from "../../../src/components/dashboard/EventsPanel.tsx";
 import { LevelsPanel } from "../../../src/components/dashboard/LevelsPanel.tsx";
 
+const WelcomeSettings = lazy(() => import("../../../src/components/dashboard/WelcomePanel.tsx").then(module => ({ default: module.WelcomeSettings })));
+const EmbedsPanel = lazy(() => import("../../../src/components/dashboard/EmbedsPanel.tsx").then(module => ({ default: module.EmbedsPanel })));
+const EventsPanel = lazy(() => import("../../../src/components/dashboard/EventsPanel.tsx").then(module => ({ default: module.EventsPanel })));
+
 type TabKey = "welcome" | "automod" | "roles" | "levels" | "embeds" | "music" | "logging" | "stats" | "tempchannels" | "appeals" | "events" | "audit" | "settings";
-const TAB_KEYS: readonly TabKey[] = ["stats", "welcome", "automod", "roles", "levels", "embeds", "music", "events", "logging", "tempchannels", "appeals", "audit", "settings"];
-const TAB_LABELS: Record<TabKey, { nav: string; title: string }> = {
-  stats: { nav: "Статистика", title: "Статистика сервера" }, welcome: { nav: "Приветствие", title: "Приветствие" },
-  automod: { nav: "Автомодерация", title: "Автомодерация" }, roles: { nav: "Роли", title: "Самовыдача ролей" },
-  levels: { nav: "Уровни", title: "Уровни и опыт" },
-  embeds: { nav: "Embeds", title: "Конструктор embeds" }, music: { nav: "Музыка", title: "Музыка" }, events: { nav: "События", title: "События" },
-  logging: { nav: "Логи", title: "Логирование" }, tempchannels: { nav: "Временные каналы", title: "Временные каналы" },
-  appeals: { nav: "Апелляции", title: "Апелляции" }, audit: { nav: "Журнал изменений", title: "Журнал изменений" },
-  settings: { nav: "Настройки", title: "Настройки" },
+const TAB_LABELS: Record<TabKey, { nav: string; title: string; description: string }> = {
+  stats: { nav: "Статистика", title: "Статистика сервера", description: "Активность, участники и действия модерации за выбранный период." },
+  welcome: { nav: "Приветствие", title: "Приветствие", description: "Текст, оформление и персональная картинка для входа и прощания." },
+  automod: { nav: "Автомодерация", title: "Автомодерация", description: "Правила против спама и ссылок, исключения и защищённый канал." },
+  roles: { nav: "Роли", title: "Самовыдача ролей", description: "Панели с кнопками, меню и реакциями, а также автороль при входе." },
+  levels: { nav: "Уровни", title: "Уровни и опыт", description: "Начисление XP, награды за уровни и уведомления о повышении." },
+  embeds: { nav: "Embeds", title: "Конструктор embeds", description: "Шаблоны сообщений, медиа и публикация в каналы сервера." },
+  music: { nav: "Музыка", title: "Музыка", description: "Доступ к /play, разрешённые каналы и автовыход плеера." },
+  events: { nav: "События", title: "События", description: "Ивенты, регистрация, очередь ожидания и напоминания участникам." },
+  logging: { nav: "Логи", title: "Логирование", description: "Канал журнала и категории событий, которые нужно записывать." },
+  tempchannels: { nav: "Временные каналы", title: "Временные каналы", description: "Шаблоны приватных голосовых комнат и права их владельцев." },
+  appeals: { nav: "Апелляции", title: "Апелляции", description: "Оспаривание наказаний, комментарии модераторов и статусы." },
+  audit: { nav: "Журнал изменений", title: "Журнал изменений", description: "Кто и когда менял настройки сервера в панели." },
+  settings: { nav: "Настройки", title: "Настройки", description: "Язык бота и очистка данных сервера." },
 };
+const TAB_GROUPS: readonly { label: string; keys: readonly TabKey[] }[] = [
+  { label: "Обзор", keys: ["stats", "audit", "settings"] },
+  { label: "Сообщество", keys: ["welcome", "roles", "levels", "events"] },
+  { label: "Модерация", keys: ["automod", "logging", "appeals", "tempchannels"] },
+  { label: "Контент", keys: ["embeds", "music"] },
+];
+const TAB_KEYS: readonly TabKey[] = TAB_GROUPS.flatMap(group => group.keys);
+const TAB_ICONS = {
+  stats: BarChart3, welcome: Sparkles, automod: ShieldCheck, roles: Tags, levels: Medal, embeds: Image,
+  music: Music, events: CalendarDays, logging: ScrollText, tempchannels: Mic2, appeals: Gavel, audit: History, settings: Settings,
+} as const;
 
 type Toast = { id: number; text: string; tone: "ok" | "warn" | "error" };
 let toastSeq = 0;
@@ -51,7 +68,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
   const [tab, setTab] = useState<TabKey>("stats");
   const [, startTransition] = useTransition();
   const langDraft = useConfigDraft<"ru" | "en">("ru");
-  const musicDraft = useConfigDraft<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: 300 });
+  const musicDraft = useConfigDraft<MusicSettings>({ command_channel_id: null, voice_channel_ids: [], allowed_role_ids: [], leave_after_seconds: DEFAULT_MUSIC_LEAVE_SECONDS });
   const autoroleDraft = useConfigDraft<AutoroleGet>({ enabled: false, roleId: null });
   const serverLang = langDraft.value, setServerLang = langDraft.setValue;
   const music = musicDraft.value, setMusic = musicDraft.setValue;
@@ -219,14 +236,44 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
   function discardAndGo(){if(!pendingNav)return;discardChanges();applyNav(pendingNav);}
   useEffect(()=>{if(!isDirty)return;const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};const blockLinks=(event:MouseEvent)=>{const target=event.target;if(!(target instanceof Element))return;const link=target.closest("a[href]");if(link&&!event.defaultPrevented&&!event.metaKey&&!event.ctrlKey){event.preventDefault();setPendingNav({href:link.getAttribute("href")??"/"});}};window.addEventListener("beforeunload",beforeUnload);document.addEventListener("click",blockLinks,true);return()=>{window.removeEventListener("beforeunload",beforeUnload);document.removeEventListener("click",blockLinks,true);};},[isDirty]);
   return <main className="settings-shell">
-    <aside className="sidebar"><a href="/dashboard" className="brand"><Bot size={22} /> GOPlay</a><p className="sidebar-label">НАСТРОЙКИ СЕРВЕРА</p><nav aria-label="Разделы настроек">{([
-      ["stats", BarChart3], ["welcome", Sparkles], ["automod", ShieldCheck], ["roles", Tags], ["levels", Medal], ["embeds", Image], ["music", Music], ["events", CalendarDays], ["logging", ScrollText], ["tempchannels", Mic2], ["appeals", Gavel], ["audit", History], ["settings", Settings],
-    ] as const).map(([key, Icon]) => <button type="button" key={key} className={tab === key ? "nav-item active" : "nav-item"} onClick={() => { if(key===tab)return; if(isDirty)setPendingNav({tab:key}); else switchTab(key); }}><Icon size={18} />{TAB_LABELS[key].nav}</button>)}</nav></aside>
-    <section className="settings-content"><div className="settings-top"><div><a className="back-link" href="/dashboard">← Все серверы</a><div className="server-heading"><div className="server-heading-icon">{server.icon?<img src={`https://cdn.discordapp.com/icons/${guildId}/${server.icon}.png?size=128`} alt=""/>:<Bot size={24}/>}</div><div><p className="eyebrow">{server.name}</p><h1>{TAB_LABELS[tab].title}</h1></div></div></div></div>
+    <aside className="sidebar" aria-label="Настройки сервера">
+      <a href="/dashboard" className="brand"><Bot size={22} /> GOPlay</a>
+      <div className="sidebar-groups">
+        {TAB_GROUPS.map(group => (
+          <section className="sidebar-group" key={group.label}>
+            <p className="sidebar-group-label">{group.label}</p>
+            <div className="sidebar-group-items">
+              {group.keys.map(key => {
+                const Icon = TAB_ICONS[key];
+                return <button
+                  type="button"
+                  key={key}
+                  className={tab === key ? "nav-item active" : "nav-item"}
+                  aria-current={tab === key ? "page" : undefined}
+                  onClick={() => { if (key === tab) return; if (isDirty) setPendingNav({ tab: key }); else switchTab(key); }}
+                ><Icon size={18} />{TAB_LABELS[key].nav}</button>;
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </aside>
+    <section className="settings-content">
+      <header className="settings-top">
+        <a className="back-link" href="/dashboard">← Все серверы</a>
+        <div className="server-heading">
+          <div className="server-heading-icon">{server.icon ? <img src={`https://cdn.discordapp.com/icons/${guildId}/${server.icon}.png?size=128`} alt=""/> : <Bot size={24}/>}</div>
+          <div className="server-heading-copy">
+            <p className="eyebrow">GOPLAY · {server.name}</p>
+            <h1>{TAB_LABELS[tab].title}</h1>
+            <p className="page-description">{TAB_LABELS[tab].description}</p>
+          </div>
+        </div>
+      </header>
       {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
       <div className="toast-stack" role="region" aria-label="Уведомления">{toasts.map(toast => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><span className="toast-dot" aria-hidden="true"/><span className="toast-text">{toast.text}</span><button type="button" className="toast-close" aria-label="Закрыть уведомление" onClick={() => dismissToast(toast.id)}><X size={14}/></button></div>)}</div>
-      {!loading && <Fragment key={guildId}>
-      {tab === "welcome" && <WelcomeSettings channels={channels} value={welcome} onChange={setWelcome} onSave={() => saveWelcome()} onUpload={(file) => uploadWelcomeBackground(file)} bgTimestamp={bgTimestamp} />}
+      {!loading && <Suspense fallback={<p className="loading" role="status">Загружаем раздел…</p>}><Fragment key={guildId}>
+      {tab === "welcome" && <WelcomeSettings channels={channels} value={welcome} onChange={setWelcome} onSave={() => saveWelcome()} onUpload={(file: File) => uploadWelcomeBackground(file)} bgTimestamp={bgTimestamp} />}
       {tab === "automod" && <AutoModSettings channels={channels} roles={roles} rules={rules} ignoredRoleIds={ignoredRoleIds} protectedChannelId={protectedChannelId} onGlobalChange={(roles,channel)=>{setIgnoredRoleIds(roles);setProtectedChannelId(channel);}} onSaveAll={() => saveAutoMod()} onChange={updateRule} />}
       {tab === "roles" && <section className="panel-stack">
         <AutoroleSettings roles={roles} value={autorole} onChange={setAutorole} onSave={() => void saveAutorole()} />
@@ -245,7 +292,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
         <BotLanguageCard value={serverLang} onChange={setServerLang} onSave={() => void saveLang()} />
         <ServerDataCleanup guildId={guildId} onDone={notify} onError={fail} />
       </section>}
-      </Fragment>}
+      </Fragment></Suspense>}
     </section>
     {pendingNav && <ConfirmNavigationDialog onSave={()=>void saveAndGo()} onDiscard={discardAndGo} onCancel={()=>setPendingNav(null)} />}
     {isDirty && (

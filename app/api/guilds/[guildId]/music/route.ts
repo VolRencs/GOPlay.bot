@@ -2,18 +2,15 @@ import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { musicSettingsFor, invalidateMusicSettings, type MusicSettings, type MusicSettingsRow } from "../../../../../src/lib/music-settings.ts";
 import { clampMusicSeconds } from "../../../../../src/lib/labels.ts";
+import { DEFAULT_MUSIC_LEAVE_SECONDS } from "../../../../../src/lib/constants.ts";
 import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
 import { safeJson } from "../../../../../src/lib/json.ts";
-import { db } from "../../../../../src/db/database.ts";
+import { musicQueries } from "../../../../../src/db/queries.ts";
 import { stmt } from "../../../../../src/db/statements.ts";
+import { channelRef, roleRef } from "../../../../../src/lib/mentions.ts";
+import { formatLeaveAfter } from "../../../../../src/lib/format.ts";
 
-const channelRef = (id: string) => `<#${id}>`;
-const roleRef = (id: string) => `<@&${id}>`;
-const leaveLabel = (seconds: number) => seconds === 0 ? "выключен" : seconds % 60 === 0 ? `${seconds / 60} мин` : `${seconds} с`;
-
-const musicUpsertStmt = db.prepare(
-  "INSERT INTO music_settings(guild_id,command_channel_id,voice_channel_ids_json,allowed_role_ids_json,leave_after_seconds) VALUES(?,?,?,?,?) ON CONFLICT(guild_id) DO UPDATE SET command_channel_id=excluded.command_channel_id,voice_channel_ids_json=excluded.voice_channel_ids_json,allowed_role_ids_json=excluded.allowed_role_ids_json,leave_after_seconds=excluded.leave_after_seconds",
-);
 const readRow = (guildId: string) => stmt.musicSettings.get(guildId) as MusicSettingsRow | undefined;
 
 export const GET = guildRoute(async (_, { guildId }) => {
@@ -25,7 +22,7 @@ const isValidCommandChannel = (value: unknown): boolean =>
 
 export const PUT = guildRoute(async (request, { guildId, user }) => {
   const body = await readJson<MusicSettings>(request);
-  if (!body) return jsonError("Некорректное тело запроса.");
+  if (!body || typeof body !== "object" || Array.isArray(body)) return jsonError("Некорректное тело запроса.");
 
   const ids = body.voice_channel_ids ?? [];
   const roles = body.allowed_role_ids ?? [];
@@ -36,7 +33,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   if (new Set(ids).size !== ids.length)
     return jsonError("Голосовые каналы повторяются.");
 
-  const secondsRaw = Number(body.leave_after_seconds ?? 300);
+  const secondsRaw = Number(body.leave_after_seconds ?? DEFAULT_MUSIC_LEAVE_SECONDS);
   if (!Number.isInteger(secondsRaw)) return jsonError("Некорректный таймаут.");
   const leaveAfterSeconds = clampMusicSeconds(secondsRaw);
 
@@ -59,21 +56,21 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     current.leave_after_seconds === next.leave_after_seconds
   ) return NextResponse.json({ ok: true, unchanged: true });
 
-  musicUpsertStmt.run(guildId, next.command_channel_id, next.voice_channel_ids_json, next.allowed_role_ids_json, next.leave_after_seconds);
+  musicQueries.upsert.run(guildId, next.command_channel_id, next.voice_channel_ids_json, next.allowed_role_ids_json, next.leave_after_seconds);
   invalidateMusicSettings(guildId);
 
-  recordDashboardDiff(guildId, user, "Музыка", "Настройки музыки: ",
+  recordDashboardDiff(guildId, user, AUDIT_SECTION.music, "Настройки музыки: ",
     {
       "Канал команд": current?.command_channel_id ? channelRef(current.command_channel_id) : null,
       "Голосовые каналы": current ? safeJson<string[]>(current.voice_channel_ids_json, []).map(channelRef) : [],
       "Разрешённые роли": current ? safeJson<string[]>(current.allowed_role_ids_json, []).map(roleRef) : [],
-      "Автовыход": current ? leaveLabel(current.leave_after_seconds) : null,
+      "Автовыход": current ? formatLeaveAfter(current.leave_after_seconds) : null,
     },
     {
       "Канал команд": next.command_channel_id ? channelRef(next.command_channel_id) : null,
       "Голосовые каналы": ids.map(channelRef),
       "Разрешённые роли": roles.map(roleRef),
-      "Автовыход": leaveLabel(leaveAfterSeconds),
+      "Автовыход": formatLeaveAfter(leaveAfterSeconds),
     });
   return NextResponse.json({ ok: true });
 });

@@ -23,8 +23,9 @@
 - Все API-роуты дашборда идут через `src/lib/guild-access.ts`
   (`requireUser`/`requireAdmin`/`withGuild`): доступ только у управляющих
   сервером, админка — только `ADMIN_DISCORD_IDS`.
-- Загрузки изолированы по `guildId`, имена файлов санитизируются
-  (`src/lib/uploads.ts`), лимит тела запроса + `client_max_body_size 8m` в nginx.
+- Загрузки embeds/events изолированы по `guildId`; фоны приветствия намеренно
+  публичны. Имена файлов санитизируются (`src/lib/uploads.ts`), лимит тела запроса
+  + `client_max_body_size 8m` в nginx.
 - Музыкальный резолвер ограничен allowlist YouTube-доменов.
 - При удалении бота с сервера данные зачищаются
   (`wipeGuildData` + `deleteGuildFiles`).

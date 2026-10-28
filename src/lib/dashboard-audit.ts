@@ -1,4 +1,5 @@
 import { db } from "../db/database.ts";
+import { logger } from "./logger.ts";
 import { stableJson } from "./json.ts";
 
 type AuditActor = { id: string; name: string };
@@ -13,11 +14,16 @@ const pruneStmt = db.prepare(
 );
 
 export function recordDashboardChange(guildId: string, actor: AuditActor, section: string, summary: string) {
-  insertStmt.run(guildId, actor.id.slice(0, 100), actor.name.slice(0, 100), section.slice(0, 50), summary.slice(0, 500), Date.now());
-  // Retention — на записи, а не на чтении: GET аудита остаётся чистым SELECT без гонок.
+  // Аудит не должен превращать успешное сохранение в 500: запись best-effort.
   try {
-    pruneStmt.run(guildId, guildId, RETENTION);
-  } catch { /* prune — best-effort, запись уже сохранена */ }
+    insertStmt.run(guildId, actor.id.slice(0, 100), actor.name.slice(0, 100), section.slice(0, 50), summary.slice(0, 500), Date.now());
+    // Retention — на записи, а не на чтении: GET аудита остаётся чистым SELECT без гонок.
+    try {
+      pruneStmt.run(guildId, guildId, RETENTION);
+    } catch { /* prune — best-effort, запись уже сохранена */ }
+  } catch (error) {
+    logger.warn("[AUDIT] Не удалось записать изменение", guildId, section, error);
+  }
 }
 
 function short(value: unknown): string {

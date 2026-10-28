@@ -2,7 +2,7 @@ import { NextResponse } from "next/server.js";
 import { discordFetch, guildRoute, jsonError } from "../../../../../src/lib/guild-access.ts";
 import { BOT_TOKEN_ERROR, SERVER_FALLBACK_NAME } from "../../../../../src/lib/constants.ts";
 import { ttlCacheAsync } from "../../../../../src/lib/cache.ts";
-import type { ResourcesGet } from "../../../../../src/components/dashboard/types.ts";
+import type { ResourcesGet } from "../../../../../src/contracts/dashboard.ts";
 
 type DiscordChannel = { id: string; name: string; type: number; position: number };
 type DiscordRole = { id: string; name: string; managed: boolean; position: number };

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Image, Trash2 } from "lucide-react";
 import { eventStatusMeta } from "../../../src/lib/labels.ts";
+import { userRef } from "../../../src/lib/mentions.ts";
 import type { EventButtonStyle, EventListGet, EventListItem, EventStatus, RecurrenceFrequency } from "../../../src/lib/events.ts";
 import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type Channel, type EmbedField, type PanelFail, type PanelNotify, type Role, type ServerEmoji } from "./types.ts";
 import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, asBoolean, asFields, asNumber, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
@@ -162,7 +163,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     if (!(await confirmAction(`Удалить участника ${userId} из события?`, "Удалить"))) return;
     await run(
       () => apiSend<{ promotedUserId?: string }>(`/api/guilds/${guildId}/events?id=${e.id}&participant=${userId}`, { method: "DELETE" }, "Не удалось удалить участника."),
-      data => ({ message: data.promotedUserId ? `Участник удалён, <@${data.promotedUserId}> переведён из очереди.` : "Участник удалён." }),
+      data => ({ message: data.promotedUserId ? `Участник удалён, ${userRef(data.promotedUserId)} переведён из очереди.` : "Участник удалён." }),
       reload,
     );
   }

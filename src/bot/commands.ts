@@ -1,5 +1,7 @@
 import { ApplicationCommandOptionType, ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
 import { commandsTr, guildLang, trFor } from "../lib/i18n/bot.ts";
+import { BRAND_COLOR } from "../lib/colors.ts";
+import { roleRef, userRef } from "../lib/mentions.ts";
 import { trModeration } from "../lib/i18n/bot/moderation.ts";
 import { moderate } from "./moderation/index.ts";
 
@@ -59,18 +61,18 @@ const handlers: Record<string, CommandHandler> = {
     const user = i.options.getUser("user") ?? i.user;
     const member = i.guild?.members.cache.get(user.id);
     const fields = [{ name: "ID", value: user.id, inline: true }, { name: tC("accountCreated"), value: `<t:${Math.floor(user.createdTimestamp / 1000)}:d>`, inline: true }];
-    if (member) fields.push({ name: tC("joinedAt"), value: `<t:${Math.floor((member.joinedTimestamp ?? Date.now()) / 1000)}:d>`, inline: true }, { name: tC("rolesField"), value: member.roles.cache.filter(r => r.id !== i.guild!.id).map(r => `<@&${r.id}>`).slice(0, 25).join(" ") || "—", inline: false });
-    await i.reply({ embeds: [new EmbedBuilder().setTitle(user.username).setThumbnail(user.displayAvatarURL({ size: 256 })).setColor(0x5865f2).addFields(fields)] });
+    if (member) fields.push({ name: tC("joinedAt"), value: `<t:${Math.floor((member.joinedTimestamp ?? Date.now()) / 1000)}:d>`, inline: true }, { name: tC("rolesField"), value: member.roles.cache.filter(r => r.id !== i.guild!.id).map(r => roleRef(r.id)).slice(0, 25).join(" ") || "—", inline: false });
+    await i.reply({ embeds: [new EmbedBuilder().setTitle(user.username).setThumbnail(user.displayAvatarURL({ size: 256 })).setColor(BRAND_COLOR).addFields(fields)] });
   },
   server: async i => {
     const cmdLang = guildLang(i.guildId ?? "");
     const tC = trFor(commandsTr, cmdLang);
     const guild = i.guild;
     if (!guild) { await i.reply({ content: trModeration(guildLang(i.guildId ?? ""), "notGuild"), flags: MessageFlags.Ephemeral }); return; }
-    const embed = new EmbedBuilder().setTitle(guild.name).setThumbnail(guild.iconURL()).setColor(0x5865f2)
+    const embed = new EmbedBuilder().setTitle(guild.name).setThumbnail(guild.iconURL()).setColor(BRAND_COLOR)
       .addFields(
         { name: "ID", value: guild.id, inline: true },
-        { name: tC("serverOwner"), value: `<@${guild.ownerId}>`, inline: true },
+        { name: tC("serverOwner"), value: userRef(guild.ownerId), inline: true },
         { name: tC("membersCount"), value: String(guild.memberCount), inline: true },
         { name: tC("createdAt"), value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:d>`, inline: true },
         { name: tC("channelsCount"), value: tC("channelsFormat", { t: String(guild.channels.cache.filter(c => c.type === ChannelType.GuildText).size), v: String(guild.channels.cache.filter(c => c.type === ChannelType.GuildVoice).size) }), inline: true },

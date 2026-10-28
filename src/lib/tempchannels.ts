@@ -10,7 +10,14 @@ export type TempPresetRow = { id: number; guild_id: string; name: string; trigge
 export type TempchannelsGet = { presets: TempPreset[] };
 export type TempPutBody = { presets: { name: string; triggerChannelIds: string[]; config: TempChannelConfig }[] };
 
-export const defaultTempConfig: TempChannelConfig = { categoryId: null, nameTemplate: DEFAULT_SETTINGS.name_template, userLimit: 0, canRename: true, canManageAccess: true, canClose: true };
+export const defaultTempConfig: TempChannelConfig = {
+  categoryId: DEFAULT_SETTINGS.category_id,
+  nameTemplate: DEFAULT_SETTINGS.name_template,
+  userLimit: DEFAULT_SETTINGS.user_limit,
+  canRename: Boolean(DEFAULT_SETTINGS.can_rename),
+  canManageAccess: Boolean(DEFAULT_SETTINGS.can_manage_access),
+  canClose: Boolean(DEFAULT_SETTINGS.can_close),
+};
 
 export function clampUserLimit(value: unknown): number {
   return clampNumber(value, 0, 0, 99, "integer");

@@ -1,43 +1,47 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type APIInteractionGuildMember, type ButtonInteraction, type ChatInputCommandInteraction, type Client, type GuildMember, type Interaction, type StringSelectMenuInteraction } from "discord.js";
-import { count, time } from "../../lib/perf.ts";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type Client, type Interaction, type StringSelectMenuInteraction } from "discord.js";
+import { count } from "../../lib/perf.ts";
 import { logger } from "../../lib/logger.ts";
 import { stmt } from "../../db/statements.ts";
 import { failInteraction, guard, isMissingDiscordResource } from "../../lib/errors.ts";
-import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
-import type { Locale } from "../../lib/i18n/core.ts";
-import { musicTr } from "../../lib/i18n/bot/music.ts";
+import { guildLang } from "../../lib/i18n/bot.ts";
+import { SELECT_OPTION_LIMIT } from "../../lib/limits.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { musicSettingsFor } from "../../lib/music-settings.ts";
+import { queueView, renderMusicPanel, trackLabel } from "./panel.ts";
+import { isAdminInteraction, musicTFor } from "./shared.ts";
 import {
-  MAX_QUEUE, connectToVoice, cycleLoop, enqueueTrack, fmtTime,
-  getSessionTextChannelId, getQueueSnapshot, hasCurrent, hydrateTrackMeta,
-  moveToVoice, moveQueueTrack, pickFollowTarget, playNext,
-  isSingleYouTubeVideoUrl, probeFfmpeg, probeOpus, probeYtDlp, playbackStateOf, queueSizeOf, refreshSessionActivity, removeQueueTracks, resolveTracks,
-  setOnMusicChange, setOnTrackStart, setPlayerEnvironment, shuffleQueue, skipCurrent, stopAndLeave, togglePause,
-  type LoopMode, type Track,
+  cycleLoop, getSessionTextChannelId, getQueueSnapshot,
+  moveToVoice, moveQueueTrack, pickFollowTarget, playbackStateOf,
+  refreshSessionActivity, removeQueueTracks, setOnMusicChange, setOnTrackStart,
+  setPlayerEnvironment, shuffleQueue, skipCurrent, stopAndLeave, togglePause,
+  type Track,
 } from "../../lib/player/index.ts";
 
-/** Потолок опций Discord для select-меню. */
-const SELECT_CAP = 25;
+export { handleMusicCommand } from "./command.ts";
 /** Debounce перерисовки: серия notify (плейлист = десяток изменений за раз)
  *  даёт ОДНУ правку сообщения через 500 мс — один edit вместо ~50 fetch+edit
  *  и риска упереться в rate limit прямо во время /play. */
 const PANEL_DEBOUNCE_MS = 500;
+const PANEL_PROGRESS_MS = 20_000;
 const PENDING_MOVE_TTL_MS = 5 * 60_000;
 
-/** Переводчик музыкальных сообщений для гильдии. */
-const musicTFor = (guildId: string) => guildTr(musicTr, guildId);
-
-/** Переводчик для функций, где язык уже известен (очередь и панель). */
-const musicT = (lang: Locale) => trFor(musicTr, lang);
-
-function isAdminInteraction(i: ButtonInteraction | StringSelectMenuInteraction | ChatInputCommandInteraction): boolean {
-  return Boolean(i.memberPermissions?.has(PermissionFlagsBits.Administrator));
-}
-
+let registered = false;
 /** Регистрация обработчиков. Вызывается один раз из src/bot/index.ts. */
 export function registerMusic(client: Client): void {
+  if (registered) return;
+  registered = true;
   setOnMusicChange(refreshPanel);
+  // Прогресс-бар обновляем редко: панель живёт без риска rate limit.
+  setInterval(() => {
+    for (const guildId of panels.keys()) {
+      const state = playbackStateOf(guildId);
+      if (state && !state.paused) refreshPanel(guildId);
+    }
+  }, PANEL_PROGRESS_MS).unref();
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, pending] of pendingMoves) if (now - pending.at > PENDING_MOVE_TTL_MS) pendingMoves.delete(key);
+  }, 60_000).unref();
   // Данные присутствия для таймера бездействия: сколько людей в канале, где
   // стоит бот. Только gateway-кэш — без REST на голосовых событиях.
   setPlayerEnvironment({
@@ -79,10 +83,10 @@ export function registerMusic(client: Client): void {
     refreshSessionActivity(guildId);
   }));
   client.on(Events.InteractionCreate, (i: Interaction) => {
-    if (i.isButton() && i.customId.startsWith("music:")) void handlePanelButton(i);
-    else if (i.isStringSelectMenu() && i.customId.startsWith("music:")) void handleMusicSelect(i);
+    if (i.isButton() && i.customId.startsWith("music:")) guard("MUSIC_PANEL", () => handlePanelButton(i));
+    else if (i.isStringSelectMenu() && i.customId.startsWith("music:")) guard("MUSIC_SELECT", () => handleMusicSelect(i));
   });
-  client.once(Events.ClientReady, async () => {
+  client.once(Events.ClientReady, () => guard("MUSIC_STARTUP", async () => {
     const rows = stmt.musicSessionAll.all() as { guild_id: string; channel_id: string; message_id: string }[];
     let panelsRemoved = 0, voiceLeft = 0;
     for (const row of rows) {
@@ -100,7 +104,7 @@ export function registerMusic(client: Client): void {
       stmt.musicSessionDelete.run(row.guild_id);
     }
     if (rows.length) logger.info("[MUSIC] После перезапуска убрано панелей:", panelsRemoved, "· выходов из голосовых каналов:", voiceLeft);
-  });
+  }));
 }
 
 function rememberPanel(guildId: string, channelId: string, messageId: string): void {
@@ -111,122 +115,6 @@ function rememberPanel(guildId: string, channelId: string, messageId: string): v
 function forgetPanel(guildId: string): void {
   panels.delete(guildId);
   try { stmt.musicSessionDelete.run(guildId); } catch { }
-}
-
-function memberHasAllowedRole(member: GuildMember | APIInteractionGuildMember, roles: string[]): boolean {
-  return Array.isArray(member.roles) ? member.roles.some(id => roles.includes(id)) : member.roles.cache.some(role => roles.includes(role.id));
-}
-
-/** Отказ после раннего connectToVoice не должен оставлять бота в канале без
- *  трека и без панели: уходим, если ничего не играет и очередь пуста. */
-function leaveIfIdle(guildId: string | null): void {
-  if (guildId && !hasCurrent(guildId) && queueSizeOf(guildId) === 0) stopAndLeave(guildId);
-}
-
-/** Обработка музыкальных слэш-команд. Возвращает false, если команда не музыкальная. */
-export async function handleMusicCommand(i: Interaction): Promise<boolean> {
-  if (!i.isChatInputCommand() || i.commandName !== "play") return false; // управление — кнопками панели, не командами
-  const t = musicTFor(i.guildId ?? "");
-
-  try {
-    if (!i.inGuild() || !i.member) {
-      await i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
-      return true;
-    }
-    const member = i.member;
-    await i.deferReply({ flags: MessageFlags.Ephemeral });
-
-    const settings = musicSettingsFor(i.guildId!);
-
-    if (settings.command_channel_id && i.channelId !== settings.command_channel_id) {
-      await i.editReply({ content: t("wrongChannel", { channel: settings.command_channel_id }) });
-      return true;
-    }
-    if (settings.allowed_role_ids.length > 0 && !isAdminInteraction(i) && !memberHasAllowedRole(member, settings.allowed_role_ids)) {
-      await i.editReply({ content: t("noRoles") });
-      return true;
-    }
-
-    const voiceChannel = "voice" in member ? member.voice.channel : null;
-    if (!voiceChannel) { await i.editReply(t("notInVoice")); return true; }
-    if (settings.voice_channel_ids.length > 0 && !settings.voice_channel_ids.includes(voiceChannel.id)) {
-      await i.editReply({ content: t("voiceNotAllowed", { channels: settings.voice_channel_ids.map(id => `<#${id}>`).join(", ") }) });
-      return true;
-    }
-    const botPerms = voiceChannel.permissionsFor(i.guild!.members.me ?? i.guild!.roles.everyone);
-    if (!botPerms?.has(PermissionFlagsBits.Connect)) {
-      await i.editReply({ content: t("noConnectAccess", { channel: voiceChannel.id }) });
-      return true;
-    }
-    if (!botPerms.has(PermissionFlagsBits.Speak)) {
-      await i.editReply({ content: t("noSpeakAccess", { channel: voiceChannel.id }) });
-      return true;
-    }
-
-    const query = i.options.getString("link", true).trim();
-    count("music.play");
-    const t0 = performance.now();
-    // Подключаемся ДО проб: handshake идёт параллельно с проверками окружения.
-    connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
-    const [ytdlpOk, ffmpegOk, opusOk] = await Promise.all([probeYtDlp(), probeFfmpeg(), probeOpus()]);
-    time("music.probes", performance.now() - t0);
-    if (!ytdlpOk) { await i.editReply(t("missingYtDlp")); leaveIfIdle(i.guildId); return true; }
-    if (!ffmpegOk) { await i.editReply(t("missingFfmpeg")); leaveIfIdle(i.guildId); return true; }
-    if (!opusOk) { await i.editReply(t("missingOpus")); leaveIfIdle(i.guildId); return true; }
-
-    let tracks: Track[];
-    let fastPath = false;
-    if (isSingleYouTubeVideoUrl(query)) {
-      fastPath = true;
-      tracks = [{ query, title: query, requestedBy: i.user.id }];
-    } else {
-      const resolveStart = performance.now();
-      const resolved = await resolveTracks(query, i.user.id);
-      time("music.resolve", performance.now() - resolveStart);
-      tracks = resolved.tracks;
-      if (tracks.length === 0) {
-        await i.editReply(
-          resolved.error === "botcheck" ? t("botCheck")
-          : resolved.error === "too-long" ? t("tooLong")
-          : resolved.error === "unsupported-url" ? t("unsupportedUrl")
-          : t("invalidQuery"),
-        );
-        leaveIfIdle(i.guildId);
-        return true;
-      }
-    }
-    const room = MAX_QUEUE - queueSizeOf(i.guildId!);
-    let added = 0;
-    let firstTitle = "";
-    for (const track of tracks.slice(0, Math.max(0, room))) {
-      track.requestedBy = i.user.id;
-      if (enqueueTrack(i.guildId!, track)) { added++; if (!firstTitle) firstTitle = track.title; }
-    }
-    if (added === 0) { await i.editReply(t("queueFull", { max: String(MAX_QUEUE) })); leaveIfIdle(i.guildId); return true; }
-
-    if (!hasCurrent(i.guildId!)) {
-      const started = playNext(i.guildId!);
-      if (started) {
-        if (fastPath) hydrateTrackMeta(started, i.guildId!);
-        await i.editReply(fastPath ? t("launching") : t("nowPlaying", { title: started.title }));
-        return true;
-      }
-    }
-    if (fastPath) {
-      // Fast-path — ровно один трек: гидрация подтянет название/длину в панель.
-      hydrateTrackMeta(tracks[0]!, i.guildId!);
-      await i.editReply(t("launching"));
-      return true;
-    }
-    await i.editReply(tracks.length > 1
-      ? t("playlistAdded", { title: firstTitle, n: String(added) })
-      : t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }));
-    return true;
-  } catch (error) {
-    leaveIfIdle(i.guildId);
-    failInteraction("[MUSIC] Команда не выполнена", i, error, t("genericError"), i.guildId);
-    return true;
-  }
 }
 
 type PanelRef = { channelId: string; messageId: string };
@@ -259,55 +147,6 @@ async function deletePanelMessage(ref: PanelRef): Promise<void> {
   await channel.messages.delete(ref.messageId).catch(() => null);
 }
 
-function queueView(guildId: string, lang: Locale): string {
-  const t = musicT(lang);
-  const { current, queue } = getQueueSnapshot(guildId);
-  if (!current && queue.length === 0) return t("queueEmpty");
-  const dur = (track: Track) => track.duration && track.duration > 0 ? ` · ${fmtTime(track.duration)}` : "";
-  const lines = [
-    current ? t("queueNow", { title: `${current.title}${dur(current)}` }) : "",
-    ...queue.slice(0, SELECT_CAP).map((track, n) => `${n + 1}. ${track.title}${dur(track)}`),
-  ];
-  return `${t("queueHeader", { n: String(queue.length) })}\n${lines.filter(Boolean).join("\n").slice(0, 1900)}`;
-}
-
-function renderPanel(state: { current: Track; queuePreview: Track[]; queueLength: number; paused: boolean; loopMode: LoopMode }, lang: Locale): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
-  const t = musicT(lang);
-  const loopLabel = state.loopMode === "track" ? t("panelLoopTrack") : state.loopMode === "queue" ? t("panelLoopQueue") : t("panelLoopOff");
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`${state.paused ? "⏸️" : "▶️"} ${state.current.title}`)
-    .setDescription(state.queueLength
-      ? `${t("panelUpNext")}\n${state.queuePreview.map((track, n) => `\`${n + 1}.\` ${track.title}`).join("\n")}`
-      : t("panelQueueEmptyNote"))
-    .addFields(
-      { name: t("panelRequestedBy"), value: `<@${state.current.requestedBy}>`, inline: true },
-      { name: t("panelStatusField"), value: `${state.paused ? t("panelStatusPaused") : t("panelStatusPlaying")} · ${t("panelLoopField")}: ${loopLabel}`, inline: true },
-      { name: t("panelQueueSize"), value: String(state.queueLength), inline: true },
-      // Длина трека появляется после гидрации метаданных (или сразу из плейлиста).
-      ...(state.current.duration && state.current.duration > 0
-        ? [{ name: t("panelDuration"), value: fmtTime(state.current.duration), inline: true }]
-        : []),
-    )
-    .setFooter({ text: t("panelFooter") });
-  if (/^https?:\/\//.test(state.current.query)) embed.setURL(state.current.query);
-  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("music:toggle").setLabel(state.paused ? t("btnResume") : t("btnPause")).setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("music:skip").setLabel(t("btnSkip")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("music:shuffle").setLabel(t("btnShuffle")).setStyle(ButtonStyle.Secondary),
-  );
-  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("music:loop").setLabel(`${t("btnLoop")}: ${loopLabel}`).setStyle(state.loopMode === "off" ? ButtonStyle.Secondary : ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("music:queue").setLabel(t("btnQueue")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("music:stop").setLabel(t("btnStop")).setStyle(ButtonStyle.Danger),
-  );
-  const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("music:remove").setLabel(t("btnRemove")).setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("music:move").setLabel(t("btnMove")).setStyle(ButtonStyle.Secondary),
-  );
-  return { embeds: [embed], components: [row1, row2, row3] };
-}
-
 async function refreshPanelNow(guildId: string): Promise<void> {
   const ref = panels.get(guildId);
   const state = playbackStateOf(guildId);
@@ -322,7 +161,7 @@ async function refreshPanelNow(guildId: string): Promise<void> {
   // обновление повторит правку. Отвязка — только на реальный 404.
   const channel = await resolveChannel(channelId);
   if (!channel) return;
-  const payload = renderPanel(state, guildLang(guildId));
+  const payload = renderMusicPanel(state, guildLang(guildId));
   if (ref) {
     // Прямой PATCH по id — один REST-запрос без fetch сообщения.
     try {
@@ -353,6 +192,15 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
   try {
     if (!i.inGuild()) return;
     const guildId = i.guildId;
+    const queuePage = /^music:(remove|move):(\d+)$/.exec(i.customId);
+    if (queuePage) {
+      if (!isAdminInteraction(i)) {
+        await i.reply({ content: t("notAdmin"), flags: MessageFlags.Ephemeral }).catch(() => null);
+        return;
+      }
+      await openQueueMenu(i, queuePage[1] as "remove" | "move", Number(queuePage[2]), true);
+      return;
+    }
     const state = playbackStateOf(guildId);
     if (!state) {
       forgetPanel(guildId);
@@ -369,7 +217,7 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
         await i.reply({ content: t("notAdmin"), flags: MessageFlags.Ephemeral }).catch(() => null);
         return;
       }
-      await openQueueMenu(i);
+      await openQueueMenu(i, i.customId === "music:remove" ? "remove" : "move", 0, false);
       return;
     }
     if (state.current.requestedBy !== i.user.id && !isAdmin) {
@@ -403,30 +251,50 @@ const pendingMoves = new Map<string, PendingMove>(); // ключ `${guildId}:${u
  *  индекс устаревает, если очередь изменилась между двумя шагами меню. */
 const trackIdentity = (track: Track): string => `${track.query}\u0000${track.title}`;
 
-/** Первый экран: список очереди на удаление или выбор трека для перемещения. */
-async function openQueueMenu(i: ButtonInteraction): Promise<void> {
+/** Экран очереди: удаление или выбор трека для перемещения, с пагинацией по 25. */
+async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", requestedPage: number, update: boolean): Promise<void> {
   const t = musicTFor(i.guildId ?? "");
-  const removing = i.customId === "music:remove";
+  const removing = action === "remove";
   const { queue } = getQueueSnapshot(i.guildId!);
   if (!queue.length) {
-    await i.reply({ content: t("queueEmpty"), flags: MessageFlags.Ephemeral }).catch(() => null);
+    const payload = { content: t("queueEmpty"), components: [] };
+    if (update) await i.update(payload).catch(() => null);
+    else await i.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => null);
     return;
   }
-  // Ленивая чистка протухших шагов перемещения — карта не растёт бесконечно.
-  const now = Date.now();
-  for (const [key, pending] of pendingMoves) if (now - pending.at > PENDING_MOVE_TTL_MS) pendingMoves.delete(key);
-  const options = queue.slice(0, SELECT_CAP).map((track, n) =>
-    new StringSelectMenuOptionBuilder().setLabel(`${n + 1}. ${track.title}`.slice(0, 100)).setValue(String(n)));
+  const pages = Math.max(1, Math.ceil(queue.length / SELECT_OPTION_LIMIT));
+  const page = Math.min(pages - 1, Math.max(0, Math.trunc(requestedPage)));
+  const start = page * SELECT_OPTION_LIMIT;
+  const end = Math.min(queue.length, start + SELECT_OPTION_LIMIT);
+  const options = queue.slice(start, end).map((track, index) => {
+    const position = start + index;
+    return new StringSelectMenuOptionBuilder().setLabel(trackLabel(`${position + 1}. ${track.title}`, 100)).setValue(String(position));
+  });
   const menu = new StringSelectMenuBuilder()
     .setCustomId(removing ? "music:rmsel" : "music:mvasrc")
     .setPlaceholder(t(removing ? "selectRemoveHeader" : "selectMoveTrack").slice(0, 100))
     .addOptions(options);
-  const prompt = `${t(removing ? "selectRemoveHeader" : "selectMoveTrack")}${queue.length > SELECT_CAP ? `\n${t("queueTruncatedNote")}` : ""}`;
-  await i.reply({
-    content: prompt,
-    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
-    flags: MessageFlags.Ephemeral,
-  }).catch(() => null);
+  const prompt = `${t(removing ? "selectRemoveHeader" : "selectMoveTrack")}${pages > 1 ? `\n${t("queuePage", { page: String(page + 1), pages: String(pages) })}` : ""}`;
+  const components: ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>[] = [
+    new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(menu),
+  ];
+  if (pages > 1) {
+    components.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`music:${action}:${page - 1}`)
+        .setLabel(t("queuePrev"))
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page === 0),
+      new ButtonBuilder()
+        .setCustomId(`music:${action}:${page + 1}`)
+        .setLabel(t("queueNext"))
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(page >= pages - 1),
+    ));
+  }
+  const payload = { content: prompt, components };
+  if (update) await i.update(payload).catch(() => null);
+  else await i.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => null);
 }
 
 async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> {
@@ -449,20 +317,20 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
       const from = Number(i.values[0]);
       if (!Number.isInteger(from) || from < 0 || from >= queue.length) { await deny(t("queueChanged")); return; }
       pendingMoves.set(`${guildId}:${i.user.id}`, { from, at: Date.now(), id: trackIdentity(queue[from]!) });
-      const showCount = Math.min(queue.length, SELECT_CAP - 1);
+      const showCount = Math.min(queue.length, SELECT_OPTION_LIMIT - 1);
       const options: StringSelectMenuOptionBuilder[] = [];
       for (let slot = 0; slot < showCount; slot++) {
         options.push(new StringSelectMenuOptionBuilder()
           .setLabel(t("moveToPosition", { n: slot + 1 }))
-          .setDescription(queue[slot]!.title.slice(0, 100))
+          .setDescription(trackLabel(queue[slot]!.title, 100))
           .setValue(String(slot)));
       }
       options.push(new StringSelectMenuOptionBuilder().setLabel(t("moveToEnd")).setValue(String(queue.length)));
-      const title = queue[from]!.title;
+      const title = trackLabel(queue[from]!.title, 90);
       await i.update({
         content: `${t("selectMovePosition", { title })}${queue.length > showCount ? `\n${t("queueTruncatedNote")}` : ""}`,
         components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-          new StringSelectMenuBuilder().setCustomId("music:mvadst").setPlaceholder(title.slice(0, 100)).addOptions(options),
+          new StringSelectMenuBuilder().setCustomId("music:mvadst").setPlaceholder(title).addOptions(options),
         )],
       }).catch(() => null);
       return;

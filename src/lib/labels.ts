@@ -2,6 +2,7 @@
 // не могут разойтись в названиях правил, событий, целей очистки и статусов.
 
 import type { Bi, Locale } from "./i18n/core.ts";
+import { MAX_MUSIC_LEAVE_SECONDS, MIN_MUSIC_LEAVE_SECONDS } from "./constants.ts";
 
 export const punishmentLabelsM: Record<string, Bi> = {
   warn: { ru: "Предупреждение", en: "Warning" },
@@ -13,6 +14,9 @@ export const punishmentLabelsM: Record<string, Bi> = {
 };
 export const punishmentLabels: Record<string, string> = Object.fromEntries(Object.entries(punishmentLabelsM).map(([k, v]) => [k, v.ru]));
 export const punishmentLabel = (lang: Locale, key: string): string => punishmentLabelsM[key]?.[lang] ?? key;
+
+export const roleStyleLabels: Record<string, string> = { buttons: "Кнопки", select: "Меню выбора", reaction: "Реакции" };
+export const roleModeLabels: Record<string, string> = { toggle: "Переключение", add: "Только выдача", remove: "Только снятие" };
 
 const moderationLabelsM: Record<string, Bi> = {
   warn: { ru: "Предупреждения", en: "Warnings" },
@@ -96,5 +100,5 @@ export function buildLoggingPutBody(s: { channelId: string; categories: Record<s
 export type LoggingGet = { channel_id: string | null; categories_json: string };
 
 export function clampMusicSeconds(seconds: number): number {
-  return seconds === 0 ? 0 : Math.max(30, Math.min(3600, seconds));
+  return seconds === 0 ? 0 : Math.max(MIN_MUSIC_LEAVE_SECONDS, Math.min(MAX_MUSIC_LEAVE_SECONDS, seconds));
 }

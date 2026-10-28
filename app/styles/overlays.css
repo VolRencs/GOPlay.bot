@@ -1,0 +1,310 @@
+.select {
+  position: relative;
+  width: 100%;
+  margin-top: .4rem;
+}
+
+.select-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-top: 0; /* отступ даёт обёртка .select — без дубля .4rem */
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-trigger:hover {
+  border-color: color-mix(in srgb, var(--violet) 45%, transparent);
+}
+
+.select-trigger[aria-expanded="true"] {
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.muted, .select-trigger .placeholder { color: var(--muted); }
+
+.select-trigger .chevron {
+  flex: none;
+  color: #b183ff;
+  transition: transform var(--t);
+}
+
+.select-trigger[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+.select-popover {
+  position: fixed;
+  z-index: 80;
+  max-height: min(50vh, 300px);
+  padding: .3rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: rgba(22, 11, 42, .92);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-pop);
+  backdrop-filter: blur(14px) saturate(140%);
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  width: 100%;
+  padding: .5rem .6rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-1);
+  color: inherit;
+  font-size: .86rem;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select-option svg {
+  flex: none;
+  visibility: hidden;
+  color: #d78bff;
+}
+
+.select-option:hover, .select-option:focus-visible {
+  background: rgba(255, 255, 255, .06);
+  outline: 0;
+}
+
+.select-option.selected { background: var(--grad-active); }
+
+.select-option.selected svg { visibility: visible; }
+
+.select-empty {
+  padding: .5rem .6rem;
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.emoji-picker { position: relative; }
+
+.domain-input-row, .emoji-current {
+  display: flex;
+  gap: .5rem;
+}
+
+.emoji-input-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  margin-top: .4rem;
+}
+
+.emoji-trigger {
+  position: absolute;
+  top: 50%;
+  right: .3rem;
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-1);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: color var(--t), background var(--t);
+}
+
+.emoji-trigger:hover,
+.emoji-trigger[aria-expanded="true"] {
+  color: var(--glow);
+  background: var(--veil);
+}
+
+.emoji-current .emoji-input-wrap input:not([type="checkbox"]):not([type="range"]):not([type="color"]):not([type="file"]) {
+  margin-top: 0;
+  padding-right: 2.1rem;
+}
+
+.emoji-popover {
+  position: absolute;
+  top: calc(100% + .45rem);
+  right: 0;
+  z-index: 20;
+  width: min(340px, calc(100vw - 1.5rem));
+  overflow: hidden;
+  background: var(--panel-solid);
+  border: 1px solid #a948d4;
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-pop);
+}
+
+.emoji-popover.emoji-popover-top {
+  top: auto;
+  bottom: calc(100% + .45rem);
+}
+
+.emoji-popover .ge-root {
+  --ge-bg: var(--panel-solid);
+  --ge-panel: var(--veil);
+  --ge-surface: var(--panel-solid);
+  --ge-border: var(--line);
+  --ge-text: var(--text);
+  --ge-muted: var(--muted);
+  --ge-hover: rgba(219, 74, 255, .22);
+  --ge-active: rgba(157, 46, 255, .3);
+  --ge-accent: var(--violet);
+  --ge-radius: var(--r-2);
+  --ge-list-height: 262px;
+  --ge-font: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.emoji-popover .ge-root input.ge-search:not([type="checkbox"]):not([type="range"]):not([type="color"]):not([type="file"]) {
+  width: 100%;
+  margin-top: 0;
+  padding: .42rem .6rem;
+  font-size: .82rem;
+  border-radius: var(--r-1);
+}
+
+.emoji-note {
+  display: block;
+  padding: 1rem .75rem;
+  color: var(--muted);
+  font-size: .82rem;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(5, 3, 12, .74);
+  backdrop-filter: blur(8px) saturate(140%);
+}
+
+.modal {
+  display: grid;
+  gap: 1rem;
+  max-width: 460px;
+  width: 100%;
+  padding: 1.5rem;
+  background: linear-gradient(145deg, rgba(46, 24, 84, .97), rgba(11, 6, 23, .98));
+  border: 1px solid var(--line);
+  border-radius: var(--r-4);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .6);
+  animation: rise-in .24s ease-out both;
+}
+
+.modal h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  justify-content: flex-end;
+}
+
+.modal-actions .btn {
+  flex: 1;
+  min-width: 150px;
+}
+
+.modal-actions-column { flex-direction: column; }
+
+.toast-stack {
+  position: fixed;
+  right: 1.2rem;
+  bottom: 1.2rem;
+  z-index: 70;
+  display: grid;
+  gap: .5rem;
+  max-width: min(26rem, calc(100vw - 2.4rem));
+}
+
+.toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .5rem .55rem .5rem .75rem;
+  background: var(--panel-solid);
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: var(--r-full);
+  box-shadow: 0 14px 38px rgba(4, 2, 16, .5);
+  color: #fff;
+  font-size: .8rem;
+  line-height: 1.3;
+  animation: toast-in .18s ease-out;
+}
+
+.toast-dot {
+  flex: none;
+  width: .42rem;
+  height: .42rem;
+  border-radius: 50%;
+  background: var(--dot, #fff);
+  box-shadow: 0 0 9px var(--dot-glow, transparent);
+}
+
+.toast-ok {
+  --dot: #57f287;
+  --dot-glow: rgba(87, 242, 135, .75);
+  border-color: rgba(87, 242, 135, .45);
+}
+
+.toast-warn {
+  --dot: #ffd668;
+  --dot-glow: rgba(255, 214, 104, .75);
+  border-color: #8d671d;
+}
+
+.toast-error {
+  --dot: #ff6b81;
+  --dot-glow: rgba(237, 66, 69, .75);
+  border-color: rgba(237, 66, 69, .55);
+}
+
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.toast-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  color: var(--tone-err-text);
+  cursor: pointer;
+  transition: background var(--t), color var(--t);
+}
+
+.toast-close:hover {
+  background: rgba(237, 66, 69, .28);
+  color: #fff;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}

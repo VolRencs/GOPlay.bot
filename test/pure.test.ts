@@ -6,7 +6,7 @@ useTempDb("goplay-pure-");
 
 // Тесты ядра плеера (pickAudioUrl и т.д.) живут в player.test.ts.
 const { isMissingDiscordResource } = await import("../src/lib/errors.ts");
-const { isSnowflake } = await import("../src/lib/guild-access.ts");
+const { isSnowflake } = await import("../src/lib/ids.ts");
 const { parseActions } = await import("../src/lib/json.ts");
 const { automodDefaultActions } = await import("../src/lib/automod.ts");
 const { extractFilenames, embedUploadPrefix } = await import("../src/lib/uploads.ts");

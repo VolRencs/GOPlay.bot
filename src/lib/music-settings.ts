@@ -2,6 +2,7 @@ import { stmt } from "../db/statements.ts";
 import { ttlCacheSync } from "./cache.ts";
 import { parseStringArray } from "./json.ts";
 import { clampMusicSeconds } from "./labels.ts";
+import { DEFAULT_MUSIC_LEAVE_SECONDS } from "./constants.ts";
 
 export type MusicSettings = { command_channel_id: string | null; voice_channel_ids: string[]; allowed_role_ids: string[]; leave_after_seconds: number };
 
@@ -16,7 +17,7 @@ function loadMusicSettings(guildId: string): MusicSettings {
     allowed_role_ids: parseStringArray(row?.allowed_role_ids_json),
     // Значение из БД прошлых версий может быть любым числом: клампим к тому же
     // диапазону, что и API записи (0 = выключено, иначе 30..3600).
-    leave_after_seconds: clampMusicSeconds(row?.leave_after_seconds ?? 300),
+    leave_after_seconds: clampMusicSeconds(row?.leave_after_seconds ?? DEFAULT_MUSIC_LEAVE_SECONDS),
   };
 }
 

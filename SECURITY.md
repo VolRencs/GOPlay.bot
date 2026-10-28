@@ -23,8 +23,9 @@ code; there are no separate LTS releases yet.
 - All dashboard API routes go through `src/lib/guild-access.ts`
   (`requireUser`/`requireAdmin`/`withGuild`): only server managers get access,
   admin panel only for `ADMIN_DISCORD_IDS`.
-- Uploads are isolated per `guildId`, filenames are sanitized
-  (`src/lib/uploads.ts`), request body limit + `client_max_body_size 8m` in nginx.
+- Dashboard uploads for embeds/events are isolated per `guildId`; welcome backgrounds
+  are intentionally public by design. Filenames are sanitized (`src/lib/uploads.ts`),
+  request body limit + `client_max_body_size 8m` in nginx.
 - The music resolver is restricted to the YouTube domain allowlist.
 - When the bot is removed from a server, its data is wiped
   (`wipeGuildData` + `deleteGuildFiles`).

@@ -20,7 +20,7 @@ export function invalidateGuildLang(guildId: string): void {
 export function makeTr<M extends Record<string, Bi>>(messages: M) {
   return (lang: Locale, key: keyof M & string, vars?: Record<string, string | number>): string => {
     let text = messages[key]?.[lang] ?? messages[key]?.ru ?? key;
-    if (vars) for (const [k, v] of Object.entries(vars)) text = text.split(`{${k}}`).join(String(v));
+    if (vars) for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, () => String(v));
     return text;
   };
 }

@@ -9,6 +9,8 @@ import { isMissingDiscordResource } from "../../lib/errors.ts";
 import { logTitleFor } from "../../lib/labels.ts";
 import { guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
+import { BRAND_COLOR } from "../../lib/colors.ts";
+import { channelRef, userRef } from "../../lib/mentions.ts";
 
 let client: Client | null = null;
 export function initLogging(c: Client) { client = c; }
@@ -243,13 +245,13 @@ function buildEmbed(guildId: string, settings: { channelId: string | null; categ
   const t = trFor(logTr, lang);
   const channelEvent = type.startsWith("channel_") || type === "message_purge";
   // «все» — сентинел для /clearwarn all: это не ID, а признак «вся гильдия».
-  const subject = targetId === "все" ? t("targetAllSubject") : targetId === t("unknownExecutor") ? targetId : channelEvent ? `<#${targetId}> (ID: ${targetId})` : `<@${targetId}> (ID: ${targetId})`;
-  const color = logColors[type] ?? 0x5865f2;
+  const subject = targetId === "все" ? t("targetAllSubject") : targetId === t("unknownExecutor") ? targetId : channelEvent ? `${channelRef(targetId)} (ID: ${targetId})` : `${userRef(targetId)} (ID: ${targetId})`;
+  const color = logColors[type] ?? BRAND_COLOR;
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(logTitleFor(lang, type))
     .addFields({ name: channelEvent ? t("fieldChannel") : t("fieldMember"), value: subject }, { name: t("fieldDetails"), value: details.slice(0, 1024) || t("detailsEmpty") }, { name: t("fieldTime"), value: `<t:${Math.floor(Date.now() / 1000)}:f>`, inline: true });
-  if (moderatorId) embed.addFields({ name: t("fieldExecutor"), value: moderatorId === "automod" ? t("autoModWord") : `<@${moderatorId}>` });
+  if (moderatorId) embed.addFields({ name: t("fieldExecutor"), value: moderatorId === "automod" ? t("autoModWord") : userRef(moderatorId) });
   return embed;
 }
 

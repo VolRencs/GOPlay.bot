@@ -1,6 +1,9 @@
 export const DAY_MS = 86_400_000;
 export const MAX_TIMEOUT_SECONDS = 2_419_200;
 export const DEFAULT_TIMEOUT_SECONDS = 300;
+export const DEFAULT_MUSIC_LEAVE_SECONDS = 300;
+export const MIN_MUSIC_LEAVE_SECONDS = 30;
+export const MAX_MUSIC_LEAVE_SECONDS = 3600;
 export const BOT_TOKEN_ERROR = "Бот недоступен. Попробуйте позже.";
 export const SERVER_FALLBACK_NAME = "Discord server";
 

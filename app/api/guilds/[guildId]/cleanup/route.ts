@@ -2,6 +2,7 @@ import { NextResponse } from "next/server.js";
 import { guildRoute, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
 import { cleanupTargetsM, type CleanupTarget } from "../../../../../src/lib/labels.ts";
 import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
 import { runCleanupTarget } from "../../../../../src/lib/server-cleanup.ts";
 
 const targetKeys = cleanupTargetsM.map(target => target.key);
@@ -13,6 +14,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if (!target || !targetKeys.includes(target)) return jsonError("Некорректная цель очистки.");
 
   const removed = runCleanupTarget(guildId, target);
-  recordDashboardChange(guildId, user, "Очистка", `Очищено: ${targetLabel(target)}${target !== "audit" ? ` (${removed} записей)` : ""}`);
+  recordDashboardChange(guildId, user, AUDIT_SECTION.cleanup, `Очищено: ${targetLabel(target)}${target !== "audit" ? ` (${removed} записей)` : ""}`);
   return NextResponse.json({ ok: true, removed });
 });

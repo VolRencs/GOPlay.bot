@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cleanupTargets } from "../../../src/lib/labels.ts";
+import { AUDIT_SECTIONS } from "../../../src/lib/audit-sections.ts";
 import { apiGet, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { CardHeader, confirmAction, formatTime, Select } from "./ui.tsx";
 import type { AuditListGet, PanelFail, PanelNotify } from "./types.ts";
 
-const auditSections = ["Апелляции", "Автомодерация", "Embeds", "События", "Логи", "Приветствие", "Роли", "Временные каналы", "Очистка", "Настройки", "Музыка", "Уровни"];
 export function DashboardAuditLog({ guildId }: { guildId: string }) {
   const [section, setSection] = useState("all");
   const [loadingMore, setLoadingMore] = useState(false);
@@ -42,7 +42,7 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
         muted="Кто, что и когда менял в настройках этого сервера. Хранятся последние 1000 действий."
         action={<div className="audit-filter"><label>Раздел
           <Select value={section} onChange={setSection} ariaLabel="Раздел журнала"
-            options={[{ value: "all", label: "Все разделы" }, ...auditSections.map(s => ({ value: s, label: s }))]}/>
+            options={[{ value: "all", label: "Все разделы" }, ...AUDIT_SECTIONS.map(section => ({ value: section, label: section }))]}/>
         </label></div>}/>
     </article><article className="card audit-list">{entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.created_at).toISOString()}>{formatTime(entry.created_at)}</time><span className="audit-user">{entry.user_name}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
 }

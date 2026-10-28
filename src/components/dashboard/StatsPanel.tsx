@@ -5,6 +5,7 @@ import type { ServerStats, StatsGet } from "./types.ts";
 import { apiGet } from "./api.ts";
 import { useApiResource } from "./hooks.ts";
 import { CardHeader, StatCard, formatNumber } from "./ui.tsx";
+import { formatDay } from "../../lib/format.ts";
 
 type TopRow = { key: string; name: string; value: number };
 function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] | undefined; empty: string; rank?: boolean }) {
@@ -78,7 +79,7 @@ export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guild
         <article className="card settings-card">
           <h2>Пик активности</h2>
           {data?.peakHour ? <p className="peak-value">{formatNumber(data.peakHour.messages)} <small>сообщений в час</small></p> : <p className="hint">Нет данных.</p>}
-          <p className="muted">{data?.peakHour ? `${new Date(`${data.peakHour.day}T00:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" })} ${String(data.peakHour.hour).padStart(2, "0")}:00 UTC` : "Час с наибольшим числом сообщений."}</p>
+          <p className="muted">{data?.peakHour ? `${formatDay(data.peakHour.day)} ${String(data.peakHour.hour).padStart(2, "0")}:00 UTC` : "Час с наибольшим числом сообщений."}</p>
         </article>
       </div>
     </section>

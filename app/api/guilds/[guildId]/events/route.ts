@@ -1,11 +1,14 @@
 import { after, NextResponse } from "next/server.js";
 import { discordFetch, guildMemberNames, guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
 import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
+import { channelRef, roleRef, userRef } from "../../../../../src/lib/mentions.ts";
+import { formatTime } from "../../../../../src/lib/format.ts";
 import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
 import { eventStatusMetaM } from "../../../../../src/lib/labels.ts";
 import { guildLang } from "../../../../../src/lib/i18n/bot.ts";
 import { BOT_TOKEN_ERROR, buttonStyleId } from "../../../../../src/lib/constants.ts";
-import { db } from "../../../../../src/db/database.ts";
+import { eventQueries } from "../../../../../src/db/queries.ts";
 import { cleanupOrphanedFiles, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "../../../../../src/lib/uploads.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "../../../../../src/lib/assets.ts";
 import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventListGet, type EventRow, type RenderableEvent, type RenderedEventButton } from "../../../../../src/lib/events.ts";
@@ -19,10 +22,8 @@ function eventImageNames(embedJson: string, guildId: string) {
   return extractFilenames(eventUploadPrefix(guildId), [embed.thumbnail?.url, embed.image?.url]);
 }
 
-const eventEmbedsStmt = db.prepare("SELECT embed_json FROM events WHERE guild_id=?");
-
 async function cleanupUnusedEventImages(guildId: string) {
-  const referenced = new Set(eventEmbedsStmt.all(guildId).flatMap(row => eventImageNames(String((row as { embed_json: string }).embed_json), guildId)));
+  const referenced = new Set(eventQueries.embeds.all(guildId).flatMap(row => eventImageNames(String((row as { embed_json: string }).embed_json), guildId)));
   await cleanupOrphanedFiles(eventUploadsDir(guildId), referenced, 60 * 60_000);
 }
 
@@ -142,29 +143,28 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const title = embed.title ?? "без названия";
   if (current) {
     const statusLabel = (status: string) => eventStatusMetaM[status]?.label.ru ?? status;
-    const timeLabel = (at: number) => new Date(at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    recordDashboardDiff(guildId, user, "События", `Событие «${title}»: `,
+    recordDashboardDiff(guildId, user, AUDIT_SECTION.events, `Событие «${title}»: `,
       {
-        "Время": timeLabel(current.scheduled_at),
-        "Канал": `<#${current.channel_id}>`,
+        "Время": formatTime(current.scheduled_at),
+        "Канал": channelRef(current.channel_id),
         "Статус": statusLabel(current.status),
         "Лимит участников": current.max_participants > 0 ? current.max_participants : "без лимита",
         "Регистрация": Boolean(current.registration_enabled),
         "Очередь ожидания": Boolean(current.waitlist_enabled),
-        "Роль события": current.event_role_id ? `<@&${current.event_role_id}>` : null,
+        "Роль события": current.event_role_id ? roleRef(current.event_role_id) : null,
         "Напоминания": safeJson<number[]>(current.reminders_json, []).map(minutes => `${minutes} мин`),
         "Повтор": stableJson(safeJson<unknown>(current.recurrence_json, {})),
         "Сообщение": stableJson(parseEventEmbed(current.embed_json)),
         "Кнопки": stableJson(parseEventButtons(current.buttons_json)),
       },
       {
-        "Время": timeLabel(input.scheduledAt),
-        "Канал": `<#${input.channelId}>`,
+        "Время": formatTime(input.scheduledAt),
+        "Канал": channelRef(input.channelId),
         "Статус": statusLabel(input.status),
         "Лимит участников": input.maxParticipants > 0 ? input.maxParticipants : "без лимита",
         "Регистрация": input.registrationEnabled,
         "Очередь ожидания": input.waitlistEnabled,
-        "Роль события": input.eventRoleId ? `<@&${input.eventRoleId}>` : null,
+        "Роль события": input.eventRoleId ? roleRef(input.eventRoleId) : null,
         "Напоминания": input.reminders.map(minutes => `${minutes} мин`),
         "Повтор": stableJson(input.recurrence),
         "Сообщение": stableJson(input.embed),
@@ -172,7 +172,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       },
       { "Повтор": "изменён", "Сообщение": "изменено", "Кнопки": "изменены" });
   } else {
-    recordDashboardChange(guildId, user, "События", `Создано событие «${title}»`);
+    recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Создано событие «${title}»`);
   }
   return NextResponse.json({ ok: true, id: saved.id, messageId: saved.message_id, ...(warning ? { warning } : {}) });
 });
@@ -198,13 +198,13 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
       const buttons = renderEventButtons(renderableOf(event), parseEventButtons(event.buttons_json), counts);
       await syncDiscord(event, event.channel_id, embed, buttons, []);
     }
-    recordDashboardChange(guildId, user, "События", `Участник <@${participant}> удалён из события${result.promotedUserId ? `, <@${result.promotedUserId}> переведён из очереди` : ""}`);
+    recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Участник ${userRef(participant)} удалён из события${result.promotedUserId ? `, ${userRef(result.promotedUserId)} переведён из очереди` : ""}`);
     return NextResponse.json({ ok: true, promotedUserId: result.promotedUserId });
   }
   const removed = deleteEvent(guildId, id);
   if (!removed) return jsonError("Событие не найдено.", 404);
   if (token && removed.messageId) await discordFetch(`/channels/${removed.channelId}/messages/${removed.messageId}`, { method: "DELETE" }).catch(() => null);
   after(() => cleanupUnusedEventImages(guildId));
-  recordDashboardChange(guildId, user, "События", `Событие «${removed.embed.title ?? "без названия"}» удалено`);
+  recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Событие «${removed.embed.title ?? "без названия"}» удалено`);
   return NextResponse.json({ ok: true });
 });

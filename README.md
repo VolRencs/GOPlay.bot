@@ -4,13 +4,13 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.9.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.14.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
-Discord bot and server-management web dashboard in a single repository and a
-single process: a `discord.js` bot + a `Next.js` dashboard with Discord OAuth login.
-Stack (pinned in `package.json`): Node **≥ 26**, pnpm **12.9.0**, Next.js **16.3.8**,
-React **19.3.0**, TypeScript **7.0.2**, Node's native TypeScript type stripping and
+Discord bot and server-management web dashboard in a single repository, run as
+two supervised processes (Next.js + bot) sharing one SQLite database. Stack
+(pinned in `package.json`): Node **≥ 26**, pnpm **12.14.0**, Next.js **16.4.3**,
+React **19.3.1**, TypeScript **7.0.2**, Node's native TypeScript type stripping and
 `node:sqlite` (no separate DB driver).
 
 ## Features
@@ -48,7 +48,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Node ≥ 26**, **pnpm 12.9.0**, **ffmpeg with libopus**,
+Requirements: **Node ≥ 26**, **pnpm 12.14.0**, **ffmpeg with libopus**,
 **yt-dlp** in PATH.
 
 ```bash
@@ -121,12 +121,14 @@ Detailed instructions are in the [`.env.example`](.env.example) header.
 ```
 app/                  Next.js App Router: landing, /dashboard, /admin,
                       /login, API (/api/guilds, /api/admin, /api/auth),
-                      upload serving (/uploads/...)
+                      upload serving (/uploads/...); styles/ — design tokens
+                      and page/component CSS
 src/bot/              Bot entry point (index.ts) + modules:
-                      moderation, automod, appeals, logging,
-                      tempchannels, music, events, levels, db, utils
-src/db/               database.ts (node:sqlite, WAL) + migrations/*.sql
+                      commands, moderation, automod, appeals, logging,
+                      tempchannels, music (panel/command/shared), events, levels, utils
+src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
 src/lib/              Shared logic: auth, guild-access, automod, welcome,
+                      colors/format/mentions/limits,
                       appeals, levels, uploads, player/* (yt-dlp/ffmpeg stack), i18n
 src/components/       React: user-menu + dashboard/* (tab panels)
 scripts/              migrate-auth.ts, run-both.ts (bot + web supervisor)

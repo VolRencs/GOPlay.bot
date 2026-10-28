@@ -57,7 +57,7 @@ export const probeFfmpeg = memoProbe(() => probeBinary(FFMPEG, ["-version"], fal
 export const probeOpus = memoProbe(() => probeBinary(FFMPEG, ["-hide_banner", "-encoders"], true, (code, out) => code === 0 && /libopus/i.test(out)));
 
 // Кэш метаданных: стабильные поля; форматы не кэшируются (ротация YouTube).
-type SingleMeta = { at: number; title: string; duration: number; mediaUrl?: string; mediaUrlExpiresAt?: number };
+type SingleMeta = { at: number; title: string; duration: number; thumbnail?: string; mediaUrl?: string; mediaUrlExpiresAt?: number };
 const singleMeta = new Map<string, SingleMeta>();
 const listMeta = new Map<string, { at: number; tracks: Track[] }>();
 const SINGLE_META_TTL = 24 * 3_600_000;
@@ -193,19 +193,27 @@ export function isSingleYouTubeVideoUrl(query: string): boolean {
   return (m[2] ?? url.searchParams.get("v") ?? "") !== "";
 }
 
-function cacheSingleMeta(key: string, title: string, duration: number, mediaUrl: string | null): void {
+function pickThumbnail(meta: Record<string, unknown>): string | undefined {
+  if (typeof meta.thumbnail === "string" && meta.thumbnail) return meta.thumbnail;
+  const thumbnails = Array.isArray(meta.thumbnails) ? meta.thumbnails : [];
+  const usable = thumbnails.filter((item): item is { url: string } => Boolean(item && typeof item === "object" && typeof (item as { url?: unknown }).url === "string"));
+  return usable.at(-1)?.url;
+}
+
+function cacheSingleMeta(key: string, title: string, duration: number, thumbnail: string | undefined, mediaUrl: string | null): void {
   evictOldest(singleMeta);
-  singleMeta.set(key, { at: Date.now(), title, duration, ...(mediaUrl ? { mediaUrl, mediaUrlExpiresAt: Date.now() + MEDIA_URL_TTL_MS } : {}) });
+  singleMeta.set(key, { at: Date.now(), title, duration, ...(thumbnail ? { thumbnail } : {}), ...(mediaUrl ? { mediaUrl, mediaUrlExpiresAt: Date.now() + MEDIA_URL_TTL_MS } : {}) });
 }
 
 function trackFromFullMeta(meta: Record<string, unknown>, fallbackQuery: string, requestedBy: string): Track | null {
   const duration = typeof meta.duration === "number" ? meta.duration : 0;
   if (duration > MAX_DURATION_SECONDS) return null;
   const mediaUrl = pickAudioUrl(meta);
-  const track: Track = { query: String(meta.webpage_url ?? fallbackQuery), title: String(meta.title ?? fallbackQuery), requestedBy, ...(duration > 0 ? { duration } : {}) };
+  const thumbnail = pickThumbnail(meta);
+  const track: Track = { query: String(meta.webpage_url ?? fallbackQuery), title: String(meta.title ?? fallbackQuery), requestedBy, ...(duration > 0 ? { duration } : {}), ...(thumbnail ? { thumbnail } : {}) };
   // Прямой URL экономит вторую полную экстракцию на старте стрима.
   if (mediaUrl) { track.mediaUrl = mediaUrl; track.mediaUrlExpiresAt = Date.now() + MEDIA_URL_TTL_MS; }
-  cacheSingleMeta(normalizeTrackKey(track.query), track.title, duration, mediaUrl);
+  cacheSingleMeta(normalizeTrackKey(track.query), track.title, duration, thumbnail, mediaUrl);
   return track;
 }
 
@@ -238,11 +246,15 @@ export async function resolveTracks(query: string, requestedBy: string): Promise
     const raw = String(entry.url ?? entry.id ?? "");
     if (!raw) continue;
     const duration = typeof entry.duration === "number" && entry.duration > 0 ? entry.duration : undefined;
+    // Отсекаем заведомо длинные записи до очереди: скрытый лимит иначе съедает слоты.
+    if (duration && duration > MAX_DURATION_SECONDS) continue;
+    const thumbnail = pickThumbnail(entry as Record<string, unknown>);
     tracks.push({
       query: raw.startsWith("http") ? raw : `https://www.youtube.com/watch?v=${raw}`,
       title: String(entry.title ?? raw),
       requestedBy,
       ...(duration ? { duration } : {}),
+      ...(thumbnail ? { thumbnail } : {}),
     });
   }
   if (tracks.length) {
@@ -254,7 +266,6 @@ export async function resolveTracks(query: string, requestedBy: string): Promise
 
 // Политика «превышение длительности» принадлежит сессии; резолвер только сообщает.
 type HydrateHooks = {
-  isCurrent: (track: Track) => boolean;
   onTooLong: (guildId: string, track: Track) => void;
   onChange: (guildId: string) => void;
 };
@@ -269,26 +280,28 @@ export function hydrateTrackMeta(track: Track, guildId: string): void {
   const key = normalizeTrackKey(track.query);
   const cached = singleMeta.get(key);
   if (cached && Date.now() - cached.at < SINGLE_META_TTL) {
-    applyHydration(track, guildId, cached.title, cached.duration, cached.mediaUrl, cached.mediaUrlExpiresAt);
+    applyHydration(track, guildId, cached.title, cached.duration, cached.thumbnail, cached.mediaUrl, cached.mediaUrlExpiresAt);
     return;
   }
   void runYtDlpJson(track.query).then(({ meta }) => {
     if (!meta || meta._type === "playlist") { track.metaPending = false; return; }
     const duration = typeof meta.duration === "number" ? meta.duration : 0;
+    const thumbnail = pickThumbnail(meta);
     const mediaUrl = pickAudioUrl(meta);
-    cacheSingleMeta(key, String(meta.title ?? track.query), duration, mediaUrl);
-    applyHydration(track, guildId, String(meta.title ?? track.title), duration, mediaUrl ?? undefined, mediaUrl ? Date.now() + MEDIA_URL_TTL_MS : undefined);
+    cacheSingleMeta(key, String(meta.title ?? track.query), duration, thumbnail, mediaUrl);
+    applyHydration(track, guildId, String(meta.title ?? track.title), duration, thumbnail, mediaUrl ?? undefined, mediaUrl ? Date.now() + MEDIA_URL_TTL_MS : undefined);
   }).catch(() => { track.metaPending = false; });
 }
 
-function applyHydration(track: Track, guildId: string, title: string, duration: number, mediaUrl?: string, expiresAt?: number): void {
+function applyHydration(track: Track, guildId: string, title: string, duration: number, thumbnail?: string, mediaUrl?: string, expiresAt?: number): void {
   track.title = title;
   if (duration > 0) track.duration = duration;
+  if (thumbnail) track.thumbnail = thumbnail;
   if (mediaUrl) { track.mediaUrl = mediaUrl; if (expiresAt !== undefined) track.mediaUrlExpiresAt = expiresAt; }
   if (duration > MAX_DURATION_SECONDS) {
     logger.info("[MUSIC] Трек длиннее лимита — пропускаю", guildId, title);
-    // За время гидрации мог прозвучать Skip: страдает только текущий трек.
-    if (hydrateHooks?.isCurrent(track)) hydrateHooks.onTooLong(guildId, track);
+    // Текущий трек пропускаем, а prefetched-трек убираем из очереди.
+    hydrateHooks?.onTooLong(guildId, track);
   }
   hydrateHooks?.onChange(guildId);
 }

@@ -7,7 +7,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { logger } from "../logger.ts";
 import { count } from "../perf.ts";
 import { ACTIVE_STREAM_LIMIT, activeStreamCount, startAudioStream, type StreamHandle } from "./streamer.ts";
-import { isAllowedMediaUrl, setHydrateHooks } from "./resolver.ts";
+import { hydrateTrackMeta, isAllowedMediaUrl, setHydrateHooks } from "./resolver.ts";
 import { moveWithinList, MAX_QUEUE, MAX_DURATION_SECONDS, isNaturalEnd, nextLoopMode, partitionByIndices, shuffleWithin, type LoopMode, type StreamOutcome, type Track } from "./types.ts";
 import { musicSettingsFor } from "../music-settings.ts";
 
@@ -48,10 +48,17 @@ export function setPlayerEnvironment(env: { humansInBotChannel: (guildId: string
 
 // Политика «трек длиннее лимита» здесь; резолвер только сообщает.
 setHydrateHooks({
-  isCurrent: track => [...sessions.values()].some(s => s.current === track),
   onTooLong: (guildId, track) => {
-    if (sessions.get(guildId)?.current !== track) return;
-    skipCurrent(guildId);
+    const session = sessions.get(guildId);
+    if (!session) return;
+    if (session.current === track) {
+      skipCurrent(guildId);
+      return;
+    }
+    const index = session.queue.indexOf(track);
+    if (index === -1) return;
+    session.queue.splice(index, 1);
+    notify(guildId);
   },
   onChange: notify,
 });
@@ -59,6 +66,12 @@ setHydrateHooks({
 export const getSessionTextChannelId = (guildId: string): string | null => sessions.get(guildId)?.textChannelId ?? null;
 export const hasCurrent = (guildId: string): boolean => sessions.get(guildId)?.current != null;
 export const queueSizeOf = (guildId: string): number => sessions.get(guildId)?.queue.length ?? 0;
+
+/** Фоновая гидрация следующего трека: старт без ожидания yt-dlp. */
+export function prefetchNext(guildId: string): void {
+  const next = sessions.get(guildId)?.queue[0];
+  if (next) hydrateTrackMeta(next, guildId);
+}
 
 export function getQueueSnapshot(guildId: string): { current: Track | null; queue: Track[] } {
   const s = sessions.get(guildId);
@@ -68,10 +81,14 @@ export function getQueueSnapshot(guildId: string): { current: Track | null; queu
 export function playbackStateOf(guildId: string) {
   const s = sessions.get(guildId);
   if (!s?.current) return null;
+  const state = s.player.state;
   return {
-    current: s.current, queuePreview: s.queue.slice(0, PANEL_PREVIEW_SIZE), queueLength: s.queue.length,
-    paused: s.player.state.status === AudioPlayerStatus.Paused,
+    current: s.current,
+    queuePreview: s.queue.slice(0, PANEL_PREVIEW_SIZE),
+    queueLength: s.queue.length,
+    paused: state.status === AudioPlayerStatus.Paused,
     loopMode: s.loopMode,
+    positionSec: "playbackDuration" in state ? Math.floor(state.playbackDuration / 1000) : 0,
   };
 }
 
@@ -147,7 +164,7 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     s.failedStarts = 0;
   });
   player.on("error", error => {
-    if (sessions.get(guildId)) logger.info("[MUSIC] Ошибка аудиопотока", guildId, error.message);
+    if (sessions.get(guildId)) logger.warn("[MUSIC] Ошибка аудиопотока", guildId, error.message);
   });
   player.on(AudioPlayerStatus.Idle, oldState => {
     if (!sessions.get(guildId)) return; // сессия уничтожена/пересоздана
@@ -179,6 +196,7 @@ export function enqueueTrack(guildId: string, track: Track): boolean {
   const s = sessions.get(guildId);
   if (!s || s.queue.length >= MAX_QUEUE) return false;
   s.queue.push(track);
+  if (s.queue.length === 1) prefetchNext(guildId);
   notify(guildId);
   return true;
 }
@@ -254,6 +272,7 @@ export function playNext(guildId: string): Track | null {
   notify(guildId);
   if (!next) return null;
   launch(s, next, 0);
+  prefetchNext(guildId);
   return next;
 }
 

@@ -10,6 +10,8 @@ export type Track = {
   requestedBy: string;
   /** Секунды; неизвестна до гидрации метаданных. */
   duration?: number;
+  /** Обложка из метаданных YouTube для панели плеера. */
+  thumbnail?: string;
   /** Прямой аудио-URL из -J экстракции: стрим без второго запуска yt-dlp. */
   mediaUrl?: string;
   mediaUrlExpiresAt?: number;

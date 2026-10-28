@@ -1,0 +1,210 @@
+.landing {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  min-height: 100dvh;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.05fr .95fr;
+  align-items: center;
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  margin: clamp(.5rem, 2vh, 1.5rem) 0;
+}
+
+.hero h1 {
+  margin: 0;
+  background: linear-gradient(100deg, #e6bcff 0%, #b06bff 30%, #ff6fce 62%, #c88bff 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: clamp(2.6rem, 6vw, 4.5rem);
+  letter-spacing: -.045em;
+  line-height: 1.04;
+  animation: hero-gradient 6s ease-in-out infinite alternate;
+}
+
+@keyframes hero-gradient {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+
+.hero .lead {
+  max-width: 32rem;
+  margin: .6rem 0 0;
+  color: var(--soft);
+  font-size: 1.04rem;
+  line-height: 1.6;
+}
+
+.hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .7rem;
+  margin-top: .9rem;
+}
+
+.hero-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+}
+
+.hero-art::before {
+  content: "";
+  position: absolute;
+  width: 84%;
+  aspect-ratio: 1;
+  background: radial-gradient(circle, rgba(255, 44, 189, .3), transparent 65%);
+  filter: blur(14px);
+}
+
+.hero-art img {
+  position: relative;
+  z-index: 1;
+  width: min(300px, 34vw);
+  border: 1px solid rgba(255, 177, 249, .55);
+  border-radius: 26%;
+  box-shadow: 0 0 32px rgba(244, 42, 188, .5), 0 0 80px rgba(128, 31, 255, .35);
+  animation: hero-float 6s ease-in-out infinite;
+}
+
+.hero-ring {
+  position: absolute;
+  width: min(400px, 48vw);
+  aspect-ratio: 1;
+  border: 1px solid rgba(244, 75, 220, .45);
+  border-radius: 50%;
+  animation: hero-pulse 3.4s ease-in-out infinite;
+}
+
+.hero-ring.second { animation-delay: 1.7s; }
+
+@keyframes hero-pulse {
+  50% {
+    transform: scale(1.07);
+    box-shadow: 0 0 0 20px rgba(177, 48, 255, .05), 0 0 44px rgba(245, 39, 191, .22);
+    opacity: .65;
+  }
+}
+
+@keyframes hero-float {
+  50% { transform: translateY(-8px); }
+}
+
+.features { margin-top: clamp(.5rem, 2vh, 1.2rem); }
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: .8rem;
+}
+
+.feature-card {
+  padding: 1rem;
+  transition: border-color var(--t), transform var(--t), box-shadow var(--t);
+}
+
+.feature-card .tile { width: 38px; height: 38px; }
+
+.feature-card h2 { margin: .65rem 0 .25rem; font-size: .95rem; }
+
+.feature-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .86rem;
+  line-height: 1.5;
+}
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: .8rem;
+  padding: 2.6rem 1.5rem;
+  text-align: center;
+}
+
+.empty-state p { margin: 0; color: var(--muted); }
+
+.landing-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem 1.4rem;
+  margin-top: clamp(.8rem, 2.5vh, 1.8rem);
+  padding: .9rem 0 1.2rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .88rem;
+}
+
+.landing-footer p { margin: 0; }
+
+.landing-footer a {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  color: #edbcff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.landing-footer a:hover { color: #fff; text-decoration: underline; }
+
+.landing-footer-links { display: flex; flex-wrap: wrap; gap: .5rem 1.1rem; }
+
+.landing-footer-links svg { flex: none; }
+
+.auth-page {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+}
+
+.auth-card {
+  display: grid;
+  gap: 1.15rem;
+  width: min(440px, 100%);
+  padding: 2rem;
+}
+
+.auth-card .brand { justify-content: center; margin-bottom: .6rem; }
+.auth-card h1 { margin: 0; }
+.auth-card .btn { width: 100%; }
+
+.hero-modules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin: 1.15rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hero-modules li {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .38rem .62rem;
+  background: rgba(255, 255, 255, .045);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  color: var(--soft);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.hero-modules svg {
+  color: var(--glow);
+}
+
+@media (max-width: 768px) {
+  .hero-modules {
+    justify-content: center;
+  }
+}

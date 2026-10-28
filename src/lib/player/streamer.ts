@@ -31,7 +31,12 @@ export type StreamHandle = {
  *  для трубы seek делает сам yt-dlp (--download-sections), тут offset не нужен. */
 export function ffmpegArgs(mediaUrl: string | null, offsetSec: number): string[] {
   const input = mediaUrl
-    ? (offsetSec > 0 ? ["-thread_queue_size", "1024", "-ss", String(offsetSec), "-i", mediaUrl] : ["-thread_queue_size", "1024", "-i", mediaUrl])
+    ? [
+      "-thread_queue_size", "1024",
+      ...(offsetSec > 0 ? ["-ss", String(offsetSec)] : []),
+      "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+      "-i", mediaUrl,
+    ]
     : ["-thread_queue_size", "1024", "-i", "pipe:0"];
   return [
     "-hide_banner", "-loglevel", "error", "-nostdin",

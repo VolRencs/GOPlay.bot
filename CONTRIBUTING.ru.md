@@ -6,7 +6,7 @@
 
 ## Стек и команды
 
-- Node ≥ 26, pnpm 12.9.0, ffmpeg с libopus, yt-dlp в PATH.
+- Node ≥ 26, pnpm 12.14.0, ffmpeg с libopus, yt-dlp в PATH.
 - `pnpm i --frozen-lockfile` — установка.
 - `cp .env.example .env` — заполнить `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).
@@ -25,7 +25,7 @@
 
 ## Где что менять
 
-- Slash-команды бота: `src/bot/index.ts` (массив `commands`, RU-описание +
+- Slash-команды бота: `src/bot/commands.ts` (RU-описание +
   `description_localizations` для EN).
 - Тексты бота RU/EN: `src/lib/i18n/` (`core.ts`, `bot.ts`, `bot/*.ts`).
   Новую строку добавляйте сразу в оба языка.

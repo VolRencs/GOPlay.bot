@@ -3,14 +3,13 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { buttonColorOptionsList, type Channel, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
+import { roleStyleLabels } from "../../lib/labels.ts";
 import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatTime } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 
 type PanelOptionInput = { roleId: string; label: string; emoji: string; buttonColor: string };
 const defaultPanelOption = { roleId: "", label: "", emoji: "", buttonColor: "primary" };
-
-const styleLabels: Record<string, string> = { buttons: "Кнопки", select: "Меню выбора", reaction: "Реакции" };
 
 function RoleOptionRow({ option, index, roles, emojis, style, onChange, onRemove, removable }: { option: PanelOptionInput; index: number; roles: Role[]; emojis: ServerEmoji[]; style: "buttons" | "select" | "reaction"; onChange: (change: Partial<PanelOptionInput>) => void; onRemove: () => void; removable: boolean }) {
   return (
@@ -148,7 +147,7 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
               <article className="template-item" key={panel.id}>
                 <div>
                   <strong>{panel.title}</strong>
-                  <p className="muted">{styleLabels[panel.style]} · {panel.options.length} ролей</p>
+                  <p className="muted">{roleStyleLabels[panel.style]} · {panel.options.length} ролей</p>
                 </div>
                 <div className="template-actions">
                   <button type="button" className="btn secondary" onClick={() => edit(panel)}>Изменить</button>

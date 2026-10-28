@@ -1,0 +1,203 @@
+@font-face {
+  font-family: "Onest";
+  src: url("/fonts/Onest-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/GeistMono-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Brand */
+  --ink: #080511;
+  --violet: #8b3dff;
+  --pink: #ff3fc8;
+  --glow: #f0a8ff;
+  --text: #faf6ff;
+  --muted: #b9a9c9;
+  --label: #aeb8cc;
+  --soft: #d2c3df;
+  --code: #cdd9ff;
+
+  /* Surfaces */
+  --surface: #120a22;
+  --surface-raised: #1a0f30;
+  --panel-solid: #160b2a;
+  --panel-inset: rgba(13, 8, 27, .58);
+  --field: rgba(11, 7, 23, .78);
+  --veil: rgba(255, 255, 255, .06);
+  --inset-line: rgba(193, 94, 255, .14);
+  --line: rgba(193, 94, 255, .22);
+  --line-hover: #ef8bff;
+  --focus-border: #df84ff;
+
+  /* Gradients */
+  --grad: linear-gradient(100deg, var(--violet), var(--pink));
+  --grad-panel: linear-gradient(145deg, rgba(29, 17, 53, .86), rgba(13, 8, 27, .9));
+  --grad-active: linear-gradient(90deg, rgba(157, 46, 255, .24), rgba(255, 44, 189, .12));
+
+  /* Radii */
+  --r-1: 6px;
+  --r-2: 9px;
+  --r-3: 12px;
+  --r-4: 16px;
+  --r-5: 20px;
+  --r-full: 999px;
+
+  /* Spacing */
+  --space-1: .25rem;
+  --space-2: .5rem;
+  --space-3: .75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* Typography */
+  --font-ui: "Onest", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  --text-xs: .72rem;
+  --text-sm: .82rem;
+  --text-base: .95rem;
+  --text-lg: 1.05rem;
+  --text-xl: 1.25rem;
+
+  /* Elevation */
+  --shadow-btn: 0 8px 20px rgba(133, 31, 230, .22);
+  --shadow-card: 0 14px 45px rgba(0, 0, 0, .18);
+  --shadow-pop: 0 18px 44px rgba(4, 2, 16, .55);
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, .04) inset;
+
+  /* Motion */
+  --t: .18s ease;
+  --t-fast: .12s ease;
+  --focus-ring: 0 0 0 3px rgba(211, 70, 255, .16);
+
+  /* Layout */
+  --container: 1240px;
+  --sidebar: 252px;
+  --content-max: 1120px;
+
+  /* Status */
+  --tone-ok-bg: rgba(35, 160, 90, .18);
+  --tone-ok-text: #86edb4;
+  --tone-err-bg: rgba(220, 60, 90, .18);
+  --tone-err-text: #ffa3b5;
+  --tone-info-bg: rgba(139, 156, 255, .18);
+  --tone-info-text: #b6c0ff;
+  --tone-accent-bg: rgba(157, 46, 255, .2);
+  --tone-accent-text: #e9c2ff;
+  --tone-neutral-bg: rgba(255, 255, 255, .08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scrollbar-gutter: stable;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background:
+    radial-gradient(circle at 82% -8%, #45116f 0, transparent 30rem),
+    radial-gradient(circle at -10% 95%, #2b0b5a 0, transparent 31rem),
+    var(--ink);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, .018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .018) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, .55) 60%, transparent 100%);
+}
+
+h1,
+h2,
+h3,
+p {
+  overflow-wrap: break-word;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+img,
+svg {
+  vertical-align: middle;
+}
+
+::selection {
+  background: rgba(157, 46, 255, .45);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(157, 46, 255, .3);
+  border-radius: var(--r-full);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--glow);
+  outline-offset: 2px;
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
