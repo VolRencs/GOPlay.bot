@@ -31,11 +31,11 @@ async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 async function applyPanelRole(guildId: string, panelId: number, roleId: string, member: GuildMember) {
   return withRoleLock(`${guildId}:${member.id}`, async () => {
-    const panel = stmt.panel.get(panelId, guildId) as { role_limit: number; role_mode: string; notify_enabled: number; notify_template: string } | undefined;
+    const panel = stmt.panel.get(panelId, guildId);
     const role = member.guild.roles.cache.get(roleId);
     if (!panel || !role || role.managed || !role.editable) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
     // Роль обязана принадлежать панели: roleId приходит из custom_id кнопки.
-    const options = stmt.panelOptionEmoji.all(panelId) as { role_id: string; emoji: string | null }[];
+    const options = stmt.panelOptionEmoji.all(panelId);
     if (!options.some(option => option.role_id === roleId)) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
     const has = member.roles.cache.has(roleId);
     const action = panel.role_mode === "add" ? "add" : panel.role_mode === "remove" ? "remove" : has ? "remove" : "add";
@@ -54,7 +54,7 @@ export function applyPanelRoleSafe(guildId: string, panelId: number, roleId: str
 /** Включены ли уведомления панели: от этого зависит, подтверждать ли
  *  интеракцию ephemeral-ответом (видимое сообщение) или обычным defer. */
 export function panelNotifies(guildId: string, panelId: number): boolean {
-  const panel = stmt.panel.get(panelId, guildId) as { notify_enabled: number } | undefined;
+  const panel = stmt.panel.get(panelId, guildId);
   return Boolean(panel?.notify_enabled);
 }
 

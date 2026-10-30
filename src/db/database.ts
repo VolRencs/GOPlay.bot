@@ -41,7 +41,7 @@ function syncAutoroleSchema() {
     role_id TEXT,
     updated_at INTEGER NOT NULL
   )`);
-  const columns = (db.prepare("PRAGMA table_info(autorole_settings)").all() as { name: string }[]).map(column => column.name);
+  const columns = db.prepare("PRAGMA table_info(autorole_settings)").all().map(row => row.name).filter((name): name is string => typeof name === "string");
   if (columns.includes("role_id") || !columns.includes("role_ids_json")) return;
   withTransaction(() => {
     db.exec("ALTER TABLE autorole_settings ADD COLUMN role_id TEXT");

@@ -44,9 +44,9 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Скриншоты
 
-![Лендинг](assets/landing.png)
-![Список серверов](assets/dashboard.png)
-![Настройки сервера](assets/guild-settings.png)
+![Лендинг](assets/landing.avif)
+![Список серверов](assets/dashboard.avif)
+![Настройки сервера](assets/guild-settings.avif)
 
 ## Быстрый старт (локально)
 

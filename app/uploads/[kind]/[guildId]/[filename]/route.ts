@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join, sep } from "node:path";
-import { embedUploadsDir, eventUploadsDir } from "../../../../../src/lib/uploads.ts";
-import { guildRoute, isSnowflake } from "../../../../../src/lib/guild-access.ts";
+import { embedUploadsDir, eventUploadsDir } from "#lib/uploads.ts";
+import { guildRoute, isSnowflake } from "#lib/guild-access.ts";
 
 const contentTypes: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
 // Только простое имя файла: сегмент [filename] декодирует %2f, поэтому

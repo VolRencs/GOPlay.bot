@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server.js";
-import { guildRoute, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { cleanupTargetsM, type CleanupTarget } from "../../../../../src/lib/labels.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
-import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
-import { runCleanupTarget } from "../../../../../src/lib/server-cleanup.ts";
+import { guildRoute, jsonError, readJson } from "#lib/guild-access.ts";
+import { cleanupTargetsM, type CleanupTarget } from "#lib/labels.ts";
+import { recordDashboardChange } from "#lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { runCleanupTarget } from "#lib/server-cleanup.ts";
 
 const targetKeys = cleanupTargetsM.map(target => target.key);
 const targetLabel = (target: CleanupTarget) => cleanupTargetsM.find(t => t.key === target)!.label.ru;

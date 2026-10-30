@@ -32,8 +32,8 @@ let lastDataVersion = -1;
 let dataVersionFailures = 0;
 
 function load(guildId: string): CachedRules {
-  const rules = (stmt.rules.all(guildId) as (CachedRule & { threshold_json: string })[]).map(({ threshold_json, ...row }) => ({ ...row, threshold: safeJson<Record<string, unknown> | null>(threshold_json, null) }));
-  const security = stmt.security.get(guildId) as { ignored_role_ids_json: string; protected_channel_id: string | null } | undefined;
+  const rules = stmt.rules.all(guildId).map(({ threshold_json, ...row }) => ({ ...row, threshold: safeJson<Record<string, unknown> | null>(threshold_json, null) }));
+  const security = stmt.security.get(guildId);
   return { rules, ignoredRoles: parseStringArray(security?.ignored_role_ids_json), protectedChannelId: security?.protected_channel_id ?? null, lang: guildLang(guildId) };
 }
 
@@ -67,7 +67,7 @@ function refreshLoop() {
   if (!snapshots.size) stopTimer();
   let version = lastDataVersion;
   try {
-    version = (stmt.dataVersion.get() as { data_version: number }).data_version;
+    version = stmt.dataVersion.get()!.data_version;
     dataVersionFailures = 0;
   } catch (error) {
     dataVersionFailures = logger.warnEvery(dataVersionFailures, 60, "[CONFIG] Не удалось проверить версию данных", error);
@@ -89,8 +89,8 @@ const PANEL_TTL = 10_000;
 type ReactionPanel = { id: number; role_mode: string; options: { role_id: string; emoji: string | null }[] };
 const reactionPanelCache = ttlCacheSync<string, Map<string, ReactionPanel>>((guildId) => {
   const panels = new Map<string, ReactionPanel>();
-  for (const row of stmt.panelReactions.all(guildId) as { id: number; role_mode: string; message_id: string }[]) {
-    panels.set(row.message_id, { id: row.id, role_mode: row.role_mode, options: stmt.panelOptionEmoji.all(row.id) as { role_id: string; emoji: string | null }[] });
+  for (const row of stmt.panelReactions.all(guildId)) {
+    panels.set(row.message_id, { id: row.id, role_mode: row.role_mode, options: stmt.panelOptionEmoji.all(row.id) });
   }
   return panels;
 }, PANEL_TTL);

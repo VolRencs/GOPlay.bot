@@ -50,10 +50,10 @@ export function flushLevels(): LevelUp[] {
     withTransaction(() => {
       for (const entry of entries) {
         const settings = settingsFor(entry.guildId);
-        const row = stmt.levelRow.get(entry.guildId, entry.userId) as { xp: number; level: number } | undefined;
+        const row = stmt.levelRow.get(entry.guildId, entry.userId);
         const newXp = (row?.xp ?? 0) + entry.xp;
         const newLevel = levelFromXp(newXp, settings.base_xp, settings.growth_percent);
-        stmt.levelUpsert.run(entry.guildId, entry.userId, entry.xp, newLevel, entry.messages, entry.voiceSeconds, Date.now());
+        stmt.levelUpsert.run({ guild_id: entry.guildId, user_id: entry.userId, xp: entry.xp, level: newLevel, messages: entry.messages, voice_seconds: entry.voiceSeconds, updated_at: Date.now() });
         if (newLevel > (row?.level ?? 0)) levelUps.push({ guildId: entry.guildId, userId: entry.userId, level: newLevel });
       }
     });
@@ -223,7 +223,7 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
       return true;
     }
     if (i.commandName === "top") {
-      const rows = stmt.levelTop.all(guild.id, 10) as { user_id: string; xp: number }[];
+      const rows = stmt.levelTop.all(guild.id, 10);
       const embed = new EmbedBuilder().setColor(BRAND_COLOR).setTitle(t("topTitle"));
       if (!rows.length) embed.setDescription(t("topEmpty"));
       else embed.setDescription(rows.map((row, index) => t("topLine", { rank: String(index + 1), user: userRef(row.user_id), level: String(levelFromXp(row.xp, settings.base_xp, settings.growth_percent)), xp: String(row.xp) })).join("\n"));
@@ -237,10 +237,10 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
       await i.reply({ content: t("memberNotFound"), flags: MessageFlags.Ephemeral }).catch(() => null);
       return true;
     }
-    const row = stmt.levelRow.get(guild.id, member.id) as { xp: number; messages: number; voice_seconds: number } | undefined;
+    const row = stmt.levelRow.get(guild.id, member.id);
     const xp = row?.xp ?? 0;
     const progress = levelProgress(xp, settings.base_xp, settings.growth_percent);
-    const rank = (stmt.levelRank.get(guild.id, xp) as { rank: number }).rank;
+    const rank = stmt.levelRank.get(guild.id, xp)!.rank;
     const voiceSeconds = row?.voice_seconds ?? 0;
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)

@@ -2,7 +2,7 @@ import test from "node:test"; import assert from "node:assert/strict";
 import { seedGuilds, useTempDb } from "./helpers.ts";
 
 useTempDb("goplay-events-test-");
-import type { EventInput } from "../src/lib/events.ts";
+import type { EventInputDto } from "../src/contracts/events.ts";
 const events = await import("../src/lib/events.ts");
 const { parseEventEmbed, parseEventButtons } = events;
 const { insertEvent, updateEvent, getEvent, getEventInGuild, listEvents, deleteEvent, eventCounts, joinEvent, leaveEvent, removeParticipant, removeParticipantFromGuild, claimReminder, dueReminders, transitionDueEvents, renderEventEmbed, renderEventButtons, renderableOf, clampEventInput, updateEventMessage, detachEventMessage } = events;
@@ -10,7 +10,7 @@ const { insertEvent, updateEvent, getEvent, getEventInGuild, listEvents, deleteE
 await seedGuilds(["g1", "g2"]);
 
 const now = Date.now();
-const baseInput = (): EventInput => ({
+const baseInput = (): EventInputDto => ({
   channelId: "111111111111111111", messageId: null,
   embed: { title: "Киновечер", description: "Смотрим кино в голосовом", color: 123, footer: { text: "Событие" }, timestamp: true },
   buttons: [{ key: "join", label: "Участвовать", emoji: "✅", style: "primary", enabled: true, order: 1 }, { key: "leave", label: "Отказаться", emoji: "❌", style: "danger", enabled: true, order: 2 }],

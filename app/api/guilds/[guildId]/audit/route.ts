@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server.js";
-import { guildRoute } from "../../../../../src/lib/guild-access.ts";
-import { auditQueries } from "../../../../../src/db/queries.ts";
-import type { AuditEntry, AuditListGet } from "../../../../../src/contracts/dashboard.ts";
+import { guildRoute } from "#lib/guild-access.ts";
+import { auditQueries } from "#db/queries.ts";
+import { toDto as toAuditEntryDto, type AuditListDto } from "#contracts/audit.ts";
 
 // Чистое чтение: retention выполняется на записи (recordDashboardChange).
 export const GET = guildRoute(async (request, { guildId }) => {
@@ -10,8 +10,7 @@ export const GET = guildRoute(async (request, { guildId }) => {
   const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
   const section = url.searchParams.get("section")?.trim().slice(0, 50) || null;
 
-  const rows = (section ? auditQueries.bySection.all(guildId, section, limit, offset) : auditQueries.list.all(guildId, limit, offset)) as (AuditEntry & { total: number })[];
+  const rows = section ? auditQueries.bySection.all(guildId, section, limit, offset) : auditQueries.list.all(guildId, limit, offset);
   const total = rows[0]?.total ?? 0;
-  const entries: AuditEntry[] = rows.map(({ total: _total, ...entry }) => entry);
-  return NextResponse.json<AuditListGet>({ entries, total });
+  return NextResponse.json<AuditListDto>({ entries: rows.map(toAuditEntryDto), total });
 });

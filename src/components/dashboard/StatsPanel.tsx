@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { ServerStats, StatsGet } from "./types.ts";
+import type { StatsGet } from "./types.ts";
 import { apiGet } from "./api.ts";
 import { useApiResource } from "./hooks.ts";
+import { useDashboard } from "./DashboardContext.tsx";
 import { CardHeader, StatCard, formatNumber } from "./ui.tsx";
 import { formatDay } from "../../lib/format.ts";
 
@@ -27,7 +28,9 @@ function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] |
   );
 }
 
-export function ServerStatistics({ stats, guildId }: { stats: ServerStats; guildId: string }) {
+export function ServerStatistics() {
+  const { guildId, resources } = useDashboard();
+  const stats = resources?.stats ?? { members: null, online: null };
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("7d");
   const { data } = useApiResource<StatsGet | null | undefined>(
     Boolean(guildId),

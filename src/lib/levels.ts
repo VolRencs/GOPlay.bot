@@ -22,7 +22,6 @@ export type LevelSettings = {
 };
 
 export type LevelReward = { level: number; role_id: string };
-export type LevelsGet = { settings: LevelSettings; rewards: LevelReward[] };
 
 export const levelRanges = {
   xp_per_message: { min: 0, max: 100 },
@@ -108,15 +107,4 @@ export function levelProgress(xp: number, baseXp: number, growthPercent: number)
   const { level, floor, need } = levelInfo(xp, baseXp, growthPercent);
   if (level >= MAX_LEVEL) return { level, current: 0, needed: 0 };
   return { level, current: xp - floor, needed: need };
-}
-
-export function buildLevelsPutBody(settings: LevelSettings, rewards: LevelReward[]): LevelsGet {
-  return {
-    settings: {
-      ...settings,
-      ignored_channel_ids: [...settings.ignored_channel_ids],
-      ignored_role_ids: [...settings.ignored_role_ids],
-    },
-    rewards: rewards.map(reward => ({ level: reward.level, role_id: reward.role_id })).toSorted((a, b) => a.level - b.level),
-  };
 }

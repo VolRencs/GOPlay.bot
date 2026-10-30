@@ -1,17 +1,18 @@
 import { after, NextResponse } from "next/server.js";
-import { discordFetch, guildMemberNames, guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
-import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
-import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
-import { channelRef, roleRef, userRef } from "../../../../../src/lib/mentions.ts";
-import { formatTime } from "../../../../../src/lib/format.ts";
-import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
-import { eventStatusMetaM } from "../../../../../src/lib/labels.ts";
-import { guildLang } from "../../../../../src/lib/i18n/bot.ts";
-import { BOT_TOKEN_ERROR, buttonStyleId } from "../../../../../src/lib/constants.ts";
-import { eventQueries } from "../../../../../src/db/queries.ts";
-import { cleanupOrphanedFiles, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "../../../../../src/lib/uploads.ts";
-import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "../../../../../src/lib/assets.ts";
-import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventListGet, type EventRow, type RenderableEvent, type RenderedEventButton } from "../../../../../src/lib/events.ts";
+import { discordFetch, guildMemberNames, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { channelRef, roleRef, userRef } from "#lib/mentions.ts";
+import { formatTime } from "#lib/format.ts";
+import { safeJson, stableJson } from "#lib/json.ts";
+import { eventStatusMetaM } from "#lib/labels.ts";
+import { guildLang } from "#lib/i18n/bot.ts";
+import { BOT_TOKEN_ERROR, buttonStyleId } from "#lib/constants.ts";
+import { eventQueries } from "#db/queries.ts";
+import { cleanupOrphanedFiles, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
+import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
+import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "#lib/events.ts";
+import type { EventListDto } from "#contracts/events.ts";
 
 type EventImageTarget = "thumbnail" | "image";
 
@@ -67,7 +68,7 @@ async function syncDiscord(current: EventRow, channelId: string, embed: EventEmb
 
 export const GET = guildRoute(async (_, { guildId }) => {
   const names = await guildMemberNames(guildId).catch(() => new Map<string, string>());
-  return NextResponse.json<EventListGet>({ events: listEvents(guildId).map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
+  return NextResponse.json<EventListDto>({ events: listEvents(guildId).map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
 });
 
 export const POST = guildRoute(async (request, { guildId, user }) => {

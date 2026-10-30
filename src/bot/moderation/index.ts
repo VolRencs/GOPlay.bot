@@ -65,7 +65,7 @@ export async function moderate(i: ChatInputCommandInteraction) {
       return i.editReply(`✅ ${command}: ${user.username}`);
     }
     if (command === "warnings") {
-      const rows = stmt.warns.all(i.guildId, user.id) as { reason: string; created_at: number }[];
+      const rows = stmt.warns.all(i.guildId, user.id);
       return i.editReply({ content: rows.length ? rows.map((x, n) => `${n + 1}. ${x.reason} — <t:${Math.floor(x.created_at / 1000)}:d>`).join("\n") : t("warnListEmpty") });
     }
     recordPunishmentAndOffer(i.client, { guildId: i.guildId!, guildName: i.guild.name, userId: user.id, type: command, reason, moderatorId: i.user.id });

@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server.js";
-import { guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { withTransaction } from "../../../../../src/db/database.ts";
-import { tempchannelQueries } from "../../../../../src/db/queries.ts";
-import { parseStringArray, stableJson } from "../../../../../src/lib/json.ts";
-import { DEFAULT_SETTINGS, clampUserLimit, type TempChannelConfig, type TempPreset, type TempPresetRow, type TempPutBody, type TempchannelsGet } from "../../../../../src/lib/tempchannels.ts";
-import { stmt } from "../../../../../src/db/statements.ts";
-import { recordDashboardChange } from "../../../../../src/lib/dashboard-audit.ts";
-import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
+import { guildRoute, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
+import { withTransaction } from "#db/database.ts";
+import { tempchannelQueries } from "#db/queries.ts";
+import { parseStringArray, stableJson } from "#lib/json.ts";
+import { clampUserLimit, type TempPresetRow } from "#lib/tempchannels.ts";
+import { defaultTempConfig, fromDto as fromTempPresetDto, toDto as toTempPresetDto, type TempChannelConfigDto, type TempPutBody, type TempchannelsDto } from "#contracts/tempchannels.ts";
+import { stmt } from "#db/statements.ts";
+import { recordDashboardChange } from "#lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 
-function parseConfig(value: unknown): TempChannelConfig {
+function parseConfig(value: unknown): TempChannelConfigDto {
   const v = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
-  const nameTemplate = typeof v.nameTemplate === "string" && v.nameTemplate.trim().length ? v.nameTemplate.trim().slice(0, 100) : DEFAULT_SETTINGS.name_template;
+  const nameTemplate = typeof v.nameTemplate === "string" && v.nameTemplate.trim().length ? v.nameTemplate.trim().slice(0, 100) : defaultTempConfig.nameTemplate;
   return {
     categoryId: typeof v.categoryId === "string" && isSnowflake(v.categoryId) ? v.categoryId : null,
     nameTemplate,
@@ -21,12 +22,12 @@ function parseConfig(value: unknown): TempChannelConfig {
   };
 }
 
-function toJson(row: TempPresetRow): TempPreset {
-  return { id: row.id, name: row.name, triggerChannelIds: parseStringArray(row.trigger_channel_ids_json), config: { categoryId: row.category_id, nameTemplate: row.name_template, userLimit: row.user_limit, canRename: Boolean(row.can_rename), canManageAccess: Boolean(row.can_manage_access), canClose: Boolean(row.can_close) } };
+function toJson(row: TempPresetRow) {
+  return toTempPresetDto(row);
 }
 
 export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<TempchannelsGet>({ presets: (stmt.tempPresets.all(guildId) as TempPresetRow[]).map(toJson) });
+  return NextResponse.json<TempchannelsDto>({ presets: stmt.tempPresets.all(guildId).map(toJson) });
 });
 
 export const PUT = guildRoute(async (request, { guildId, user }) => {
@@ -34,7 +35,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   if (!body) return jsonError("Некорректные данные.");
   const rawPresets: unknown = body.presets;
   if (!Array.isArray(rawPresets) || rawPresets.length > 50) return jsonError("Некорректный список шаблонов.");
-  const presets: { name: string; triggers: string[]; config: TempChannelConfig }[] = [];
+  const presets: { name: string; triggers: string[]; config: TempChannelConfigDto }[] = [];
   for (const raw of rawPresets) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return jsonError("Некорректный шаблон.");
     const v = raw as Record<string, unknown>;
@@ -42,10 +43,11 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     if (!name.length) return jsonError("Укажите название шаблона.");
     const triggers = Array.isArray(v.triggerChannelIds) ? v.triggerChannelIds.filter((id): id is string => typeof id === "string" && isSnowflake(id)).slice(0, 50) : [];
     if (!triggers.length) return jsonError("Выберите хотя бы один канал-триггер.");
-    presets.push({ name, triggers, config: parseConfig(v.config) });
+    const input = fromTempPresetDto({ name, triggerChannelIds: triggers, config: parseConfig(v.config) });
+    presets.push({ name: input.name, triggers: input.triggerChannelIds, config: input.config });
   }
-  const existingRows = stmt.tempPresets.all(guildId) as TempPresetRow[];
-  const canonical = (p: { name: string; triggers: string[]; config: TempChannelConfig }) => stableJson({ name: p.name, triggers: p.triggers.toSorted(), config: { categoryId: p.config.categoryId, nameTemplate: p.config.nameTemplate, userLimit: p.config.userLimit, canRename: +p.config.canRename, canManageAccess: +p.config.canManageAccess, canClose: +p.config.canClose } });
+  const existingRows = stmt.tempPresets.all(guildId);
+  const canonical = (p: { name: string; triggers: string[]; config: TempChannelConfigDto }) => stableJson({ name: p.name, triggers: p.triggers.toSorted(), config: { categoryId: p.config.categoryId, nameTemplate: p.config.nameTemplate, userLimit: p.config.userLimit, canRename: +p.config.canRename, canManageAccess: +p.config.canManageAccess, canClose: +p.config.canClose } });
   const existing = existingRows.map(row => canonical({ name: row.name, triggers: parseStringArray(row.trigger_channel_ids_json), config: { categoryId: row.category_id, nameTemplate: row.name_template, userLimit: row.user_limit, canRename: Boolean(row.can_rename), canManageAccess: Boolean(row.can_manage_access), canClose: Boolean(row.can_close) } }));
   if (stableJson(existing) === stableJson(presets.map(canonical))) {
     return NextResponse.json({ ok: true, unchanged: true, presets: existingRows.map(toJson) });
@@ -62,5 +64,5 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const changed = presets.filter(preset => { const was = existingByName.get(preset.name); return was !== undefined && was !== canonical(preset); }).map(preset => `«${preset.name}»`);
   const parts = [added.length ? `добавлены ${added.join(", ")}` : "", removed.length ? `удалены ${removed.join(", ")}` : "", changed.length ? `изменены ${changed.join(", ")}` : ""].filter(Boolean);
   recordDashboardChange(guildId, user, AUDIT_SECTION.tempchannels, `Шаблоны: ${parts.join("; ")}`);
-  return NextResponse.json({ ok: true, presets: (stmt.tempPresets.all(guildId) as TempPresetRow[]).map(toJson) });
+  return NextResponse.json({ ok: true, presets: stmt.tempPresets.all(guildId).map(toJson) });
 });

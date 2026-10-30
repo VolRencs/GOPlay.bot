@@ -45,36 +45,3 @@ export type JoinResult = { ok: true; action: JoinOutcome; state: "joined" | "wai
 
 type LeaveOutcome = "left" | "left_waitlist" | "promoted" | "not_registered";
 export type LeaveResult = { ok: true; action: LeaveOutcome; promotedUserId: string | null; counts: EventCounts } | { ok: false; error: string };
-
-export type EventInput = {
-  id?: string;
-  channelId: string;
-  messageId: string | null;
-  embed: EventEmbed;
-  buttons: EventButton[];
-  scheduledAt: number;
-  maxParticipants: number;
-  registrationEnabled: boolean;
-  waitlistEnabled: boolean;
-  status: EventStatus;
-  eventRoleId: string | null;
-  reminders: number[];
-  recurrence: EventRecurrence;
-};
-
-export type EventView = {
-  id: string; guildId: string; channelId: string; messageId: string | null;
-  embed: EventEmbed; buttons: EventButton[];
-  scheduledAt: number; maxParticipants: number;
-  registrationEnabled: boolean; waitlistEnabled: boolean; status: EventStatus;
-  eventRoleId: string | null; reminders: number[]; recurrence: EventRecurrence;
-  createdAt: number; updatedAt: number; startedAt: number | null;
-  completedAt: number | null; cancelledAt: number | null;
-  stats: Record<string, unknown> | null; counts: EventCounts;
-  participants: { userId: string; joinedAt: number; waitlist: boolean }[];
-};
-
-export type EventListItem = Omit<EventView, "participants"> & {
-  participants: (EventView["participants"][number] & { name: string | null })[];
-};
-export type EventListGet = { events: EventListItem[] };

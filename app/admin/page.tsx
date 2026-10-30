@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation.js";
-import { SiteHeader } from "../../src/components/site-header.tsx";
-import { AdminPanel } from "../../src/components/admin-panel.tsx";
-import { accountAccess } from "../../src/lib/access.ts";
+import { SiteHeader } from "#components/site-header.tsx";
+import { AdminPanel } from "#components/admin-panel.tsx";
+import { accountAccess } from "#lib/access.ts";
 
 export default async function AdminPage() {
   const access = await accountAccess();

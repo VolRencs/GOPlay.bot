@@ -1,9 +1,10 @@
 "use client";
 
-import { CardHeader, CheckList, NumberField, SaveButton, Select, channelOptions, useAsyncAction } from "./ui.tsx";
-import type { Channel, Role } from "./types.ts";
-import type { MusicSettings } from "../../lib/music-settings.ts";
-import { formatLeaveAfter } from "../../lib/format.ts";
+import { CardHeader, CheckList, NumberField, SaveButton, SectionLoading, Select, channelOptions, useAsyncAction } from "./ui.tsx";
+import { musicDefaults, normalize, type MusicDto } from "#contracts/music.ts";
+import { formatLeaveAfter } from "#lib/format.ts";
+import { useDashboard } from "./DashboardContext.tsx";
+import { useSettingsTab } from "./useSettingsTab.ts";
 
 const leavePresets = [
   { value: 0, label: "Выкл" },
@@ -12,16 +13,28 @@ const leavePresets = [
   { value: 900, label: "15 мин" },
 ] as const;
 
-export function MusicSettingsCard({ channels, voiceChannels, roles, value, onChange, onSave }: {
-  channels: Channel[];
-  voiceChannels: Channel[];
-  roles: Role[];
-  value: MusicSettings;
-  onChange: (value: MusicSettings) => void;
-  onSave: () => unknown;
-}) {
+export function MusicSettingsCard() {
+  const { guildId, resources, notify, fail } = useDashboard();
+  const { value, setValue, loading, save } = useSettingsTab<MusicDto, MusicDto>({
+    guildId,
+    endpoint: `/api/guilds/${guildId}/music`,
+    initial: musicDefaults,
+    fromGet: normalize,
+    toBody: normalize,
+    afterSave: normalize,
+    loadError: "Не удалось загрузить настройки музыки.",
+    saveError: "Не удалось сохранить настройки музыки.",
+    savedMessage: "Настройки музыки сохранены.",
+    registerKey: "music",
+    onDone: notify,
+    onError: fail,
+  });
   const { busy: saving, run } = useAsyncAction();
-  const leaveLabel = formatLeaveAfter(value.leave_after_seconds);
+  if (loading) return <SectionLoading/>;
+  const channels = resources?.channels ?? [];
+  const voiceChannels = resources?.voiceChannels ?? [];
+  const roles = resources?.roles ?? [];
+  const leaveLabel = formatLeaveAfter(value.leaveAfterSeconds);
   return (
     <section className="panel-stack">
       <article className="card settings-card music-settings">
@@ -29,7 +42,7 @@ export function MusicSettingsCard({ channels, voiceChannels, roles, value, onCha
           title="Музыка"
           note={`автовыход: ${leaveLabel}`}
           muted="YouTube в голосовом канале: очередь, плейлисты и управление из панели."
-          action={<SaveButton saving={saving} onClick={() => run(onSave)}/>}
+          action={<SaveButton saving={saving} onClick={() => run(save)}/>}
         />
         <div className="music-settings-grid">
           <section className="music-section">
@@ -39,14 +52,14 @@ export function MusicSettingsCard({ channels, voiceChannels, roles, value, onCha
             </div>
             <label>
               Канал для команды
-              <Select value={value.command_channel_id ?? ""} ariaLabel="Канал для команды /play"
-                onChange={channelId => onChange({ ...value, command_channel_id: channelId || null })}
+              <Select value={value.commandChannelId ?? ""} ariaLabel="Канал для команды /play"
+                onChange={channelId => setValue({ ...value, commandChannelId: channelId || null })}
                 options={channelOptions(channels, "Любой канал")}/>
             </label>
             <div>
               <span className="field-label">Роли с доступом</span>
-              <CheckList items={roles} selected={value.allowed_role_ids} label="Роли"
-                onChange={ids => onChange({ ...value, allowed_role_ids: ids })}/>
+              <CheckList items={roles} selected={value.allowedRoleIds} label="Роли"
+                onChange={ids => setValue({ ...value, allowedRoleIds: ids })}/>
               <p className="hint">Пусто — команда доступна только администраторам.</p>
             </div>
           </section>
@@ -56,8 +69,8 @@ export function MusicSettingsCard({ channels, voiceChannels, roles, value, onCha
               <span className="field-label">Голосовые каналы</span>
               <p className="hint">Пусто — бот может подключаться к любому голосовому каналу.</p>
             </div>
-            <CheckList items={voiceChannels} selected={value.voice_channel_ids} channel label="Голосовые каналы"
-              onChange={ids => onChange({ ...value, voice_channel_ids: ids })}/>
+            <CheckList items={voiceChannels} selected={value.voiceChannelIds} channel label="Голосовые каналы"
+              onChange={ids => setValue({ ...value, voiceChannelIds: ids })}/>
           </section>
 
           <section className="music-section music-section-wide">
@@ -66,15 +79,15 @@ export function MusicSettingsCard({ channels, voiceChannels, roles, value, onCha
               <p className="hint">Если выключено, из плейлиста будет добавлен только первый трек.</p>
             </div>
             <label className="check-row">
-              <input type="checkbox" checked={value.playlists_enabled}
-                onChange={e => onChange({ ...value, playlists_enabled: e.target.checked })}/>
+              <input type="checkbox" checked={value.playlistsEnabled}
+                onChange={e => setValue({ ...value, playlistsEnabled: e.target.checked })}/>
               Разрешать добавление плейлистов
             </label>
-            {value.playlists_enabled && (
+            {value.playlistsEnabled && (
               <div>
                 <span className="field-label">Кому разрешены плейлисты</span>
-                <CheckList items={roles} selected={value.playlist_role_ids} label="Роли для плейлистов"
-                  onChange={ids => onChange({ ...value, playlist_role_ids: ids })}/>
+                <CheckList items={roles} selected={value.playlistRoleIds} label="Роли для плейлистов"
+                  onChange={ids => setValue({ ...value, playlistRoleIds: ids })}/>
                 <p className="hint">Пусто — все, у кого есть доступ к /play. Администраторы могут всегда.</p>
               </div>
             )}
@@ -87,14 +100,14 @@ export function MusicSettingsCard({ channels, voiceChannels, roles, value, onCha
             </div>
             <div className="music-leave-row">
               <NumberField label="Секунд" hint="(0 — выкл; 30–3600)" min={0} max={3600}
-                value={value.leave_after_seconds}
-                onChange={leave_after_seconds => onChange({ ...value, leave_after_seconds: Number.isFinite(leave_after_seconds) ? leave_after_seconds : value.leave_after_seconds })}/>
+                value={value.leaveAfterSeconds}
+                onChange={leaveAfterSeconds => setValue({ ...value, leaveAfterSeconds: Number.isFinite(leaveAfterSeconds) ? leaveAfterSeconds : value.leaveAfterSeconds })}/>
               <div className="music-presets" role="group" aria-label="Быстрый выбор автовыхода">
                 {leavePresets.map(preset => (
                   <button type="button" key={preset.value}
-                    className={value.leave_after_seconds === preset.value ? "chip active" : "chip"}
-                    aria-pressed={value.leave_after_seconds === preset.value}
-                    onClick={() => onChange({ ...value, leave_after_seconds: preset.value })}>
+                    className={value.leaveAfterSeconds === preset.value ? "chip active" : "chip"}
+                    aria-pressed={value.leaveAfterSeconds === preset.value}
+                    onClick={() => setValue({ ...value, leaveAfterSeconds: preset.value })}>
                     {preset.label}
                   </button>
                 ))}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server.js";
-import { guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
-import { appealStatuses, listAppeals, type AppealListQuery, type AppealsListGet, type AppealStatus } from "../../../../../src/lib/appeals.ts";
+import { guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { appealStatuses, listAppeals, type AppealListQuery, type AppealStatus } from "#lib/appeals.ts";
+import { toDto as toAppealDto, type AppealsListDto } from "#contracts/appeals.ts";
 
 export const GET = guildRoute(async (request, { guildId }) => {
   const url = new URL(request.url);
@@ -24,5 +25,5 @@ export const GET = guildRoute(async (request, { guildId }) => {
   if (from !== undefined) query.from = from;
   if (to !== undefined) query.to = to;
   const appeals = listAppeals(query);
-  return NextResponse.json<AppealsListGet>({ appeals });
+  return NextResponse.json<AppealsListDto>({ appeals: appeals.map(toAppealDto) });
 });

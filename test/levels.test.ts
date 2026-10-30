@@ -35,14 +35,24 @@ test("levelProgress отдаёт прогресс внутри уровня и �
 test("настройки читаются с дефолтами, клампами и нормализацией режима", () => {
   db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES('g1','G',NULL,?)").run(Date.now());
   assert.deepEqual(levelSettingsFor("g1"), { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] });
-  stmt.levelSettingsUpsert.run("g1", 1, 20, 30, 5, 2, 200, 10, JSON.stringify(["123456789012345"]), JSON.stringify([]), "dm", null, Date.now());
+  stmt.levelSettingsUpsert.run({
+    guild_id: "g1", enabled: 1, xp_per_message: 20, message_cooldown_seconds: 30,
+    min_message_length: 5, xp_per_voice_minute: 2, base_xp: 200, growth_percent: 10,
+    ignored_channel_ids_json: JSON.stringify(["123456789012345"]), ignored_role_ids_json: JSON.stringify([]),
+    notify_mode: "dm", notify_channel_id: null, updated_at: Date.now(),
+  });
   const saved = levelSettingsFor("g1");
   assert.equal(saved.enabled, true);
   assert.equal(saved.xp_per_message, 20);
   assert.equal(saved.notify_mode, "dm");
   assert.deepEqual(saved.ignored_channel_ids, ["123456789012345"]);
   db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES('g2','G',NULL,?)").run(Date.now());
-  stmt.levelSettingsUpsert.run("g2", 1, 5000, 30, 0, 0, 0, 0, "[]", "[]", "bogus", null, Date.now());
+  stmt.levelSettingsUpsert.run({
+    guild_id: "g2", enabled: 1, xp_per_message: 5000, message_cooldown_seconds: 30,
+    min_message_length: 0, xp_per_voice_minute: 0, base_xp: 0, growth_percent: 0,
+    ignored_channel_ids_json: "[]", ignored_role_ids_json: "[]",
+    notify_mode: "bogus", notify_channel_id: null, updated_at: Date.now(),
+  });
   const clamped = levelSettingsFor("g2");
   assert.equal(clamped.xp_per_message, 100);
   assert.equal(clamped.base_xp, 10);
@@ -50,22 +60,22 @@ test("настройки читаются с дефолтами, клампам�
 });
 
 test("XP инкрементится, место в топе и лидерборд считаются", () => {
-  stmt.levelUpsert.run("g1", "u1", 50, 0, 3, 60, Date.now());
-  stmt.levelUpsert.run("g1", "u1", 60, 1, 1, 0, Date.now());
-  const row = stmt.levelRow.get("g1", "u1") as { xp: number; level: number; messages: number; voice_seconds: number };
+  stmt.levelUpsert.run({ guild_id: "g1", user_id: "u1", xp: 50, level: 0, messages: 3, voice_seconds: 60, updated_at: Date.now() });
+  stmt.levelUpsert.run({ guild_id: "g1", user_id: "u1", xp: 60, level: 1, messages: 1, voice_seconds: 0, updated_at: Date.now() });
+  const row = stmt.levelRow.get("g1", "u1");
   assert.deepEqual({ ...row }, { xp: 110, level: 1, messages: 4, voice_seconds: 60 });
-  stmt.levelUpsert.run("g1", "u2", 500, 2, 9, 0, Date.now());
-  assert.equal((stmt.levelRank.get("g1", 110) as { rank: number }).rank, 2);
-  assert.equal((stmt.levelRank.get("g1", 500) as { rank: number }).rank, 1);
-  const top = stmt.levelTop.all("g1", 10) as { user_id: string }[];
+  stmt.levelUpsert.run({ guild_id: "g1", user_id: "u2", xp: 500, level: 2, messages: 9, voice_seconds: 0, updated_at: Date.now() });
+  assert.equal(stmt.levelRank.get("g1", 110)!.rank, 2);
+  assert.equal(stmt.levelRank.get("g1", 500)!.rank, 1);
+  const top = stmt.levelTop.all("g1", 10);
   assert.equal(top[0]?.user_id, "u2");
 });
 
 test("уровень хранится как максимум: рост порогов не понижает его", () => {
   db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES('g3','G',NULL,?)").run(Date.now());
-  stmt.levelUpsert.run("g3", "u1", 500, 5, 0, 0, Date.now());
-  stmt.levelUpsert.run("g3", "u1", 10, 2, 1, 0, Date.now());
-  const row = stmt.levelRow.get("g3", "u1") as { xp: number; level: number };
+  stmt.levelUpsert.run({ guild_id: "g3", user_id: "u1", xp: 500, level: 5, messages: 0, voice_seconds: 0, updated_at: Date.now() });
+  stmt.levelUpsert.run({ guild_id: "g3", user_id: "u1", xp: 10, level: 2, messages: 1, voice_seconds: 0, updated_at: Date.now() });
+  const row = stmt.levelRow.get("g3", "u1")!;
   assert.equal(row.level, 5);
   assert.equal(row.xp, 510);
 });
@@ -77,7 +87,12 @@ test("XP удалённой гильдии выбрасывается из бу�
   registerLevels(emitter as never);
   const guildId = "g9";
   db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES(?,?,NULL,?)").run(guildId, "G", Date.now());
-  stmt.levelSettingsUpsert.run(guildId, 1, 10, 60, 0, 5, 100, 15, "[]", "[]", "off", null, Date.now());
+  stmt.levelSettingsUpsert.run({
+    guild_id: guildId, enabled: 1, xp_per_message: 10, message_cooldown_seconds: 60,
+    min_message_length: 0, xp_per_voice_minute: 5, base_xp: 100, growth_percent: 15,
+    ignored_channel_ids_json: "[]", ignored_role_ids_json: "[]",
+    notify_mode: "off", notify_channel_id: null, updated_at: Date.now(),
+  });
   emitter.emit("messageCreate", {
     guild: { id: guildId },
     author: { id: "u1", bot: false },

@@ -42,9 +42,9 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Screenshots
 
-![Landing](assets/landing.png)
-![Server list](assets/dashboard.png)
-![Server settings](assets/guild-settings.png)
+![Landing](assets/landing.avif)
+![Server list](assets/dashboard.avif)
+![Server settings](assets/guild-settings.avif)
 
 ## Quickstart (local)
 

@@ -12,35 +12,36 @@ import {
 } from "./embed.ts";
 import {
   MAX_PARTICIPANTS_LIMIT, eventStatuses,
-  type EventCounts, type EventEmbed, type EventInput, type EventRecurrence, type EventRow,
-  type EventStatus, type EventView, type JoinResult, type LeaveResult, type ParticipantRow,
+  type EventCounts, type EventEmbed, type EventRecurrence, type EventRow,
+  type EventStatus, type JoinResult, type LeaveResult, type ParticipantRow,
 } from "./types.ts";
+import type { EventInputDto, EventViewDto } from "../../contracts/events.ts";
 
 export function eventCounts(eventId: string): EventCounts {
-  const row = stmt.eventCounts.get(eventId) as { joined: number; waitlist: number };
+  const row = stmt.eventCounts.get(eventId)!;
   return { joined: Number(row.joined), waitlist: Number(row.waitlist) };
 }
 
 export function getEvent(eventId: string): EventRow | undefined {
-  return stmt.eventGet.get(eventId) as EventRow | undefined;
+  return stmt.eventGet.get(eventId);
 }
 
 export function getEventInGuild(guildId: string, id: string): EventRow | undefined {
-  return stmt.eventGetInGuild.get(id, guildId) as EventRow | undefined;
+  return stmt.eventGetInGuild.get(id, guildId);
 }
 
 export function eventParticipants(eventId: string): ParticipantRow[] {
-  return stmt.participantsOf.all(eventId) as ParticipantRow[];
+  return stmt.participantsOf.all(eventId);
 }
 
 export function joinEvent(eventId: string, userId: string, guildId?: string): JoinResult {
   const lang = guildLang(guildId ?? "");
   return withTransaction(() => {
-    const event = stmt.eventGet.get(eventId) as EventRow | undefined;
+    const event = stmt.eventGet.get(eventId);
     if (!event || (guildId !== undefined && event.guild_id !== guildId)) return { ok: false, error: eventsTr(lang, "notFound") };
     if (event.status !== "scheduled") return { ok: false, error: eventsTr(lang, event.status === "live" ? "evAlreadyLive" : "evRegClosed") };
     if (!event.registration_enabled) return { ok: false, error: eventsTr(lang, "evRegDisabled") };
-    const existing = stmt.participantGet.get(eventId, userId) as ParticipantRow | undefined;
+    const existing = stmt.participantGet.get(eventId, userId);
     if (existing) return { ok: true, action: "already_joined", state: existing.waitlist ? "waitlisted" : "joined", counts: eventCounts(eventId) };
     const counts = eventCounts(eventId);
     const limitReached = event.max_participants > 0 && counts.joined >= event.max_participants;
@@ -53,10 +54,10 @@ export function joinEvent(eventId: string, userId: string, guildId?: string): Jo
 export function leaveEvent(eventId: string, userId: string, guildId?: string): LeaveResult {
   const lang = guildLang(guildId ?? "");
   return withTransaction(() => {
-    const event = stmt.eventGet.get(eventId) as EventRow | undefined;
+    const event = stmt.eventGet.get(eventId);
     if (!event || (guildId !== undefined && event.guild_id !== guildId)) return { ok: false, error: eventsTr(lang, "notFound") };
     if (event.status !== "scheduled" && event.status !== "live") return { ok: false, error: eventsTr(lang, "evRegClosed") };
-    const row = stmt.participantGet.get(eventId, userId) as ParticipantRow | undefined;
+    const row = stmt.participantGet.get(eventId, userId);
     if (!row) return { ok: true, action: "not_registered", promotedUserId: null, counts: eventCounts(eventId) };
     stmt.participantDelete.run(eventId, userId);
     let promotedUserId: string | null = null;
@@ -69,7 +70,7 @@ function promoteFromWaitlist(event: EventRow): string | null {
   if (!event.waitlist_enabled || event.max_participants <= 0) return null;
   const joined = eventCounts(event.id).joined;
   if (joined >= event.max_participants) return null;
-  const next = stmt.eventNextWaitlisted.get(event.id) as { user_id: string } | undefined;
+  const next = stmt.eventNextWaitlisted.get(event.id);
   if (!next) return null;
   stmt.participantPromote.run(event.id, next.user_id);
   return next.user_id;
@@ -78,9 +79,9 @@ function promoteFromWaitlist(event: EventRow): string | null {
 // Удаление участника со стороны панели — та же семантика продвижения, что у leave.
 export function removeParticipant(eventId: string, userId: string, guildId?: string): { action: "removed" | "promoted"; promotedUserId: string | null } | null {
   return withTransaction(() => {
-    const event = stmt.eventGet.get(eventId) as EventRow | undefined;
+    const event = stmt.eventGet.get(eventId);
     if (!event || (guildId !== undefined && event.guild_id !== guildId)) return null;
-    const row = stmt.participantGet.get(eventId, userId) as ParticipantRow | undefined;
+    const row = stmt.participantGet.get(eventId, userId);
     if (!row) return null;
     stmt.participantDelete.run(eventId, userId);
     const promotedUserId = row.waitlist ? null : promoteFromWaitlist(event);
@@ -89,7 +90,7 @@ export function removeParticipant(eventId: string, userId: string, guildId?: str
 }
 
 export function removeParticipantFromGuild(guildId: string, userId: string): { eventId: string; promotedUserId: string | null }[] {
-  const rows = stmt.eventsOfUserInGuild.all(guildId, userId) as { event_id: string }[];
+  const rows = stmt.eventsOfUserInGuild.all(guildId, userId);
   const results: { eventId: string; promotedUserId: string | null }[] = [];
   for (const row of rows) {
     const result = removeParticipant(row.event_id, userId);
@@ -115,14 +116,14 @@ export function claimReminder(reminderId: number, at: number): boolean {
 }
 
 export function dueReminders(at: number): { id: number; event_id: string }[] {
-  return stmt.remindersDue.all(at) as { id: number; event_id: string }[];
+  return stmt.remindersDue.all(at);
 }
 
 export function transitionDueEvents(now: number): { changed: EventRow[]; created: EventRow[] } {
   const changed: EventRow[] = [];
   const created: EventRow[] = [];
   withTransaction(() => {
-    for (const event of stmt.eventsDueLive.all(now) as EventRow[]) {
+    for (const event of stmt.eventsDueLive.all(now)) {
       const result = stmt.eventFlipLive.run(now, now, event.id);
       if (Number(result.changes) === 0) continue;
       const updated: EventRow = { ...event, status: "live", started_at: event.started_at ?? now, updated_at: now };
@@ -137,7 +138,7 @@ export function transitionDueEvents(now: number): { changed: EventRow[]; created
       const id = crypto.randomUUID();
       const at = Date.now();
       stmt.eventInsert.run(id, event.guild_id, event.channel_id, null, seriesId, event.embed_json, event.buttons_json, nextScheduledAt, event.max_participants, event.registration_enabled, event.waitlist_enabled, "scheduled", event.event_role_id, event.reminders_json, event.recurrence_json, at, at, null, null, null, null);
-      const follower = stmt.eventGet.get(id) as EventRow;
+      const follower = stmt.eventGet.get(id)!;
       recomputeReminders(follower);
       created.push(follower);
     }
@@ -152,7 +153,7 @@ function intervalDays(recurrence: EventRecurrence): number {
   return recurrence.interval;
 }
 
-export function insertEvent(guildId: string, input: EventInput): EventRow {
+export function insertEvent(guildId: string, input: EventInputDto): EventRow {
   const id = input.id ?? crypto.randomUUID();
   const now = Date.now();
   const startedAt = input.status === "live" ? now : null;
@@ -160,15 +161,15 @@ export function insertEvent(guildId: string, input: EventInput): EventRow {
   const seriesId = input.recurrence.freq !== "none" ? id : null;
   return withTransaction(() => {
     stmt.eventInsert.run(id, guildId, input.channelId, input.messageId, seriesId, JSON.stringify(input.embed), JSON.stringify(input.buttons), input.scheduledAt, input.maxParticipants, input.registrationEnabled ? 1 : 0, input.waitlistEnabled ? 1 : 0, input.status, input.eventRoleId, JSON.stringify(input.reminders), JSON.stringify(input.recurrence), now, now, startedAt, null, null, null);
-    const row = stmt.eventGet.get(id) as EventRow;
+    const row = stmt.eventGet.get(id)!;
     recomputeReminders(row);
     return row;
   });
 }
 
-export function updateEvent(guildId: string, id: string, input: EventInput): EventRow | null {
+export function updateEvent(guildId: string, id: string, input: EventInputDto): EventRow | null {
   return withTransaction(() => {
-    const current = stmt.eventGetInGuild.get(id, guildId) as EventRow | undefined;
+    const current = stmt.eventGetInGuild.get(id, guildId);
     if (!current) return null;
     const now = Date.now();
     let startedAt = current.started_at;
@@ -187,7 +188,7 @@ export function updateEvent(guildId: string, id: string, input: EventInput): Eve
     if (input.status === "cancelled" && current.status !== "cancelled") cancelledAt = now;
     else if (input.status !== "cancelled" && current.status === "cancelled") cancelledAt = null;
     stmt.eventUpdate.run(input.channelId, input.messageId, JSON.stringify(input.embed), JSON.stringify(input.buttons), input.scheduledAt, input.maxParticipants, input.registrationEnabled ? 1 : 0, input.waitlistEnabled ? 1 : 0, input.status, input.eventRoleId, JSON.stringify(input.reminders), JSON.stringify(input.recurrence), now, startedAt, completedAt, cancelledAt, statsJson, id, guildId);
-    const row = stmt.eventGet.get(id) as EventRow;
+    const row = stmt.eventGet.get(id)!;
     recomputeReminders(row);
     return row;
   });
@@ -207,7 +208,7 @@ function recordStats(event: EventRow, completedAt: number): Record<string, unkno
 }
 
 export function deleteEvent(guildId: string, id: string): { channelId: string; messageId: string | null; embed: EventEmbed } | null {
-  const row = stmt.eventGetInGuild.get(id, guildId) as EventRow | undefined;
+  const row = stmt.eventGetInGuild.get(id, guildId);
   if (!row) return null;
   stmt.eventDelete.run(id, guildId);
   return { channelId: row.channel_id, messageId: row.message_id, embed: parseEventEmbed(row.embed_json) };
@@ -227,7 +228,7 @@ export function detachEventMessage(messageId: string) {
   stmt.eventDetachByMessage.run(Date.now(), messageId);
 }
 
-function toEventViewBase(row: EventRow): Omit<EventView, "counts" | "participants"> {
+function toEventViewBase(row: EventRow): Omit<EventViewDto, "counts" | "participants"> {
   return {
     id: row.id, guildId: row.guild_id, channelId: row.channel_id, messageId: row.message_id,
     embed: parseEventEmbed(row.embed_json), buttons: parseEventButtons(row.buttons_json),
@@ -241,16 +242,16 @@ function toEventViewBase(row: EventRow): Omit<EventView, "counts" | "participant
   };
 }
 
-export function listEvents(guildId: string): EventView[] {
-  const rows = stmt.eventList.all(guildId) as EventRow[];
+export function listEvents(guildId: string): EventViewDto[] {
+  const rows = stmt.eventList.all(guildId);
   if (!rows.length) return [];
   // Пакетная сборка: два запроса на гильдию вместо трёх на событие.
   const counts = new Map<string, EventCounts>();
-  for (const row of stmt.eventCountsByGuild.all(guildId) as { eventId: string; joined: number; waitlist: number }[]) {
+  for (const row of stmt.eventCountsByGuild.all(guildId)) {
     counts.set(row.eventId, { joined: Number(row.joined), waitlist: Number(row.waitlist) });
   }
   const participants = new Map<string, { userId: string; joinedAt: number; waitlist: boolean }[]>();
-  for (const p of stmt.eventParticipantsByGuild.all(guildId) as { eventId: string; userId: string; joinedAt: number; waitlist: number }[]) {
+  for (const p of stmt.eventParticipantsByGuild.all(guildId)) {
     let list = participants.get(p.eventId);
     if (!list) { list = []; participants.set(p.eventId, list); }
     list.push({ userId: p.userId, joinedAt: p.joinedAt, waitlist: Boolean(p.waitlist) });
@@ -278,7 +279,7 @@ export async function applyEventRole(guildId: string, userId: string, roleId: st
 export async function sendReminderDm(userId: string, event: EventRow): Promise<boolean> {
   const embed = parseEventEmbed(event.embed_json);
   const at = Math.floor(event.scheduled_at / 1000);
-  const guild = (stmt.guildName.get(event.guild_id) as { name: string } | undefined)?.name;
+  const guild = stmt.guildName.get(event.guild_id)?.name;
   const lang = guildLang(event.guild_id);
   const serverPart = guild ? " " + eventsTr(lang, "onServer").replace("{s}", guild) : "";
   const content = `⏰ **${eventsTr(lang, "reminderTitle")}**${serverPart}
@@ -287,7 +288,7 @@ export async function sendReminderDm(userId: string, event: EventRow): Promise<b
   return sendDiscordDM(userId, content);
 }
 
-export function clampEventInput(input: Record<string, unknown>): EventInput | { error: string } {
+export function clampEventInput(input: Record<string, unknown>): EventInputDto | { error: string } {
   if (!input || typeof input !== "object") return { error: "Некорректные данные события." };
   const channelId = typeof input.channelId === "string" ? input.channelId : "";
   if (!isSnowflake(channelId)) return { error: "Выберите канал для события." };

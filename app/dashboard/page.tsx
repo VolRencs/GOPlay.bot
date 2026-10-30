@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation.js";
 import { Bot } from "lucide-react";
-import { SiteHeader } from "../../src/components/site-header.tsx";
-import { accessFrom } from "../../src/lib/access.ts";
-import { DiscordRateLimitError, configuredGuilds, resolveSession, type DashboardGuild } from "../../src/lib/guild-access.ts";
-import { discordInviteUrl } from "../../src/lib/constants.ts";
+import { SiteHeader } from "#components/site-header.tsx";
+import { accessFrom } from "#lib/access.ts";
+import { DiscordRateLimitError, configuredGuilds, resolveSession, type DashboardGuild } from "#lib/guild-access.ts";
+import { discordInviteUrl } from "#lib/constants.ts";
 
 export default async function Dashboard() {
   const resolved = await resolveSession().catch(() => null);

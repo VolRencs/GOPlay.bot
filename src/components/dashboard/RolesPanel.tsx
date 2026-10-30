@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
-import { buttonColorOptionsList, type Channel, type EmbedSending, type EmbedsGet, type PanelFail, type PanelNotify, type Role, type RolePanelRow, type SavedEmbed, type SavedRolePanel, type ServerEmoji } from "./types.ts";
+import { buttonColorOptionsList, type EmbedDto, type EmbedSendingDto, type EmbedsGetDto, type Role, type RolePanelRowDto, type SavedRolePanel, type ServerEmoji } from "./types.ts";
 import { roleStyleLabels } from "../../lib/labels.ts";
 import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatTime } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
+import { useDashboard } from "./DashboardContext.tsx";
 
 type PanelOptionInput = { roleId: string; label: string; emoji: string; buttonColor: string };
 const defaultPanelOption = { roleId: "", label: "", emoji: "", buttonColor: "primary" };
@@ -45,27 +46,31 @@ function RoleOptionRow({ option, index, roles, emojis, style, onChange, onRemove
   );
 }
 
-export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError }: { guildId: string; roles: Role[]; emojis: ServerEmoji[]; channels: Channel[]; onDone: PanelNotify; onError: PanelFail }) {
+export function RoleSettings() {
+  const { guildId, resources, notify: onDone, fail: onError } = useDashboard();
+  const roles = resources?.roles ?? [];
+  const emojis = resources?.emojis ?? [];
+  const channels = resources?.channels ?? [];
   const { data: { embeds, sendings, panels }, reload } = useApiResource(
     Boolean(guildId),
     async (signal) => {
       const [embedData, rows] = await Promise.all([
-        apiGet<EmbedsGet>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
-        apiGet<RolePanelRow[]>(`/api/guilds/${guildId}/roles`, [], signal),
+        apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
+        apiGet<RolePanelRowDto[]>(`/api/guilds/${guildId}/roles`, [], signal),
       ]);
       const map = new Map<number, SavedRolePanel>();
       for (const row of rows) {
         let panel = map.get(row.id);
         if (!panel) {
-          panel = { id: row.id, channel_id: row.channel_id ?? "", message_id: row.message_id ?? "", title: row.title ?? "", style: row.style === "reaction" || row.style === "select" ? row.style : "buttons", role_limit: row.role_limit, role_mode: row.role_mode, notify_enabled: row.notify_enabled, notify_template: row.notify_template ?? "", options: [] };
+          panel = { id: row.id, channelId: row.channelId ?? "", messageId: row.messageId ?? "", title: row.title ?? "", style: row.style === "reaction" || row.style === "select" ? row.style : "buttons", roleLimit: row.roleLimit, roleMode: row.roleMode, notifyEnabled: row.notifyEnabled, notifyTemplate: row.notifyTemplate ?? "", options: [] };
           map.set(row.id, panel);
         }
-        if (row.role_id) panel.options.push({ role_id: row.role_id, label: row.label ?? null, emoji: row.emoji ?? null, button_color: row.button_color ?? "primary" });
+        if (row.roleId) panel.options.push({ roleId: row.roleId, label: row.label ?? null, emoji: row.emoji ?? null, buttonColor: row.buttonColor ?? "primary" });
       }
       return { embeds: embedData.embeds, sendings: embedData.sendings, panels: [...map.values()] };
     },
     [guildId],
-    { embeds: [] as SavedEmbed[], sendings: [] as EmbedSending[], panels: [] as SavedRolePanel[] },
+    { embeds: [] as EmbedDto[], sendings: [] as EmbedSendingDto[], panels: [] as SavedRolePanel[] },
   );
   const { busy, run } = usePanelAction({ onDone, onError });
   const [panelId, setPanelId] = useState<number | undefined>();
@@ -81,14 +86,14 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
 
   function edit(panel: SavedRolePanel) {
     setPanelId(panel.id);
-    const matched = sendings.find(s => s.channel_id === panel.channel_id && s.message_id === panel.message_id);
+    const matched = sendings.find(s => s.channelId === panel.channelId && s.messageId === panel.messageId);
     setSendingId(matched ? String(matched.id) : "");
-    setOptions(panel.options.length ? panel.options.map(o => ({ roleId: o.role_id, label: o.label ?? "", emoji: o.emoji ?? "", buttonColor: o.button_color ?? "primary" })) : [defaultPanelOption]);
+    setOptions(panel.options.length ? panel.options.map(o => ({ roleId: o.roleId, label: o.label ?? "", emoji: o.emoji ?? "", buttonColor: o.buttonColor ?? "primary" })) : [defaultPanelOption]);
     setStyle(panel.style);
-    setLimit(panel.role_limit);
-    setMode(panel.role_mode);
-    setNotify(Boolean(panel.notify_enabled));
-    setTemplate(panel.notify_template);
+    setLimit(panel.roleLimit);
+    setMode(panel.roleMode);
+    setNotify(panel.notifyEnabled);
+    setTemplate(panel.notifyTemplate);
   }
 
   function reset() {
@@ -122,7 +127,7 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
       () => apiMutate(`/api/guilds/${guildId}/roles`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ panelId, embedId: sending.embed_id, channelId: sending.channel_id, messageId: sending.message_id, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }),
+        body: JSON.stringify({ panelId, embedId: sending.embedId, channelId: sending.channelId, messageId: sending.messageId, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }),
       }, "Не удалось сохранить панель."),
       () => {
         const message = panelId ? "Панель самовыдачи обновлена." : "Панель самовыдачи сохранена.";
@@ -168,9 +173,9 @@ export function RoleSettings({ guildId, roles, emojis, channels, onDone, onError
           ariaLabel="Отправленное сообщение"
           placeholder="Выберите сообщение"
           options={[{ value: "", label: "Выберите сообщение" }, ...sendings.map(s => {
-            const embed = embeds.find(e => e.id === s.embed_id);
-            const ch = channels.find(c => c.id === s.channel_id);
-            return { value: String(s.id), label: `${embed?.name ?? "Embed"} · #${ch?.name ?? s.channel_id} · ${formatTime(s.sent_at)}` };
+            const embed = embeds.find(e => e.id === s.embedId);
+            const ch = channels.find(c => c.id === s.channelId);
+            return { value: String(s.id), label: `${embed?.name ?? "Embed"} · #${ch?.name ?? s.channelId} · ${formatTime(s.sentAt)}` };
           })]}/></label>
         <label>Тип<Select
           value={style}

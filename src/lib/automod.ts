@@ -27,29 +27,3 @@ export const automodThresholdRanges = {
 } as const satisfies Record<string, { min: number; max: number }>;
 export type AutomodThresholdKey = keyof typeof automodThresholdRanges;
 export const automodWindowRange = { min: 1, max: 3600 } as const;
-
-export type AutomodRulePutBody = {
-  kind: string;
-  enabled: boolean;
-  actions: string[];
-  threshold: Record<string, unknown>;
-  window: number;
-  escalation: boolean;
-};
-export type AutomodSecurityPutBody = {
-  kind: "security";
-  ignoredRoleIds: string[];
-  protectedChannelId: string | null;
-};
-export type AutomodPutBody = AutomodRulePutBody | AutomodSecurityPutBody;
-
-export type AutomodRuleRow = {
-  kind: string; enabled: number; action_json: string; threshold_json: string;
-  window_seconds: number; escalation: number;
-};
-export type AutomodGet = { rules: AutomodRuleRow[]; ignoredRoleIds: string[]; protectedChannelId: string | null };
-
-export function isAutomodSecurityPutBody(body: AutomodPutBody): body is AutomodSecurityPutBody {
-  // Явный предикат обязателен: kind у AutomodRulePutBody — string, вывод типа не сужает union.
-  return body.kind === "security";
-}

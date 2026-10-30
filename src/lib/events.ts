@@ -10,6 +10,6 @@ export {
   parseEventButtons, parseEventEmbed, renderableOf, renderEventButtons, renderEventEmbed,
 } from "./events/embed.ts";
 export type {
-  EventButton, EventButtonStyle, EventEmbedPayload, EventInput, EventListGet, EventListItem,
+  EventButton, EventButtonStyle, EventEmbedPayload,
   EventRow, EventStatus, RecurrenceFrequency, RenderableEvent, RenderedEventButton,
 } from "./events/types.ts";

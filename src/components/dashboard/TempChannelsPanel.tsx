@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { Channel } from "./types.ts";
-import { clampUserLimit, defaultTempConfig, type TempChannelConfig, type TempchannelsGet, type TempPreset } from "../../../src/lib/tempchannels.ts";
-import { CardHeader, CheckList, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, useAsyncAction } from "./ui.tsx";
+import { clampUserLimit } from "#lib/tempchannels.ts";
+import { defaultTempConfig, type TempChannelConfigDto, type TempPresetDto, type TempchannelsDto } from "#contracts/tempchannels.ts";
+import { CardHeader, CheckList, SectionLoading, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, useAsyncAction } from "./ui.tsx";
+import { useDashboard } from "./DashboardContext.tsx";
+import { useSettingsTab } from "./useSettingsTab.ts";
 
-function TempChannelConfigForm({ categories, value, onChange }: { categories: Channel[]; value: TempChannelConfig; onChange: (value: TempChannelConfig) => void }) {
+function TempChannelConfigForm({ categories, value, onChange }: { categories: Channel[]; value: TempChannelConfigDto; onChange: (value: TempChannelConfigDto) => void }) {
   return (
     <>
       <label>Категория создания<Select value={value.categoryId ?? ""} onChange={v => onChange({ ...value, categoryId: v || null })} ariaLabel="Категория создания"
@@ -23,19 +26,38 @@ function TempChannelConfigForm({ categories, value, onChange }: { categories: Ch
 
 const channelLabel = (count: number) => count === 1 ? "1 канал" : count >= 2 && count <= 4 ? `${count} канала` : `${count} каналов`;
 
-export function TemporaryChannelsSettings({ voiceChannels, categories, value, saved, onChange, onSave }: { voiceChannels: Channel[]; categories: Channel[]; value: TempchannelsGet; saved: TempchannelsGet | null; onChange: (value: TempchannelsGet) => void; onSave: () => unknown }) {
+export function TemporaryChannelsSettings() {
+  const { guildId, resources, notify, fail } = useDashboard();
+  const { value, setValue: onChange, saved, loading, save } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
+    guildId,
+    endpoint: `/api/guilds/${guildId}/tempchannels`,
+    initial: { presets: [] },
+    fromGet: data => ({ presets: data.presets }),
+    toBody: value => ({ presets: value.presets }),
+    afterSave: (_value, data) => ({ presets: (data as TempchannelsDto).presets }),
+    loadError: "Не удалось загрузить временные каналы.",
+    saveError: "Не удалось сохранить временные каналы.",
+    savedMessage: "Настройки временных каналов сохранены.",
+    registerKey: "tempchannels",
+    onDone: notify,
+    onError: fail,
+  });
   const { busy: saving, run } = useAsyncAction();
   const [editingId, setEditingId] = useState<number | null>(null);
+  if (loading) return <SectionLoading/>;
+  const voiceChannels = resources?.voiceChannels ?? [];
+  const categories = resources?.categories ?? [];
+  const onSave = save;
   const editing = value.presets.find(p => p.id === editingId) ?? null;
   const changed = saved !== null && stableStringify(saved) !== stableStringify(value);
 
-  const update = (change: Partial<TempPreset>) => onChange({ ...value, presets: value.presets.map(p => p.id === editingId ? { ...p, ...change } : p) });
+  const update = (change: Partial<TempPresetDto>) => onChange({ ...value, presets: value.presets.map(p => p.id === editingId ? { ...p, ...change } : p) });
   const newPreset = () => {
     const id = Math.min(0, ...value.presets.map(p => p.id)) - 1;
     onChange({ ...value, presets: [...value.presets, { id, name: "", triggerChannelIds: [], config: { ...defaultTempConfig } }] });
     setEditingId(id);
   };
-  const removePreset = async (preset: TempPreset) => {
+  const removePreset = async (preset: TempPresetDto) => {
     if (!(await confirmAction(`Удалить шаблон «${preset.name || "без названия"}» из настроек? Действие применится после сохранения.`, "Удалить"))) return;
     onChange({ ...value, presets: value.presets.filter(p => p.id !== preset.id) });
     if (editingId === preset.id) setEditingId(null);

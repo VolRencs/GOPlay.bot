@@ -86,19 +86,6 @@ export const cleanupTargetsM: { key: CleanupTarget; label: Bi; description: Bi; 
 ];
 export const cleanupTargets: { key: CleanupTarget; label: string; description: string; confirm: string; done: string }[] = cleanupTargetsM.map(t => ({ key: t.key, label: t.label.ru, description: t.description.ru, confirm: t.confirm.ru, done: t.done.ru }));
 
-export type LoggingPutBody = {
-  channelId: string | null;
-  categories: Record<string, boolean>;
-};
-
-export type LangGet = { lang: "ru" | "en" };
-
-export function buildLoggingPutBody(s: { channelId: string; categories: Record<string, boolean> }): LoggingPutBody {
-  return { channelId: s.channelId || null, categories: { ...s.categories } };
-}
-
-export type LoggingGet = { channel_id: string | null; categories_json: string };
-
 export function clampMusicSeconds(seconds: number): number {
   return seconds === 0 ? 0 : Math.max(MIN_MUSIC_LEAVE_SECONDS, Math.min(MAX_MUSIC_LEAVE_SECONDS, seconds));
 }

@@ -1,25 +1,26 @@
 import { after, NextResponse } from "next/server.js";
-import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "../../../../../src/lib/guild-access.ts";
+import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
 import { setTimeout as sleep } from "node:timers/promises";
-import { withTransaction } from "../../../../../src/db/database.ts";
-import { deleteEmbedSendings, embedsQueries } from "../../../../../src/db/queries.ts";
-import { safeJson, stableJson } from "../../../../../src/lib/json.ts";
-import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
-import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
-import { channelRef } from "../../../../../src/lib/mentions.ts";
-import { cleanupOrphanedFiles, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "../../../../../src/lib/uploads.ts";
-import { logger } from "../../../../../src/lib/logger.ts";
-import { BOT_TOKEN_ERROR } from "../../../../../src/lib/constants.ts";
-import { DEFAULT_EMBED_COLOR } from "../../../../../src/lib/colors.ts";
-import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "../../../../../src/lib/assets.ts";
-import type { EmbedPayload, EmbedSending, EmbedsGet, SavedEmbed } from "../../../../../src/contracts/dashboard.ts";
+import { withTransaction } from "#db/database.ts";
+import { deleteEmbedSendings, embedsQueries } from "#db/queries.ts";
+import { safeJson, stableJson } from "#lib/json.ts";
+import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { channelRef } from "#lib/mentions.ts";
+import { cleanupOrphanedFiles, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
+import { logger } from "#lib/logger.ts";
+import { BOT_TOKEN_ERROR } from "#lib/constants.ts";
+import { DEFAULT_EMBED_COLOR } from "#lib/colors.ts";
+import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
+import type { EmbedPayload } from "#contracts/dashboard.ts";
+import { sendingToDto, toDto as toEmbedDto, type EmbedsGetDto } from "#contracts/embeds.ts";
 
 type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedPayload };
 
 
 function draftImageNames(payloadJson:string,guildId:string) {
-  const payload=safeJson<{author?:{icon_url?:string};thumbnail?:{url?:string};image?:{url?:string}}>(payloadJson,{});
-  return extractFilenames(embedUploadPrefix(guildId), [payload.author?.icon_url, payload.thumbnail?.url, payload.image?.url]);
+  const payload=safeJson<{author?:{iconUrl?:string};thumbnail?:{url?:string};image?:{url?:string}}>(payloadJson,{});
+  return extractFilenames(embedUploadPrefix(guildId), [payload.author?.iconUrl, payload.thumbnail?.url, payload.image?.url]);
 }
 
 async function cleanupUnusedDraftImages(guildId:string) {
@@ -49,8 +50,8 @@ function payloadDisplay(payloadJson: string): Record<string, unknown> {
 }
 
 export const GET = guildRoute(async (request, { guildId }) => {
-  const embeds=embedsQueries.list.all(guildId) as SavedEmbed[];
-  let sendings=embedsQueries.sendings.all(guildId) as EmbedSending[];
+  const embeds=embedsQueries.list.all(guildId);
+  let sendings=embedsQueries.sendings.all(guildId);
   const verify=new URL(request.url).searchParams.get("verify")==="1";
   if(verify&&process.env.DISCORD_TOKEN&&sendings.length>0){
     const staleIds:number[]=[];
@@ -72,7 +73,7 @@ export const GET = guildRoute(async (request, { guildId }) => {
     }
     if(staleIds.length>0){ deleteEmbedSendings(staleIds); sendings=sendings.filter(s=>!staleIds.includes(s.id)); }
   }
-  return NextResponse.json<EmbedsGet>({embeds,sendings});
+  return NextResponse.json<EmbedsGetDto>({embeds:embeds.map(toEmbedDto),sendings:sendings.map(sendingToDto)});
 });
 
 export const POST = guildRoute(async (request, { guildId, user }) => {
@@ -103,9 +104,9 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const authorName=text((rawPayload.author as {name?:unknown}|undefined)?.name);
   const thumbUrl=text((rawPayload.thumbnail as {url?:unknown}|undefined)?.url);
   const imageUrl=text((rawPayload.image as {url?:unknown}|undefined)?.url);
-  const payload={title:text(rawPayload.title)?.slice(0,256)||undefined,description:text(rawPayload.description)?.slice(0,4096)||undefined,color:Number.isInteger(rawPayload.color)?rawPayload.color as number:DEFAULT_EMBED_COLOR,footer:footerText?{text:footerText.slice(0,2048)}:undefined,author:authorName?{name:authorName.slice(0,256),url:clean(text((rawPayload.author as {url?:unknown}|undefined)?.url)),icon_url:clean(text((rawPayload.author as {icon_url?:unknown}|undefined)?.icon_url))}:undefined,thumbnail:thumbUrl?{url:thumbUrl.trim().slice(0,2048)}:undefined,image:imageUrl?{url:imageUrl.trim().slice(0,2048)}:undefined,fields:enteredFields.filter(f=>f.name.trim()&&f.value.trim()).slice(0,25).map(f=>({name:f.name.slice(0,256),value:f.value.slice(0,1024),inline:f.inline}))};
+  const payload={title:text(rawPayload.title)?.slice(0,256)||undefined,description:text(rawPayload.description)?.slice(0,4096)||undefined,color:Number.isInteger(rawPayload.color)?rawPayload.color as number:DEFAULT_EMBED_COLOR,footer:footerText?{text:footerText.slice(0,2048)}:undefined,author:authorName?{name:authorName.slice(0,256),url:clean(text((rawPayload.author as {url?:unknown}|undefined)?.url)),iconUrl:clean(text((rawPayload.author as {iconUrl?:unknown}|undefined)?.iconUrl))}:undefined,thumbnail:thumbUrl?{url:thumbUrl.trim().slice(0,2048)}:undefined,image:imageUrl?{url:imageUrl.trim().slice(0,2048)}:undefined,fields:enteredFields.filter(f=>f.name.trim()&&f.value.trim()).slice(0,25).map(f=>({name:f.name.slice(0,256),value:f.value.slice(0,1024),inline:f.inline}))};
   type EmbedTarget = "author" | "thumbnail" | "image";
-  const setAsset=(target:EmbedTarget,url:string)=>{if(target==="author"&&payload.author)payload.author.icon_url=url;if(target==="thumbnail")payload.thumbnail={url};if(target==="image")payload.image={url};};
+  const setAsset=(target:EmbedTarget,url:string)=>{if(target==="author"&&payload.author)payload.author.iconUrl=url;if(target==="thumbnail")payload.thumbnail={url};if(target==="image")payload.image={url};};
   let assets: StoredAsset<EmbedTarget>[];
   let originals: { target: EmbedTarget; url: string }[];
   try {
@@ -113,7 +114,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     // Переотправка сохранённых локальных картинок, чтобы правка их не ломала.
     const stored=await reattachStoredAssets<EmbedTarget>({
       targets:["author","image","thumbnail"],
-      urlOf:target=>target==="author"?payload.author?.icon_url:target==="image"?payload.image?.url:payload.thumbnail?.url,
+      urlOf:target=>target==="author"?payload.author?.iconUrl:target==="image"?payload.image?.url:payload.thumbnail?.url,
       skipTargets:assets.map(asset=>asset.target),
       prefix:embedUploadPrefix(guildId),
       dir:embedUploadsDir(guildId),
@@ -130,7 +131,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if(mode==="text"&&(payload.description?.length??0)>2000)return jsonError("Текст сообщения не должен превышать 2000 символов.");
   if(data.saveOnly) {
     await persistAssets();
-    const before=data.id?embedsQueries.byId.get(data.id,guildId) as {name:string;mode:string;payload_json:string}|undefined:undefined;
+    const before=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
     const saved=JSON.stringify(payload), result=data.id
       ? embedsQueries.saveUpdate.run(data.name.trim(),saved,mode,data.channelId??"",Date.now(),data.id,guildId)
       : embedsQueries.saveInsert.run(guildId,data.name.trim(),saved,data.channelId||null,mode,Date.now());
@@ -144,12 +145,13 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     else recordDashboardChange(guildId,user,AUDIT_SECTION.embeds,`Создан шаблон «${data.name.trim()}» (${mode === "text" ? "текст" : "embed"})`);
     return NextResponse.json({ok:true,id:data.id??Number(result.lastInsertRowid)});
   }
-  const current=data.id?embedsQueries.byId.get(data.id,guildId) as {channel_id:string|null;message_id:string|null;name:string;mode:string;payload_json:string}|undefined:undefined;
+  const current=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
   if(data.updateMessage&&(!current?.channel_id||!current.message_id))return jsonError("Сначала отправьте шаблон в канал — обновлять пока нечего.");
   const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return jsonError(BOT_TOKEN_ERROR, 503);
   // allowed_mentions: панель публикует от имени бота — упоминания в тексте
   // не должны пинговать никого (в т.ч. @everyone).
-  const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[payload],allowed_mentions:{parse:[]}}; let body:BodyInit=JSON.stringify(bodyData), headers:Record<string,string>={"content-type":"application/json"};
+  const discordPayload={...payload,author:payload.author?{name:payload.author.name,url:payload.author.url,icon_url:payload.author.iconUrl}:undefined};
+  const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[discordPayload],allowed_mentions:{parse:[]}}; let body:BodyInit=JSON.stringify(bodyData), headers:Record<string,string>={"content-type":"application/json"};
   if(assets.length) { const multipart=new FormData(); multipart.set("payload_json",JSON.stringify(bodyData)); assets.forEach((asset,i)=>multipart.append(`files[${i}]`,asset.file,asset.filename)); body=multipart; headers={}; }
   const endpoint=`/channels/${channelId}/messages${data.updateMessage?`/${current!.message_id}`:""}`;
   let sent: Response | null = null; try { sent=await discordFetch(endpoint,{method:data.updateMessage?"PATCH":"POST",headers,body}); } catch { /* единый ответ ниже */ }
@@ -175,9 +177,9 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
 
 export const DELETE = guildRoute(async (request, { guildId, user }) => {
   const url=new URL(request.url); const sendingId=Number(url.searchParams.get("sendingId")); const id=Number(url.searchParams.get("id"));
-  if(Number.isInteger(sendingId)&&sendingId>0){const sending=embedsQueries.sendingById.get(sendingId,guildId) as {channel_id:string;message_id:string}|undefined;if(!sending)return jsonError("Отправка не найдена.", 404);const token=process.env.DISCORD_TOKEN;if(token){await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`,{method:"DELETE"}).catch(()=>null);}embedsQueries.sendingDelete.run(sendingId,guildId);recordDashboardChange(guildId,user,AUDIT_SECTION.embeds,`Удалено отправленное сообщение embed в канале ${channelRef(sending.channel_id)}`);return NextResponse.json({ok:true});}
+  if(Number.isInteger(sendingId)&&sendingId>0){const sending=embedsQueries.sendingById.get(sendingId,guildId);if(!sending)return jsonError("Отправка не найдена.", 404);const token=process.env.DISCORD_TOKEN;if(token){await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`,{method:"DELETE"}).catch(()=>null);}embedsQueries.sendingDelete.run(sendingId,guildId);recordDashboardChange(guildId,user,AUDIT_SECTION.embeds,`Удалено отправленное сообщение embed в канале ${channelRef(sending.channel_id)}`);return NextResponse.json({ok:true});}
   if(!Number.isInteger(id)||id<1)return jsonError("Некорректный идентификатор сообщения.");
-  const item=embedsQueries.byId.get(id,guildId) as {channel_id:string|null;message_id:string|null;payload_json:string;name:string}|undefined;
+  const item=embedsQueries.byId.get(id,guildId);
   if(!item)return jsonError("Сообщение не найдено.", 404);
   if(item.channel_id&&item.message_id){const token=process.env.DISCORD_TOKEN;if(!token)return jsonError(BOT_TOKEN_ERROR, 503);let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
   embedsQueries.sendingsByEmbedDelete.run(id,guildId);

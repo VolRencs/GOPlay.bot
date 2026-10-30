@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
-import { automodRules } from "../../../src/lib/labels.ts";
-import { parseActions, safeJson } from "../../../src/lib/json.ts";
-import { automodDefaultActions, automodThresholdDefaults, automodThresholdRanges, automodWindowRange, type AutomodRuleRow, type AutomodThresholdKey } from "../../../src/lib/automod.ts";
-import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "../../../src/lib/constants.ts";
+import { automodRules } from "#lib/labels.ts";
+import { automodDefaultActions, automodThresholdRanges, automodWindowRange, type AutomodThresholdKey } from "#lib/automod.ts";
+import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "#lib/constants.ts";
+import { defaultRule, type AutomodRuleDto } from "#contracts/automod.ts";
 import type { Channel, Role } from "./types.ts";
 import { CardHeader, CheckList, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
 
@@ -20,12 +20,6 @@ const presetFor = (actions: string[]) => punishmentPresets.find(p => p.actions.l
 
 const CHANNEL_SCOPED_KINDS = ["links", "links_only", "media_only"];
 const WINDOW_KINDS = ["spam", "duplicate", "emoji"];
-
-// Новые правила сидируются теми же дефолтами, что и детекторы в рантайме:
-// несохранённое правило ведёт себя как сохранённое.
-export function defaultRule(kind: string): AutomodRuleRow {
-  return { kind, enabled: 0, action_json: JSON.stringify([...automodDefaultActions]), threshold_json: JSON.stringify({ ...(automodThresholdDefaults as Record<string, Record<string, unknown>>)[kind] ?? {}, durationSeconds: DEFAULT_TIMEOUT_SECONDS }), window_seconds: 10, escalation: 0 };
-}
 
 function RuleThreshold({ kind, threshold, onChange }: { kind: string; threshold: Record<string, unknown>; onChange: (change: Record<string, unknown>) => void }) {
   const field = (label: string, key: AutomodThresholdKey) => {
@@ -99,14 +93,14 @@ function DomainListEditor({ domains, onChange }: { domains: string[]; onChange: 
 
 type RuleMeta = { title: string; description: string };
 
-function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: AutomodRuleRow; channels: Channel[]; onChange: (kind: string, change: Partial<AutomodRuleRow>) => void }) {
+function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: AutomodRuleDto; channels: Channel[]; onChange: (kind: string, change: Partial<AutomodRuleDto>) => void }) {
   const kind = rule.kind;
-  const threshold = { ...safeJson<Record<string, unknown>>(defaultRule(kind).threshold_json, {}), ...safeJson<Record<string, unknown>>(rule.threshold_json, {}) };
-  const actions = parseActions(rule.action_json);
+  const threshold = { ...defaultRule(kind).threshold, ...rule.threshold };
+  const actions = rule.actions;
   const channelsValue = Array.isArray(threshold.channels) ? threshold.channels.map(String) : [];
-  const setThreshold = (change: Record<string, unknown>) => onChange(kind, { threshold_json: JSON.stringify({ ...threshold, ...change }) });
+  const setThreshold = (change: Record<string, unknown>) => onChange(kind, { threshold: { ...threshold, ...change } });
   const timeoutMinutes = Math.round(Number(threshold.durationSeconds ?? DEFAULT_TIMEOUT_SECONDS) / 60);
-  const state = Boolean(rule.enabled);
+  const state = rule.enabled;
   return (
     <article className={state ? "card rule-card" : "card rule-card is-off"}>
       <div className="rule-heading">
@@ -115,7 +109,7 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Au
           <p className="muted">{meta.description}</p>
         </div>
         <label className="switch">
-          <input type="checkbox" aria-label={`Включить правило «${meta.title}»`} checked={state} onChange={e => onChange(kind, { enabled: +e.target.checked })}/>
+          <input type="checkbox" aria-label={`Включить правило «${meta.title}»`} checked={state} onChange={e => onChange(kind, { enabled: e.target.checked })}/>
           <span/>
         </label>
       </div>
@@ -143,21 +137,21 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Au
               options={[{ value: "any", label: "Фото и видео" }, { value: "image", label: "Только фото" }, { value: "video", label: "Только видео" }]}/></label>
           )}
           {WINDOW_KINDS.includes(kind) && (
-            <NumberField label="Период проверки, сек" min={automodWindowRange.min} max={automodWindowRange.max} value={rule.window_seconds} onChange={window_seconds => onChange(kind, { window_seconds: window_seconds || automodWindowRange.min })}/>
+            <NumberField label="Период проверки, сек" min={automodWindowRange.min} max={automodWindowRange.max} value={rule.windowSeconds} onChange={windowSeconds => onChange(kind, { windowSeconds: windowSeconds || automodWindowRange.min })}/>
           )}
         </div>
         <div className="punishment-box">
           <span className="field-label">Наказание</span>
           <label>Действие<Select
             value={presetFor(actions)}
-            onChange={value => onChange(kind, { action_json: JSON.stringify(punishmentPresets.find(p => p.value === value)?.actions ?? [...automodDefaultActions]) })}
+            onChange={value => onChange(kind, { actions: punishmentPresets.find(p => p.value === value)?.actions ?? [...automodDefaultActions] })}
             ariaLabel="Действие"
             options={punishmentPresets.map(p => ({ value: p.value, label: p.label }))}/></label>
           {actions.includes("timeout") && (
             <>
               <NumberField label="Тайм-аут, минут" min={1} max={40320} value={timeoutMinutes} onChange={minutes => setThreshold({ durationSeconds: Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, (minutes || 1) * 60)) })}/>
               <label className="check-row">
-                <input type="checkbox" checked={Boolean(rule.escalation)} onChange={e => onChange(kind, { escalation: +e.target.checked })}/> Усиливать тайм-аут при повторах за 24 ч
+                <input type="checkbox" checked={rule.escalation} onChange={e => onChange(kind, { escalation: e.target.checked })}/> Усиливать тайм-аут при повторах за 24 ч
               </label>
             </>
           )}
@@ -167,7 +161,7 @@ function RuleCard({ meta, rule, channels, onChange }: { meta: RuleMeta; rule: Au
   );
 }
 
-export function AutoModSettings({ channels, roles, rules, ignoredRoleIds, protectedChannelId, onGlobalChange, onSaveAll, onChange }: { channels: Channel[]; roles: Role[]; rules: Record<string, AutomodRuleRow>; ignoredRoleIds: string[]; protectedChannelId: string | null; onGlobalChange: (roles: string[], channel: string | null) => void; onSaveAll: () => unknown; onChange: (kind: string, change: Partial<AutomodRuleRow>) => void }) {
+export function AutoModSettings({ channels, roles, rules, ignoredRoleIds, protectedChannelId, onGlobalChange, onSaveAll, onChange }: { channels: Channel[]; roles: Role[]; rules: Record<string, AutomodRuleDto>; ignoredRoleIds: string[]; protectedChannelId: string | null; onGlobalChange: (roles: string[], channel: string | null) => void; onSaveAll: () => unknown; onChange: (kind: string, change: Partial<AutomodRuleDto>) => void }) {
   const { busy: saving, run } = useAsyncAction();
   const enabledCount = Object.keys(automodRules).filter(kind => Boolean(rules[kind]?.enabled)).length;
   return (

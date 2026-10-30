@@ -7,6 +7,10 @@ import { ArrowDown, ArrowRight, Check, ChevronDown, Smile } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
 import { safeJson, stableJson } from "../../lib/json.ts";
 
+export function SectionLoading() {
+  return <p className="loading" role="status">Загружаем раздел…</p>;
+}
+
 export function channelOptions(channels: Channel[], emptyLabel: string) {
   return [{ value: "", label: emptyLabel }, ...channels.map(c => ({ value: c.id, label: `# ${c.name}` }))];
 }

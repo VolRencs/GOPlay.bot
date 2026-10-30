@@ -2,13 +2,15 @@
 
 import { useRef, useState } from "react";
 import { Image, Trash2 } from "lucide-react";
-import { eventStatusMeta } from "../../../src/lib/labels.ts";
-import { userRef } from "../../../src/lib/mentions.ts";
-import type { EventButtonStyle, EventListGet, EventListItem, EventStatus, RecurrenceFrequency } from "../../../src/lib/events.ts";
-import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type Channel, type EmbedField, type PanelFail, type PanelNotify, type Role, type ServerEmoji } from "./types.ts";
+import { eventStatusMeta } from "#lib/labels.ts";
+import { userRef } from "#lib/mentions.ts";
+import type { EventButtonStyle, EventStatus, RecurrenceFrequency } from "#lib/events.ts";
+import type { EventListDto, EventListItemDto } from "#contracts/events.ts";
+import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type ServerEmoji } from "./types.ts";
 import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, asBoolean, asFields, asNumber, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
+import { useDashboard } from "./DashboardContext.tsx";
 
 const EVENT_TONE: Record<string, string> = { scheduled: "pill-info", live: "pill-ok", completed: "pill-accent", cancelled: "pill-err" };
 type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: EventStatus; eventRoleId: string; reminders: string; recurrenceFreq: RecurrenceFrequency; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; thumbnailFile: File | null; imageFile: File | null; fields: EmbedField[]; joinLabel: string; joinEmoji: string; joinStyle: EventButtonStyle; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: EventButtonStyle; leaveEnabled: boolean };
@@ -37,10 +39,14 @@ function ButtonEditor({ title, label, emoji, style, enabled, emojis, onChange }:
   );
 }
 
-export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError }: { guildId: string; channels: Channel[]; roles: Role[]; emojis: ServerEmoji[]; onDone: PanelNotify; onError: PanelFail }) {
-  const { data: events, reload } = useApiResource<EventListItem[] | null>(
+export function EventsPanel() {
+  const { guildId, resources, notify: onDone, fail: onError } = useDashboard();
+  const channels = resources?.channels ?? [];
+  const roles = resources?.roles ?? [];
+  const emojis = resources?.emojis ?? [];
+  const { data: events, reload } = useApiResource<EventListItemDto[] | null>(
     Boolean(guildId),
-    signal => apiGet<EventListGet>(`/api/guilds/${guildId}/events`, { events: [] }, signal).then(data => data.events),
+    signal => apiGet<EventListDto>(`/api/guilds/${guildId}/events`, { events: [] }, signal).then(data => data.events),
     [guildId],
     null,
   );
@@ -91,7 +97,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
 
   const editing = events?.find(e => e.id === editingId) ?? null;
 
-  function edit(e: EventListItem) {
+  function edit(e: EventListItemDto) {
     const join = e.buttons.find(b => b.key === "join"), leave = e.buttons.find(b => b.key === "leave");
     setDraft({
       channelId: e.channelId, scheduledAt: toLocalInput(e.scheduledAt), maxParticipants: e.maxParticipants,
@@ -147,7 +153,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     );
   }
 
-  async function remove(e: EventListItem) {
+  async function remove(e: EventListItemDto) {
     if (!(await confirmAction(`Удалить событие «${e.embed.title ?? "без названия"}»? Сообщение в Discord тоже будет удалено.`, "Удалить"))) return;
     await run(
       () => apiMutate(`/api/guilds/${guildId}/events?id=${e.id}`, { method: "DELETE" }, "Не удалось удалить событие."),
@@ -159,7 +165,7 @@ export function EventsPanel({ guildId, channels, roles, emojis, onDone, onError 
     );
   }
 
-  async function removeParticipant(e: EventListItem, userId: string) {
+  async function removeParticipant(e: EventListItemDto, userId: string) {
     if (!(await confirmAction(`Удалить участника ${userId} из события?`, "Удалить"))) return;
     await run(
       () => apiSend<{ promotedUserId?: string }>(`/api/guilds/${guildId}/events?id=${e.id}&participant=${userId}`, { method: "DELETE" }, "Не удалось удалить участника."),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { buildWelcomeSvg, renderWelcomeTemplate, WELCOME_DESIGN, welcomePreviewValues, type WelcomeImageConfig } from "../../../src/lib/welcome.ts";
+import { buildWelcomeSvg, renderWelcomeTemplate, WELCOME_DESIGN, welcomePreviewValues, type WelcomeImageConfig } from "#lib/welcome.ts";
 
 const { width: DESIGN_W, height: DESIGN_H } = WELCOME_DESIGN;
 const CENTER_X = DESIGN_W / 2;

@@ -28,46 +28,14 @@ export type StatsGet = {
   peakHour: { day: string; hour: number; messages: number } | null;
 };
 
-export type EmbedSending = { id: number; embed_id: number; channel_id: string; message_id: string; sent_at: number };
-// Форма строки `SELECT * FROM embeds`: все колонки присутствуют, id-шники nullable.
-export type SavedEmbed = {
-  id: number;
-  guild_id: string;
-  name: string;
-  payload_json: string;
-  updated_at: number;
-  channel_id: string | null;
-  message_id: string | null;
-  mode: "embed" | "text";
-};
 export type EmbedPayload = {
   title?: string;
   description?: string;
   color?: number;
   footer?: { text?: string };
-  author?: { name?: string; url?: string; icon_url?: string };
+  author?: { name?: string; url?: string; iconUrl?: string };
   fields?: { name: string; value: string; inline?: boolean }[];
   image?: { url?: string };
   thumbnail?: { url?: string };
 };
 export type EmbedField = { name: string; value: string; inline: boolean };
-export type EmbedsGet = { embeds: SavedEmbed[]; sendings: EmbedSending[] };
-
-export type RolePanelRow = {
-  id: number;
-  channel_id: string | null;
-  message_id: string | null;
-  title: string | null;
-  style: string;
-  role_limit: number;
-  role_mode: string;
-  notify_enabled: number;
-  notify_template: string | null;
-  role_id: string | null;
-  label: string | null;
-  emoji: string | null;
-  button_color: string | null;
-};
-
-export type AuditEntry = { id: number; user_name: string; section: string; summary: string; created_at: number };
-export type AuditListGet = { entries: AuditEntry[]; total: number };

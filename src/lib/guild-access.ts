@@ -1,7 +1,7 @@
 import { headers } from "next/headers.js";
 import { hash } from "node:crypto";
 import { auth } from "./auth.ts";
-import { db } from "../db/database.ts";
+import { read, type ReadStatement } from "../db/typed.ts";
 import { logger } from "./logger.ts";
 import { ttlCacheAsync } from "./cache.ts";
 import { DAY_MS } from "./constants.ts";
@@ -28,13 +28,13 @@ type GuildCache = { guilds?: DiscordGuild[]; expiresAt: number; staleUntil: numb
 const guildCache = new Map<string, GuildCache>();
 const cacheKey = (token: string) => hash("sha256", token, "hex");
 // Горячий путь всех API-роутов: prepared один раз на модуль.
-const guildExists = db.prepare("SELECT 1 FROM guilds WHERE id=?");
+const guildExists = read<Record<string, unknown>>("SELECT 1 FROM guilds WHERE id=?");
 // Таблица account создаётся миграциями better-auth (не нашими), поэтому
 // statement готовится лениво при первом использовании, а не на импорте.
-let discordAccountStmt: ReturnType<typeof db.prepare> | null = null;
+let discordAccountStmt: ReadStatement<{ id: string; accountId: string }> | null = null;
 export function discordAccountOf(userId: string) {
-  discordAccountStmt ??= db.prepare("SELECT id, accountId FROM account WHERE userId=? AND providerId='discord'");
-  return discordAccountStmt.get(userId) as { id: string; accountId: string } | undefined;
+  discordAccountStmt ??= read<{ id: string; accountId: string }>("SELECT id, accountId FROM account WHERE userId=? AND providerId='discord'");
+  return discordAccountStmt.get(userId);
 }
 
 // Discord-токен связанного аккаунта не выдался (истёк/отозван): нужен
@@ -114,7 +114,7 @@ export function canManageGuild(guild: DiscordGuild) { return guild.owner || (Big
 
 export type DashboardGuild = { id: string; name: string; icon: string | null };
 
-const configuredGuildsStmt = db.prepare("SELECT id FROM guilds WHERE id IN (SELECT value FROM json_each(?))");
+const configuredGuildsStmt = read<{ id: string }>("SELECT id FROM guilds WHERE id IN (SELECT value FROM json_each(?))");
 
 export async function configuredGuilds(requestHeaders: Headers, accountId?: string): Promise<DashboardGuild[]> {
   const allowed = (await discordGuilds(requestHeaders, accountId)).filter(canManageGuild);
@@ -122,7 +122,7 @@ export async function configuredGuilds(requestHeaders: Headers, accountId?: stri
   // Параметр json_each растёт вместе со списком серверов пользователя —
   // ограничиваем выборку разумным числом.
   const ids = allowed.slice(0, 200).map(guild => guild.id);
-  const configured = new Set((configuredGuildsStmt.all(JSON.stringify(ids)) as { id: string }[]).map(row => row.id));
+  const configured = new Set(configuredGuildsStmt.all(JSON.stringify(ids)).map(row => row.id));
   return allowed.filter(guild => configured.has(guild.id)).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, icon }) => ({ id, name, icon }));
 }
 

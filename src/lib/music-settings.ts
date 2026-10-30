@@ -3,28 +3,12 @@ import { ttlCacheSync } from "./cache.ts";
 import { parseStringArray } from "./json.ts";
 import { clampMusicSeconds } from "./labels.ts";
 import { DEFAULT_MUSIC_LEAVE_SECONDS } from "./constants.ts";
+import type { MusicDomain } from "../contracts/music.ts";
 
-export type MusicSettings = {
-  command_channel_id: string | null;
-  voice_channel_ids: string[];
-  allowed_role_ids: string[];
-  leave_after_seconds: number;
-  playlists_enabled: boolean;
-  playlist_role_ids: string[];
-};
-
-/** Строка таблицы music_settings (JSON-массивы в сыром виде): общий тип API. */
-export type MusicSettingsRow = {
-  command_channel_id: string | null;
-  voice_channel_ids_json: string;
-  allowed_role_ids_json: string;
-  leave_after_seconds: number;
-  playlists_enabled: number;
-  playlist_role_ids_json: string;
-};
+export type MusicSettings = MusicDomain;
 
 function loadMusicSettings(guildId: string): MusicSettings {
-  const row = stmt.musicSettings.get(guildId) as Partial<MusicSettingsRow> | undefined;
+  const row = stmt.musicSettings.get(guildId);
   return {
     command_channel_id: row?.command_channel_id ?? null,
     voice_channel_ids: parseStringArray(row?.voice_channel_ids_json),

@@ -88,13 +88,13 @@ export function flushMetrics() {
 function commitWindow(rows: FlushRow[]): void {
   withTransaction(() => {
     for (const row of rows) {
-      stmt.metric.run(row.guildId, row.day, row.counts.joins, row.counts.leaves, row.counts.messages, row.counts.moderation);
+      stmt.metric.run({ guild_id: row.guildId, day: row.day, joins: row.counts.joins, leaves: row.counts.leaves, messages: row.counts.messages, moderation: row.counts.moderation });
       const channels = channelCounts.get(row.key);
-      if (channels) for (const [channelId, messages] of channels) stmt.channelMetric.run(row.guildId, row.day, channelId, messages);
+      if (channels) for (const [channelId, messages] of channels) stmt.channelMetric.run({ guild_id: row.guildId, day: row.day, channel_id: channelId, messages });
       const byUser = userCounts.get(row.key);
-      if (byUser) for (const [userId, messages] of byUser) stmt.userMetric.run(row.guildId, row.day, userId, messages);
+      if (byUser) for (const [userId, messages] of byUser) stmt.userMetric.run({ guild_id: row.guildId, day: row.day, user_id: userId, messages });
       const hours = hourlyCounts.get(row.key);
-      if (hours) for (const [hour, messages] of hours) stmt.hourlyMetric.run(row.guildId, row.day, hour, messages);
+      if (hours) for (const [hour, messages] of hours) stmt.hourlyMetric.run({ guild_id: row.guildId, day: row.day, hour, messages });
     }
   });
 }

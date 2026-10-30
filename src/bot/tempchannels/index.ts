@@ -1,26 +1,23 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, EmbedBuilder, Events, MessageFlags, ModalBuilder, PermissionFlagsBits, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Guild, type GuildChannelCreateOptions, type GuildMember, type Interaction, type ModalSubmitInteraction, type VoiceChannel, type VoiceState } from "discord.js";
 import { stmt } from "../../db/statements.ts";
 import { logger } from "../../lib/logger.ts";
-import { guard } from "../../lib/errors.ts";
+import { failInteraction, guard, isMissingDiscordResource } from "../../lib/errors.ts";
 import { count } from "../../lib/perf.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
 import { parseStringArray } from "../../lib/json.ts";
 import { isSnowflake } from "../../lib/ids.ts";
-import { DEFAULT_SETTINGS, type TempConfig, type TempPresetRow } from "../../lib/tempchannels.ts";
+import { DEFAULT_SETTINGS, type TempConfig } from "../../lib/tempchannels.ts";
 import { stopAndLeave } from "../../lib/player/session.ts";
 import { tempTr, guildTr } from "../../lib/i18n/bot.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
-import { failInteraction, isMissingDiscordResource } from "../../lib/errors.ts";
 import { fetchMember } from "../utils/members.ts";
-
-type TempRow = { id: number; guild_id: string; channel_id: string; owner_id: string; panel_message_id: string | null; source_channel_id: string | null; created_at: number };
 
 // Короткий кэш: всплеск входящих в триггер-канал не бьёт по SQLite на каждый
 // voice-event. Мапит триггер-канал в настройки пресета, где он указан.
 const SETTINGS_TTL = 10_000;
 const configCache = ttlCacheSync<string, Map<string, TempConfig> | null>((guildId) => {
   const configs = new Map<string, TempConfig>();
-  for (const preset of stmt.tempPresets.all(guildId) as TempPresetRow[]) {
+  for (const preset of stmt.tempPresets.all(guildId)) {
     const { category_id, name_template, user_limit, can_rename, can_manage_access, can_close } = preset;
     const value: TempConfig = { category_id, name_template, user_limit, can_rename, can_manage_access, can_close };
     for (const channelId of parseStringArray(preset.trigger_channel_ids_json)) configs.set(channelId, value);
@@ -57,7 +54,7 @@ export function registerTempChannels(client: Client) {
 }
 
 async function handleOwnerLeave(guild: Guild, userId: string) {
-  const row = stmt.tempByOwner.get(guild.id, userId) as TempRow | undefined;
+  const row = stmt.tempByOwner.get(guild.id, userId);
   if (!row) return;
   const channel = await fetchTempChannel(guild, row.channel_id);
   if (channel === undefined) return;
@@ -82,7 +79,7 @@ async function handleVoiceState(oldState: VoiceState, newState: VoiceState) {
   count("events.voice_state");
   const guild = newState.guild ?? oldState.guild;
   if (oldState.channelId && oldState.channelId !== newState.channelId) {
-    const row = stmt.tempByChannel.get(oldState.channelId) as TempRow | undefined;
+    const row = stmt.tempByChannel.get(oldState.channelId);
     if (row) scheduleEmptinessCheck(guild, oldState.channelId);
   }
   const config = guildConfig(guild.id);
@@ -99,7 +96,7 @@ async function handleTriggerJoin(guild: Guild, member: GuildMember, triggerChann
   // Второй канал владельцу не создаём. Проверка не атомарна — два быстрых
   // voice-event оба могут её пройти — но UNIQUE (guild_id, owner_id) отвергнет
   // проигравший insert, а дубликат канала удалится.
-  const existing = stmt.tempByOwner.get(guild.id, member.id) as TempRow | undefined;
+  const existing = stmt.tempByOwner.get(guild.id, member.id);
   if (existing) {
     const channel = guild.channels.cache.get(existing.channel_id) as VoiceChannel | undefined;
     if (channel) {
@@ -205,7 +202,7 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
     // Проигравший гонку владельца (UNIQUE guild_id+owner_id) или сбой БД:
     // дубликат канала удаляется, юзера перекидывает в канал победителя.
     await channel.delete().catch((deleteError) => logger.warn("[TEMP] Не удалось удалить дубликат канала", guild.id, deleteError));
-    const winner = stmt.tempByOwner.get(guild.id, member.id) as TempRow | undefined;
+    const winner = stmt.tempByOwner.get(guild.id, member.id);
     if (winner) {
       const target = guild.channels.cache.get(winner.channel_id);
       if (target?.type === ChannelType.GuildVoice && member.voice.channelId !== winner.channel_id) await member.voice.setChannel(target as VoiceChannel).catch(() => null);
@@ -262,7 +259,7 @@ function voiceChannel(i: ButtonInteraction | ModalSubmitInteraction): VoiceChann
 
 function tempOwner(i: ButtonInteraction | ModalSubmitInteraction) {
   const guild = i.guild, channel = voiceChannel(i);
-  const row = guild && channel ? stmt.tempByChannel.get(channel.id) as TempRow | undefined : undefined;
+  const row = guild && channel ? stmt.tempByChannel.get(channel.id) : undefined;
   if (!guild || !channel || !row) return null;
   return { guild, channel, row, owner: row.owner_id === i.user.id };
 }
@@ -336,7 +333,7 @@ async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
     if (targetId === row.owner_id) return i.reply({ content: t("alreadyOwner"), flags: MessageFlags.Ephemeral });
     // UNIQUE(guild_id, owner_id): у цели может быть свой временный канал —
     // проверяем заранее, иначе сработает ограничение БД и уйдёт generic-ошибка.
-    const targetOwns = stmt.tempByOwner.get(guild.id, targetId) as TempRow | undefined;
+    const targetOwns = stmt.tempByOwner.get(guild.id, targetId);
     if (targetOwns) return i.reply({ content: t("targetHasOwnChannel"), flags: MessageFlags.Ephemeral });
     stmt.tempUpdateOwner.run(targetId, channel.id);
     return i.reply({ content: t("transferred",{id:targetId}), flags: MessageFlags.Ephemeral });
@@ -354,7 +351,7 @@ function textModal(customId: string, title: string, label: string, value = "") {
 // Запуск при старте: удаляем каналы без владельца внутри либо несуществующие,
 // восстанавливаем потерянные панели. Дублей нет — строки матчатся по channel_id.
 export async function cleanupTempChannels(client: Client) {
-  const rows = stmt.tempAll.all() as TempRow[];
+  const rows = stmt.tempAll.all();
   for (const row of rows) {
     const guild = client.guilds.cache.get(row.guild_id);
     if (!guild) { stmt.tempDelete.run(row.channel_id); continue; }

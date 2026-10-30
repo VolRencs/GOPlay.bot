@@ -21,7 +21,7 @@ const SETTINGS_TTL = 5_000;
 const settingsCache = ttlCacheSync<string, { channelId: string | null; categories: Record<string, boolean> }>((guildId) => {
   count("db.settings_load");
   try {
-    const setting = stmt.loggingSettings.get(guildId) as { channel_id: string | null; categories_json: string } | undefined;
+    const setting = stmt.loggingSettings.get(guildId);
     return { channelId: setting?.channel_id ?? null, categories: safeJson<Record<string, boolean>>(setting?.categories_json, {}) };
   } catch (error) {
     // Сбой SQLite не должен ронять logAction из обработчиков без собственного catch.

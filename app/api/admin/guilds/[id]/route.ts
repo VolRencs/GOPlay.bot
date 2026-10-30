@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server.js";
-import { adminRoute, discordFetch, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { wipeGuildData } from "../../../../../src/lib/server-cleanup.ts";
-import { deleteGuildFiles } from "../../../../../src/lib/uploads.ts";
+import { adminRoute, discordFetch, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
+import { wipeGuildData } from "#lib/server-cleanup.ts";
+import { deleteGuildFiles } from "#lib/uploads.ts";
 
 export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) => {
   if (!isSnowflake(guildId)) return jsonError("Некорректный идентификатор сервера.");

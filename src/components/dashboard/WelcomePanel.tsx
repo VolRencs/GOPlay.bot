@@ -1,22 +1,55 @@
 "use client";
 
-import { parseImageConfig, type WelcomeGet, type WelcomeImageConfig } from "../../../src/lib/welcome.ts";
+import { useState } from "react";
+import type { WelcomeImageConfig } from "#lib/welcome.ts";
+import { toWelcomeInput, welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
 import { WelcomePreview } from "./WelcomePreview.tsx";
-import { CardHeader, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
+import { CardHeader, SectionLoading, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
+import { apiSend } from "./api.ts";
+import { useDashboard } from "./DashboardContext.tsx";
+import { useSettingsTab } from "./useSettingsTab.ts";
 import type { Channel } from "./types.ts";
 
-type MemberEventPatch = { enabled?: number; channel?: string | null; message?: string; imageEnabled?: number; config?: WelcomeImageConfig };
+type MemberEventPatch = { enabled?: boolean; channel?: string | null; message?: string; imageEnabled?: boolean; config?: WelcomeImageConfig };
 const welcomeVariables: [string, string][] = [["{user}", "упоминание"], ["{username}", "имя пользователя"], ["{displayName}", "имя на сервере"], ["{server}", "сервер"], ["{count}", "участников"], ["{memberCount}", "участников"], ["{userId}", "ID пользователя"], ["{userAvatar}", "аватар"], ["{serverIcon}", "иконка сервера"]];
 
-export function WelcomeSettings({ channels, value, onChange, onSave, onUpload, bgTimestamp }: { channels: Channel[]; value: WelcomeGet; onChange: (value: WelcomeGet) => void; onSave: () => unknown; onUpload:(file:File)=>void; bgTimestamp: number }) {
+export function WelcomeSettings() {
+  const { guildId, resources, notify, fail } = useDashboard();
+  const { value, setValue, patch, loading, save } = useSettingsTab<WelcomeDto, WelcomeDto>({
+    guildId,
+    endpoint: `/api/guilds/${guildId}/welcome`,
+    initial: { ...welcomeDefaults },
+    fromGet: data => ({ ...welcomeDefaults, ...data }),
+    toBody: toWelcomeInput,
+    saveMode: "markSaved",
+    loadError: "Не удалось загрузить настройки приветствия.",
+    saveError: "Не удалось сохранить настройки приветствия.",
+    savedMessage: "Настройки приветствия и прощания сохранены.",
+    registerKey: "welcome",
+    onDone: notify,
+    onError: fail,
+  });
+  const [bgTimestamp, setBgTimestamp] = useState(0);
   const { busy: saving, run } = useAsyncAction();
-  return <div className="welcome-layout"><div className="event-settings"><MemberEvent title="Приветствие новых участников" event="welcome" channels={channels} value={value} onChange={onChange} onUpload={onUpload} bgTimestamp={bgTimestamp}/><MemberEvent title="Прощание с участником" event="goodbye" channels={channels} value={value} onChange={onChange} onUpload={onUpload} bgTimestamp={bgTimestamp}/></div><aside className="card variables-card floating-preview"><h2>Переменные</h2><div className="variables-list">{welcomeVariables.map(([token,help])=><span key={token}><code>{token}</code> {help}</span>)}</div><SaveButton saving={saving} onClick={() => run(onSave)}/></aside></div>;
+  if (loading) return <SectionLoading/>;
+  const channels = resources?.channels ?? [];
+  async function upload(file: File) {
+    const body = new FormData();
+    body.set("background", file);
+    const sent = await apiSend<{ backgroundPath: string }>(`/api/guilds/${guildId}/welcome`, { method: "POST", body }, "Не удалось загрузить фон.");
+    if (sent.ok) {
+      patch(current => ({ ...current, backgroundPath: sent.data.backgroundPath }));
+      setBgTimestamp(Date.now());
+      notify("Фон загружен.");
+    } else fail(sent.error);
+  }
+  return <div className="welcome-layout"><div className="event-settings"><MemberEvent title="Приветствие новых участников" event="welcome" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/><MemberEvent title="Прощание с участником" event="goodbye" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/></div><aside className="card variables-card floating-preview"><h2>Переменные</h2><div className="variables-list">{welcomeVariables.map(([token,help])=><span key={token}><code>{token}</code> {help}</span>)}</div><SaveButton saving={saving} onClick={() => run(save)}/></aside></div>;
 }
 
-function MemberEvent({title,event,channels,value,onChange,onUpload,bgTimestamp}:{title:string;event:"welcome"|"goodbye";channels:Channel[];value:WelcomeGet;onChange:(value:WelcomeGet)=>void;onUpload:(file:File)=>void;bgTimestamp:number}) {
-  const goodbye=event==="goodbye", enabled=goodbye?value.goodbye_enabled:value.enabled, channel=goodbye?value.goodbye_channel_id:value.channel_id, message=goodbye?value.goodbye_message:value.message, imageEnabled=value.image_enabled, rawBackground=value.background_path, background=rawBackground?`${rawBackground}?v=${bgTimestamp}`:null, config=parseImageConfig(value.image_config_json);
-  const set=(patch:MemberEventPatch)=>onChange(goodbye?{...value,goodbye_enabled:patch.enabled??enabled,goodbye_channel_id:patch.channel===undefined?channel:patch.channel,goodbye_message:patch.message??message}:{...value,enabled:patch.enabled??enabled,channel_id:patch.channel===undefined?channel:patch.channel,message:patch.message??message,image_enabled:patch.imageEnabled??imageEnabled,image_config_json:patch.config?JSON.stringify(patch.config):value.image_config_json});
-  return <section className="card"><CardHeader title={title} muted={goodbye?"Канал и текст прощального сообщения.":"Отдельные канал, текст, фон и персональная картинка."} action={<label className="switch"><input type="checkbox" aria-label={goodbye?"Включить прощание":"Включить приветствие"} checked={Boolean(enabled)} onChange={e=>set({enabled:+e.target.checked})}/><span/></label>}/><div className="event-grid"><div className="settings-card"><label>Канал<Select value={channel??""} onChange={v=>set({channel:v||null})} ariaLabel="Канал события" options={channelOptions(channels, "Выберите канал")}/></label><label>Текст сообщения<textarea rows={4} maxLength={2000} value={message} onChange={e=>set({message:e.target.value})}/></label>{!goodbye&&<><label className="check-row"><input type="checkbox" checked={Boolean(imageEnabled)} onChange={e=>set({imageEnabled:+e.target.checked})}/> Отправлять персональную картинку</label>{Boolean(imageEnabled)&&<><div><span className="field-label">Фон картинки</span><label className="file-pick"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0];if(file)onUpload(file);e.target.value="";}}/><span className="btn secondary small">Выбрать файл</span></label></div><ImageEditor value={config} onChange={config=>set({config})}/></>}</>}</div>{!goodbye&&<WelcomePreview message={message} config={config} background={background} enabled={Boolean(imageEnabled)} onChange={config=>set({config})}/>}</div></section>;
+function MemberEvent({title,event,channels,value,onChange,onUpload,bgTimestamp}:{title:string;event:"welcome"|"goodbye";channels:Channel[];value:WelcomeDto;onChange:(value:WelcomeDto)=>void;onUpload:(file:File)=>void;bgTimestamp:number}) {
+  const goodbye=event==="goodbye", enabled=goodbye?value.goodbyeEnabled:value.enabled, channel=goodbye?value.goodbyeChannelId:value.channelId, message=goodbye?value.goodbyeMessage:value.message, imageEnabled=value.imageEnabled, rawBackground=value.backgroundPath, background=rawBackground?`${rawBackground}?v=${bgTimestamp}`:null, config=value.imageConfig;
+  const set=(patch:MemberEventPatch)=>onChange(goodbye?{...value,goodbyeEnabled:patch.enabled??enabled,goodbyeChannelId:patch.channel===undefined?channel:patch.channel,goodbyeMessage:patch.message??message}:{...value,enabled:patch.enabled??enabled,channelId:patch.channel===undefined?channel:patch.channel,message:patch.message??message,imageEnabled:patch.imageEnabled??imageEnabled,imageConfig:patch.config??value.imageConfig});
+  return <section className="card"><CardHeader title={title} muted={goodbye?"Канал и текст прощального сообщения.":"Отдельные канал, текст, фон и персональная картинка."} action={<label className="switch"><input type="checkbox" aria-label={goodbye?"Включить прощание":"Включить приветствие"} checked={Boolean(enabled)} onChange={e=>set({enabled:e.target.checked})}/><span/></label>}/><div className="event-grid"><div className="settings-card"><label>Канал<Select value={channel??""} onChange={v=>set({channel:v||null})} ariaLabel="Канал события" options={channelOptions(channels, "Выберите канал")}/></label><label>Текст сообщения<textarea rows={4} maxLength={2000} value={message} onChange={e=>set({message:e.target.value})}/></label>{!goodbye&&<><label className="check-row"><input type="checkbox" checked={Boolean(imageEnabled)} onChange={e=>set({imageEnabled:e.target.checked})}/> Отправлять персональную картинку</label>{Boolean(imageEnabled)&&<><div><span className="field-label">Фон картинки</span><label className="file-pick"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0];if(file)onUpload(file);e.target.value="";}}/><span className="btn secondary small">Выбрать файл</span></label></div><ImageEditor value={config} onChange={config=>set({config})}/></>}</>}</div>{!goodbye&&<WelcomePreview message={message} config={config} background={background} enabled={Boolean(imageEnabled)} onChange={config=>set({config})}/>}</div></section>;
 }
 
 function ColorField({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}) { return <label className="color-field"><span>{label}</span><span className="color-swatch" style={{background:value}} title={value}><input type="color" value={value} onChange={e=>onChange(e.target.value)} aria-label={label}/></span><code>{value}</code></label>; }

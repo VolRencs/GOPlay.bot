@@ -1,23 +1,27 @@
 import { NextResponse } from "next/server.js";
-import { guildRoute, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { guildLang, invalidateGuildLang } from "../../../../../src/lib/i18n/bot.ts";
-import { recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
-import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
-import { langQueries } from "../../../../../src/db/queries.ts";
-import type { LangGet } from "../../../../../src/lib/labels.ts";
+import { guildRoute, jsonError } from "#lib/guild-access.ts";
+import { guildLang, invalidateGuildLang } from "#lib/i18n/bot.ts";
+import { settingsPutRoute } from "#lib/settings-route.ts";
+import { langState, langView } from "#lib/settings-views.ts";
+import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { langQueries } from "#db/queries.ts";
+import { fromDto as fromLangDto, toDto as toLangDto, type LangDto } from "#contracts/lang.ts";
 
 export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<LangGet>({ lang: guildLang(guildId) });
+  return NextResponse.json<LangDto>(toLangDto(guildLang(guildId)));
 });
 
-export const PUT = guildRoute(async (request, { guildId, user }) => {
-  const body = await readJson<LangGet>(request);
-  if (body?.lang !== "ru" && body?.lang !== "en") return jsonError("Некорректный язык.");
-  const previous = guildLang(guildId);
-  const updated = langQueries.update.run(body.lang, Date.now(), guildId, body.lang);
-  if (updated.changes === 0) return NextResponse.json({ ok: true, unchanged: true });
-  invalidateGuildLang(guildId);
-  const label = (lang: "ru" | "en") => lang === "en" ? "английский" : "русский";
-  recordDashboardDiff(guildId, user, AUDIT_SECTION.settings, "Язык сообщений бота: ", { "Язык": label(previous) }, { "Язык": label(body.lang) });
-  return NextResponse.json({ ok: true });
+export const PUT = settingsPutRoute<string>({
+  load: guildId => langState(guildId),
+  parse: body => {
+    const value = body as Partial<LangDto> | null;
+    if (value?.lang !== "ru" && value?.lang !== "en") return { ok: false, response: jsonError("Некорректный язык.") };
+    return { ok: true, value: fromLangDto({ lang: value.lang }) };
+  },
+  view: langView,
+  save: (guildId, lang) => {
+    if (langQueries.update.run(lang, Date.now(), guildId, lang).changes > 0) invalidateGuildLang(guildId);
+  },
+  section: AUDIT_SECTION.settings,
+  prefix: "Язык сообщений бота: ",
 });

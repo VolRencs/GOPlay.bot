@@ -1,6 +1,7 @@
 import type { GuildMember } from "discord.js";
 import { welcomeImage } from "./utils/welcome-image.ts";
-import { renderWelcomeTemplate, welcomeValues, type WelcomeGet } from "../lib/welcome.ts";
+import { renderWelcomeTemplate, welcomeValues } from "../lib/welcome.ts";
+import type { WelcomeDomain } from "../contracts/welcome.ts";
 import { stmt } from "../db/statements.ts";
 import { resolveChannel } from "./logging/index.ts";
 import { logger } from "../lib/logger.ts";
@@ -15,7 +16,7 @@ function memberTemplate(template: string, member: GuildMember) {
   });
 }
 
-async function renderMemberImage(member: GuildMember, setting: WelcomeGet, event: "welcome" | "goodbye") {
+async function renderMemberImage(member: GuildMember, setting: WelcomeDomain, event: "welcome" | "goodbye") {
   const started = performance.now();
   try {
     return await welcomeImage({
@@ -38,7 +39,7 @@ async function renderMemberImage(member: GuildMember, setting: WelcomeGet, event
 
 /** Приветствие/прощание участника: текст шаблона и опциональная картинка. */
 export async function sendMemberEvent(member: GuildMember, event: "welcome" | "goodbye") {
-  const setting = stmt.welcomeSettings.get(member.guild.id) as WelcomeGet | undefined;
+  const setting = stmt.welcomeSettings.get(member.guild.id);
   const welcome = event === "welcome";
   const enabled = welcome ? setting?.enabled : setting?.goodbye_enabled;
   const channelId = welcome ? setting?.channel_id : setting?.goodbye_channel_id;

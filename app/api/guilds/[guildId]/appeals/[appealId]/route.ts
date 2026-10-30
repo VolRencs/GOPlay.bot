@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server.js";
-import { guildRoute, discordAccountOf, jsonError, readJson } from "../../../../../../src/lib/guild-access.ts";
-import { recordDashboardChange } from "../../../../../../src/lib/dashboard-audit.ts";
-import { AUDIT_SECTION } from "../../../../../../src/lib/audit-sections.ts";
-import { appealStatusMeta } from "../../../../../../src/lib/labels.ts";
-import { guildLang } from "../../../../../../src/lib/i18n/bot.ts";
-import { applyAppealReversal, notifyAppealStatus, reviewActions, reviewAppeal } from "../../../../../../src/lib/appeals.ts";
+import { guildRoute, discordAccountOf, jsonError, readJson } from "#lib/guild-access.ts";
+import { recordDashboardChange } from "#lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { appealStatusMeta } from "#lib/labels.ts";
+import { guildLang } from "#lib/i18n/bot.ts";
+import { applyAppealReversal, notifyAppealStatus, reviewActions, reviewAppeal } from "#lib/appeals.ts";
 
 export const POST = guildRoute<{ guildId: string; appealId: string }>(async (request, { guildId, user, params }) => {
   const appealId = Number(params.appealId);

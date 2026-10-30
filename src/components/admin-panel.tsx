@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
 import { apiGet, apiSend } from "./dashboard/api.ts";
 import { CardHeader, ConfirmHost, confirmAction, formatNumber, ModalShell, StatCard, TemplateLibrary, useAsyncAction } from "./dashboard/ui.tsx";
+import type { AdminDataDto, AdminGuildDto } from "#contracts/admin.ts";
 
-type AdminGuild = { id: string; name: string; messages: number; panels: number; events: number };
-type AdminData = { online: boolean; uptimeMs: number | null; guildCount: number; messages7d: number; moderation7d: number; members: number | null; guilds: AdminGuild[] };
+type AdminGuild = AdminGuildDto;
+type AdminData = AdminDataDto;
 
 function uptime(ms: number) {
   const total = Math.floor(ms / 60_000), d = Math.floor(total / 1440), h = Math.floor((total % 1440) / 60), m = total % 60;

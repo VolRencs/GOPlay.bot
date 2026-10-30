@@ -80,38 +80,6 @@ export function welcomeValues(input: { name: string; username?: string; userId?:
   };
 }
 
-export const welcomeDefaults: WelcomeGet = { enabled: 0, channel_id: null, message: "Добро пожаловать, {user}!", image_enabled: 0, background_path: null, image_config_json: "{}", goodbye_enabled: 0, goodbye_channel_id: null, goodbye_message: "До встречи, {username}!" };
-
-export type WelcomeGet = {
-  enabled: number; channel_id: string | null; message: string; image_enabled: number;
-  background_path: string | null; image_config_json: string;
-  goodbye_enabled: number; goodbye_channel_id: string | null; goodbye_message: string;
-};
-
-export type WelcomePutBody = {
-  enabled: boolean;
-  channelId: string | null;
-  message: string;
-  imageEnabled: boolean;
-  imageConfig: WelcomeImageConfig;
-  goodbyeEnabled: boolean;
-  goodbyeChannelId: string | null;
-  goodbyeMessage: string;
-};
-
-export function buildWelcomePutBody(w: WelcomeGet): WelcomePutBody {
-  return {
-    enabled: Boolean(w.enabled),
-    channelId: w.channel_id,
-    message: w.message,
-    imageEnabled: Boolean(w.image_enabled),
-    imageConfig: parseImageConfig(w.image_config_json),
-    goodbyeEnabled: Boolean(w.goodbye_enabled),
-    goodbyeChannelId: w.goodbye_channel_id,
-    goodbyeMessage: w.goodbye_message,
-  };
-}
-
 const escapeXml = (value: string) => value.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[c] ?? c);
 
 export const WELCOME_DESIGN = { width: 900, height: 480 } as const;

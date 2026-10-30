@@ -1,11 +1,10 @@
-import { db } from "../../db/database.ts";
+import { read } from "../../db/typed.ts";
 import { ttlCacheSync } from "../cache.ts";
-import type { Bi } from "./core.ts";
-import type { Locale } from "./core.ts";
+import type { Bi, Locale } from "./core.ts";
 
-const guildLangStmt = db.prepare("SELECT lang FROM guilds WHERE id=?");
+const guildLangStmt = read<{ lang: string }>("SELECT lang FROM guilds WHERE id=?");
 const langCache = ttlCacheSync<string, Locale>((guildId) => {
-  const row = guildLangStmt.get(guildId) as { lang?: string } | undefined;
+  const row = guildLangStmt.get(guildId);
   return row?.lang === "en" ? "en" : "ru";
 }, 10_000);
 

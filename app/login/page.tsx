@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
-import { authClient } from "../../src/lib/auth-client.ts";
-import { useAsyncAction } from "../../src/components/dashboard/ui.tsx";
+import { authClient } from "#lib/auth-client.ts";
+import { useAsyncAction } from "#components/dashboard/ui.tsx";
 
 export default function Login() {
   const { busy, run } = useAsyncAction();

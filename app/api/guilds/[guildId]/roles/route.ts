@@ -1,30 +1,24 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "../../../../../src/lib/guild-access.ts";
-import { withTransaction } from "../../../../../src/db/database.ts";
-import { rolesQueries } from "../../../../../src/db/queries.ts";
-import { recordDashboardChange, recordDashboardDiff } from "../../../../../src/lib/dashboard-audit.ts";
-import { AUDIT_SECTION } from "../../../../../src/lib/audit-sections.ts";
-import { logger } from "../../../../../src/lib/logger.ts";
-import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId, type ButtonStyleName } from "../../../../../src/lib/constants.ts";
-import { roleModeLabels, roleStyleLabels } from "../../../../../src/lib/labels.ts";
-import { roleRef } from "../../../../../src/lib/mentions.ts";
-import { REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT } from "../../../../../src/lib/limits.ts";
-import type { RolePanelRow } from "../../../../../src/contracts/dashboard.ts";
+import { discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
+import { withTransaction } from "#db/database.ts";
+import { rolesQueries } from "#db/queries.ts";
+import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
+import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { logger } from "#lib/logger.ts";
+import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId, type ButtonStyleName } from "#lib/constants.ts";
+import { roleModeLabels, roleStyleLabels } from "#lib/labels.ts";
+import { roleRef } from "#lib/mentions.ts";
+import { REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT } from "#lib/limits.ts";
+import { toDto as toRolePanelDto, type RolePanelInput, type RolePanelRowDto } from "#contracts/roles.ts";
 import { stripVariationSelectors, toDiscordEmoji, toDiscordReaction } from "goemoji/discord";
 
-type PanelPayload = {
-  panelId?: number; embedId: number; style: "buttons" | "select" | "reaction";
-  roleLimit?: number; roleMode?: "toggle" | "add" | "remove"; notifyEnabled?: boolean; notifyTemplate?: string;
-  options?: { roleId: string; label: string; emoji: string; buttonColor: string }[];
-  channelId?: string; messageId?: string;
-};
 type DiscordRole = { id: string; managed: boolean; position: number };
 type DiscordMember = { roles: string[] };
 
 const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value === "string" && Object.hasOwn(BUTTON_STYLE_IDS, value);
 
-function readOptions(value: PanelPayload) {
-  const valid = (raw: { roleId: string; label: string; emoji: string; buttonColor: string }[]) => raw
+function readOptions(value: RolePanelInput) {
+  const valid = (raw: { roleId: string; label?: string; emoji?: string; buttonColor?: string }[]) => raw
     .filter(o => Boolean(o) && typeof o === "object" && typeof o.roleId === "string" && o.roleId)
     .slice(0, SELECT_OPTION_LIMIT)
     .map(o => ({
@@ -51,11 +45,11 @@ async function assignableRoleIds(guildId: string, roleIds: string[]): Promise<Se
 }
 
 export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json(rolesQueries.list.all(guildId) as RolePanelRow[]);
+  return NextResponse.json<RolePanelRowDto[]>(rolesQueries.list.all(guildId).map(toRolePanelDto));
 });
 
 export const POST = guildRoute(async (request, { guildId, user }) => {
-  const value = await readJson<PanelPayload>(request);
+  const value = await readJson<RolePanelInput>(request);
   if (!value) return jsonError("Некорректный запрос.");
   const options = readOptions(value);
   if (!options.length) return jsonError("Добавьте хотя бы одну роль.");
@@ -64,7 +58,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   // возвращается из custom_id кнопок в roles.add) — только snowflake.
   if ((value.channelId && !isSnowflake(value.channelId)) || (value.messageId && !isSnowflake(value.messageId)) || options.some(o => !isSnowflake(o.roleId)))
     return jsonError("Некорректный канал или роль.");
-  const tpl = rolesQueries.embedTemplate.get(value.embedId, guildId) as {name:string}|undefined;
+  const tpl = rolesQueries.embedTemplate.get(value.embedId, guildId);
   if (!tpl?.name) return jsonError("Шаблон не найден", 404);
   if (!value.channelId || !value.messageId) return jsonError("Выберите уже отправленное сообщение.");
   const embed = { channel_id: value.channelId, message_id: value.messageId, name: tpl.name };
@@ -93,10 +87,10 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   let beforePanel: { title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null } | undefined;
   let beforeRoleIds: string[] = [];
   if (value.panelId) {
-    beforePanel = rolesQueries.panelGet.get(value.panelId, guildId) as typeof beforePanel;
+    beforePanel = rolesQueries.panelGet.get(value.panelId, guildId);
     if (!beforePanel) return jsonError("Панель не найдена", 404);
     panelId = value.panelId;
-    beforeRoleIds = (rolesQueries.panelOptions.all(panelId) as { role_id: string }[]).map(row => row.role_id);
+    beforeRoleIds = rolesQueries.panelOptions.all(panelId).map(row => row.role_id);
   } else {
     panelId = Number(rolesQueries.insert.run(guildId, embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now()).lastInsertRowid);
     created = true;
@@ -175,7 +169,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
 export const DELETE = guildRoute(async (request, { guildId, user }) => {
   const id = Number(new URL(request.url).searchParams.get("id"));
   if (!Number.isInteger(id) || id < 1) return jsonError("Некорректный идентификатор панели.");
-  const panel = rolesQueries.forDelete.get(id, guildId) as { channel_id: string; message_id: string; style: string; title: string } | undefined;
+  const panel = rolesQueries.forDelete.get(id, guildId);
   if (!panel) return jsonError("Панель не найдена.", 404);
   const token = process.env.DISCORD_TOKEN;
   if (!token) return jsonError(BOT_TOKEN_ERROR, 503);
@@ -183,7 +177,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   let response: Response | undefined;
   try {
   if (panel.style === "reaction") {
-    const options = rolesQueries.emojis.all(id) as { emoji: string | null }[];
+    const options = rolesQueries.emojis.all(id);
     for (const option of options) {
       const current = await discordFetch(`/channels/${panel.channel_id}/messages/${panel.message_id}/reactions/${encodeURIComponent(toDiscordReaction(option.emoji ?? "✅"))}/@me`, { method: "DELETE" });
       if (response === undefined && !current.ok && current.status !== 404) response = current;

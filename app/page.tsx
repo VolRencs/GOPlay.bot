@@ -1,8 +1,8 @@
 import { Bot, CalendarDays, Medal, Music, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
-import { HeroPanelPreview } from "../src/components/HeroPanelPreview.tsx";
-import { SiteHeader } from "../src/components/site-header.tsx";
-import { accountAccess } from "../src/lib/access.ts";
-import { discordInviteUrl } from "../src/lib/constants.ts";
+import { HeroPanelPreview } from "#components/HeroPanelPreview.tsx";
+import { SiteHeader } from "#components/site-header.tsx";
+import { accountAccess } from "#lib/access.ts";
+import { discordInviteUrl } from "#lib/constants.ts";
 
 function GithubMark() {
   return <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

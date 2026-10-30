@@ -10,7 +10,7 @@ const clampInt = (value: unknown, fallback: number, range: { min: number; max: n
 
 /** Единый парсер настроек для бота и API: клампы те же, что и при записи. */
 export function levelSettingsFor(guildId: string): LevelSettings {
-  const row = stmt.levelSettings.get(guildId) as Record<string, unknown> | undefined;
+  const row = stmt.levelSettings.get(guildId);
   if (!row) return { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] };
   return {
     enabled: Boolean(row.enabled),
@@ -20,13 +20,13 @@ export function levelSettingsFor(guildId: string): LevelSettings {
     xp_per_voice_minute: clampInt(row.xp_per_voice_minute, levelDefaults.xp_per_voice_minute, levelRanges.xp_per_voice_minute),
     base_xp: clampInt(row.base_xp, levelDefaults.base_xp, levelRanges.base_xp),
     growth_percent: clampInt(row.growth_percent, levelDefaults.growth_percent, levelRanges.growth_percent),
-    ignored_channel_ids: parseStringArray(row.ignored_channel_ids_json as string | null),
-    ignored_role_ids: parseStringArray(row.ignored_role_ids_json as string | null),
+    ignored_channel_ids: parseStringArray(row.ignored_channel_ids_json),
+    ignored_role_ids: parseStringArray(row.ignored_role_ids_json),
     notify_mode: notifyModes.find(value => value === row.notify_mode) ?? levelDefaults.notify_mode,
     notify_channel_id: typeof row.notify_channel_id === "string" ? row.notify_channel_id : null,
   };
 }
 
 export function levelRewardsFor(guildId: string): LevelReward[] {
-  return stmt.levelRewardsAll.all(guildId) as LevelReward[];
+  return stmt.levelRewardsAll.all(guildId);
 }

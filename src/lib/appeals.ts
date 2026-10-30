@@ -1,14 +1,16 @@
 import { type SQLInputValue } from "node:sqlite";
-import { db, withTransaction } from "../db/database.ts";
+import { withTransaction } from "../db/database.ts";
 import { stmt } from "../db/statements.ts";
+import { read, type ReadStatement } from "../db/typed.ts";
 import { discordFetch, sendDiscordDM } from "./discord-api.ts";
 import { punishmentLabel } from "./labels.ts";
 import type { Locale } from "./i18n/core.ts";
 import { guildLang } from "./i18n/bot.ts";
 import { trAppeals } from "./i18n/bot/appeals.ts";
 
+import type { AppealStatus } from "../contracts/appeals.ts";
+export type { AppealStatus } from "../contracts/appeals.ts";
 export const appealStatuses = ["pending", "reviewing", "approved", "rejected", "closed", "declined"] as const;
-export type AppealStatus = (typeof appealStatuses)[number];
 export const reviewActions = ["reviewing", "approved", "rejected", "closed"] as const;
 type ReviewAction = (typeof reviewActions)[number];
 
@@ -21,13 +23,12 @@ type Punishment = { id: number; guild_id: string; user_id: string; type: string;
 // берётся из guilds.appeal_counter.
 type Appeal = { id: number; number: number; guild_id: string; user_id: string; punishment_id: number; type: string; reason: string; moderator_comment: string | null; status: AppealStatus; created_at: number; updated_at: number; reviewed_by: string | null; reviewed_at: number | null };
 export type AppealView = Appeal & { punishment_reason: string | null; punishment_created_at: number };
-export type AppealsListGet = { appeals: AppealView[] };
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 type ReviewResultValue = { ok: true; value: ReviewResult } | { ok: false; error: string; status: number };
 
 function getPunishment(punishmentId: number): Punishment | undefined {
-  return stmt.appealPunishment.get(punishmentId) as Punishment | undefined;
+  return stmt.appealPunishment.get(punishmentId);
 }
 
 // Счётчик на гильдию: инкремент в той же транзакции, что и insert — серверы не
@@ -36,7 +37,7 @@ function getPunishment(punishmentId: number): Punishment | undefined {
 function nextAppealNumber(guildId: string): number {
   // Строку гильдии могли удалить между проверкой и insert — тогда номер не
   // выдаём, а апелляция падает с понятной ошибкой вместо TypeError.
-  const row = stmt.appealNextNumber.get(guildId) as { appeal_counter: number } | undefined;
+  const row = stmt.appealNextNumber.get(guildId);
   if (!row) throw new Error("Гильдия не найдена");
   return row.appeal_counter;
 }
@@ -54,7 +55,7 @@ function insertAppeal(guildId: string, userId: string, punishmentId: number, typ
   return withTransaction(() => {
     const number = nextAppealNumber(guildId);
     const result = stmt.appealInsert.run(guildId, userId, punishmentId, type, reason, status, number, at, at);
-    return stmt.appealById.get(Number(result.lastInsertRowid), guildId) as Appeal;
+    return stmt.appealById.get(Number(result.lastInsertRowid), guildId)!;
   });
 }
 
@@ -68,13 +69,13 @@ export function createAppeal(input: { guildId: string; userId: string; punishmen
   const reason = input.reason.trim();
   if (reason.length < 10) return { ok: false, error: trAppeals(lang, "reasonTooShort") };
   if (reason.length > 4000) return { ok: false, error: trAppeals(lang, "reasonTooLong") };
-  const existing = stmt.appealExisting.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
+  const existing = stmt.appealExisting.get(input.punishmentId);
   if (existing) return { ok: false, error: existingError(lang, existing) };
   try {
     return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, input.type ?? punishment.type, reason, "pending") };
   } catch {
     // UNIQUE(punishment_id): вторая апелляция обогнала проверку выше.
-    const raced = stmt.appealExisting.get(input.punishmentId) as { id: number; number: number; status: AppealStatus } | undefined;
+    const raced = stmt.appealExisting.get(input.punishmentId);
     return { ok: false, error: existingError(lang, raced) };
   }
 }
@@ -99,7 +100,7 @@ export function declineAppeal(input: { guildId: string; userId: string; punishme
 type ReviewResult = { appeal: Appeal; reversal: "unban" | "untimeout" | null; previousStatus: AppealStatus };
 export function reviewAppeal(input: { guildId: string; appealId: number; action: ReviewAction; reviewerId: string; comment?: string | null }): ReviewResultValue {
   const lang = guildLang(input.guildId);
-  const appeal = stmt.appealById.get(input.appealId, input.guildId) as Appeal | undefined;
+  const appeal = stmt.appealById.get(input.appealId, input.guildId);
   if (!appeal) return { ok: false, error: trAppeals(lang, "appealNotFound"), status: 404 };
   if (appeal.status !== "pending" && appeal.status !== "reviewing") return { ok: false, error: trAppeals(lang, "appealClosedAlready"), status: 409 };
   if (input.action === "reviewing" && appeal.status === "reviewing") return { ok: false, error: trAppeals(lang, "alreadyReviewing"), status: 409 };
@@ -133,7 +134,7 @@ export async function applyAppealReversal(lang: Locale, guildId: string, userId:
 
 export async function notifyAppealStatus(appeal: Appeal, reversal?: { ok: boolean; label: string } | null): Promise<boolean> {
   const lang = guildLang(appeal.guild_id);
-  const guildRow = stmt.guildName.get(appeal.guild_id) as { name: string } | undefined;
+  const guildRow = stmt.guildName.get(appeal.guild_id);
   const server = guildRow?.name ?? trAppeals(lang, "serverFallback");
   const typeLabel = punishmentLabel(lang, appeal.type);
   const reason = appeal.reason.trim().slice(0, 500);
@@ -154,7 +155,7 @@ export async function notifyAppealStatus(appeal: Appeal, reversal?: { ok: boolea
 export type AppealListQuery = { guildId: string; status?: AppealStatus | "all"; userId?: string; moderatorId?: string; from?: number; to?: number; limit?: number; offset?: number };
 // Набор фильтров ограничен — кэшируем готовые statements вместо prepare на
 // каждый GET вкладки «Апелляции».
-const listAppealCache = new Map<string, ReturnType<typeof db.prepare>>();
+const listAppealCache = new Map<string, ReadStatement<AppealView>>();
 
 export function listAppeals(query: AppealListQuery): AppealView[] {
   const clauses = ["a.guild_id=?"];
@@ -169,8 +170,8 @@ export function listAppeals(query: AppealListQuery): AppealView[] {
   let queryStmt = listAppealCache.get(key);
   if (!queryStmt) {
     if (listAppealCache.size >= 32) listAppealCache.clear();
-    queryStmt = db.prepare(`SELECT a.*,m.reason AS punishment_reason,m.created_at AS punishment_created_at FROM appeals a JOIN moderation_actions m ON m.id=a.punishment_id WHERE ${clauses.join(" AND ")} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`);
+    queryStmt = read<AppealView>(`SELECT a.*,m.reason AS punishment_reason,m.created_at AS punishment_created_at FROM appeals a JOIN moderation_actions m ON m.id=a.punishment_id WHERE ${clauses.join(" AND ")} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`);
     listAppealCache.set(key, queryStmt);
   }
-  return queryStmt.all(...params) as AppealView[];
+  return queryStmt.all(...params);
 }

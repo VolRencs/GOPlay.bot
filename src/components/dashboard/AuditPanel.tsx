@@ -1,23 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { cleanupTargets } from "../../../src/lib/labels.ts";
-import { AUDIT_SECTIONS } from "../../../src/lib/audit-sections.ts";
+import { cleanupTargets } from "#lib/labels.ts";
+import { AUDIT_SECTIONS } from "#lib/audit-sections.ts";
 import { apiGet, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { CardHeader, confirmAction, formatTime, Select } from "./ui.tsx";
-import type { AuditListGet, PanelFail, PanelNotify } from "./types.ts";
+import { useDashboard } from "./DashboardContext.tsx";
+import type { AuditListDto } from "#contracts/audit.ts";
 
-export function DashboardAuditLog({ guildId }: { guildId: string }) {
+export function DashboardAuditLog() {
+  const { guildId } = useDashboard();
   const [section, setSection] = useState("all");
   const [loadingMore, setLoadingMore] = useState(false);
   const genRef = useRef(0);
-  const { data, setData } = useApiResource<AuditListGet | null>(
+  const { data, setData } = useApiResource<AuditListDto | null>(
     Boolean(guildId),
     signal => {
       const params = new URLSearchParams({ limit: "50", offset: "0" });
       if (section !== "all") params.set("section", section);
-      return apiGet<AuditListGet>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 }, signal);
+      return apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 }, signal);
     },
     [guildId, section],
     null,
@@ -32,7 +34,7 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
     if (section !== "all") params.set("section", section);
     setLoadingMore(true);
     try {
-      const page = await apiGet<AuditListGet>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 });
+      const page = await apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 });
       if (gen !== genRef.current) return;
       setData(value => value ? { entries: [...value.entries, ...page.entries], total: page.total } : page);
     } finally { setLoadingMore(false); }
@@ -44,11 +46,12 @@ export function DashboardAuditLog({ guildId }: { guildId: string }) {
           <Select value={section} onChange={setSection} ariaLabel="Раздел журнала"
             options={[{ value: "all", label: "Все разделы" }, ...AUDIT_SECTIONS.map(section => ({ value: section, label: section }))]}/>
         </label></div>}/>
-    </article><article className="card audit-list">{entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.created_at).toISOString()}>{formatTime(entry.created_at)}</time><span className="audit-user">{entry.user_name}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
+    </article><article className="card audit-list">{entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.createdAt).toISOString()}>{formatTime(entry.createdAt)}</time><span className="audit-user">{entry.userName}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
 }
 
-export function ServerDataCleanup({ guildId, onDone, onError }: { guildId: string; onDone: PanelNotify; onError: PanelFail }) {
-  const { busy, run } = usePanelAction({ onDone, onError });
+export function ServerDataCleanup() {
+  const { guildId, notify, fail } = useDashboard();
+  const { busy, run } = usePanelAction({ onDone: notify, onError: fail });
   const [active, setActive] = useState<string | null>(null);
   const runCleanup = async (target: (typeof cleanupTargets)[number]) => {
     if (!(await confirmAction(target.confirm, "Очистить"))) return;

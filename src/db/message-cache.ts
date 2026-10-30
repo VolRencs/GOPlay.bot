@@ -46,7 +46,7 @@ export function flushMessageCache(): void {
   try {
     withTransaction(() => {
       for (const [messageId, entry] of entries) {
-        stmt.messageUpsert.run(messageId, entry.guildId, entry.channelId, entry.content, entry.createdAt);
+        stmt.messageUpsert.run({ message_id: messageId, guild_id: entry.guildId, channel_id: entry.channelId, content: entry.content, created_at: entry.createdAt });
         touchedGuilds.add(entry.guildId);
       }
     });
@@ -90,7 +90,7 @@ export function enforceMessageCap(guildId: string): void {
 export function messageContent(messageId: string): string | null {
   const buffered = pending.get(messageId);
   if (buffered) return buffered.content;
-  const row = stmt.messageGet.get(messageId) as { content: string } | undefined;
+  const row = stmt.messageGet.get(messageId);
   return row?.content ?? null;
 }
 
@@ -99,7 +99,7 @@ export function messageContent(messageId: string): string | null {
 export function forgetMessage(messageId: string): string | null {
   const buffered = pending.get(messageId);
   pending.delete(messageId);
-  const content = buffered?.content ?? (stmt.messageGet.get(messageId) as { content: string } | undefined)?.content ?? null;
+  const content = buffered?.content ?? stmt.messageGet.get(messageId)?.content ?? null;
   stmt.messageDelete.run(messageId);
   return content;
 }
