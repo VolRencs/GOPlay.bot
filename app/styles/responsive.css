@@ -20,21 +20,18 @@
   .settings-shell { display: block; }
 
   .sidebar {
-    padding: 1rem;
+    padding: .8rem 1rem;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
-  .sidebar .brand { margin: 0 0 1rem; }
+  .sidebar .brand { margin: 0 0 .75rem; }
 
-  .sidebar nav {
-    display: flex;
-    overflow-x: auto;
+  .settings-content { padding: 1.35rem 1rem 2.5rem; }
+
+  .settings-shell.is-dirty .toast-stack {
+    bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.8rem));
   }
-
-  .nav-item { flex: 0 0 auto; white-space: nowrap; }
-
-  .settings-content { padding: 1.5rem; }
 
   .coordinate-grid, .rule-config { grid-template-columns: 1fr; }
   .level-fields, .level-exclusions { grid-template-columns: 1fr; }
@@ -71,7 +68,11 @@
 
 @media (max-width: 480px) {
   .hero-panel { width: 320px; --hero-panel-scale: .4; }
-  .emoji-popover { right: auto; left: 0; }
+  .color-field { flex-wrap: wrap; }
+  .color-presets { flex-wrap: wrap; }
+  .color-preset { width: 30px; height: 30px; }
+  .check-row { align-items: flex-start; }
+  .check-row input[type="checkbox"] { margin-top: .15rem; }
   .user-menu-dropdown {
     min-width: 0;
     width: min(278px, calc(100vw - 2rem));

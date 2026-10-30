@@ -142,9 +142,14 @@
   box-shadow: var(--shadow-pop);
 }
 
-.emoji-popover.emoji-popover-top {
+.emoji-popover-floating {
+  position: fixed;
   top: auto;
-  bottom: calc(100% + .45rem);
+  right: auto;
+  bottom: auto;
+  z-index: 80;
+  max-height: min(70dvh, 460px);
+  overflow: auto;
 }
 
 .emoji-popover .ge-root {
@@ -227,7 +232,7 @@
 .toast-stack {
   position: fixed;
   right: 1.2rem;
-  bottom: 1.2rem;
+  bottom: max(1.2rem, env(safe-area-inset-bottom));
   z-index: 70;
   display: grid;
   gap: .5rem;

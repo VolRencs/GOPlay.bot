@@ -175,19 +175,49 @@ const EmojiPickerBody = lazy(() => import("./EmojiPickerBody.tsx"));
 
 export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange:(value:string)=>void;serverEmojis:ServerEmoji[]}) {
   const [open,setOpen]=useState(false);
-  const [placement,setPlacement]=useState<"bottom"|"top">("bottom");
+  const [coords,setCoords]=useState<{left:number;width:number;top?:number;bottom?:number}|null>(null);
   const rootRef=useRef<HTMLDivElement>(null);
   const anchorRef=useRef<HTMLDivElement>(null);
-  const toggle=()=>setOpen(prev=>{
-    const next=!prev;
-    if(next){
-      const rect=anchorRef.current?.getBoundingClientRect();
-      if(rect)setPlacement(window.innerHeight-rect.bottom>=rect.top?"bottom":"top");
-    }
-    return next;
-  });
-  useDismissOnOutside(rootRef, open, () => setOpen(false), "mousedown");
-  const select=(emoji:string)=>{onChange(stripVariationSelectors(emoji));setOpen(false);};
+  const popoverRef=useRef<HTMLDivElement>(null);
+  const close=()=>{setOpen(false);setCoords(null);};
+  const openPicker=()=>{
+    const rect=anchorRef.current?.getBoundingClientRect();
+    if(!rect) return;
+    // Поповер рисуется порталом в <body> и прижимается к viewport:
+    // иначе на мобильных он вылезает за экран из узкой колонки формы.
+    const width=Math.min(340, window.innerWidth-24);
+    const left=Math.max(12, Math.min(rect.left, window.innerWidth-width-12));
+    const below=window.innerHeight-rect.bottom;
+    const above=rect.top;
+    const upwards=below<Math.min(360, window.innerHeight*0.6)&&above>below;
+    setCoords({left,width,...(upwards?{bottom:window.innerHeight-rect.top+8}:{top:rect.bottom+8})});
+    setOpen(true);
+  };
+  const toggle=()=>open?close():openPicker();
+  useEffect(()=>{
+    if(!open) return;
+    const onPointerDown=(event:PointerEvent)=>{
+      const target=event.target as Node;
+      if(!rootRef.current?.contains(target)&&!popoverRef.current?.contains(target)) close();
+    };
+    const onScrollOrResize=(event:Event)=>{
+      if(popoverRef.current?.contains(event.target as Node)) return;
+      if(popoverRef.current?.contains(document.activeElement)) return;
+      close();
+    };
+    const onKeyDown=(event:KeyboardEvent)=>{if(event.key==="Escape") close();};
+    document.addEventListener("pointerdown",onPointerDown);
+    document.addEventListener("keydown",onKeyDown);
+    window.addEventListener("scroll",onScrollOrResize,true);
+    window.addEventListener("resize",onScrollOrResize);
+    return ()=>{
+      document.removeEventListener("pointerdown",onPointerDown);
+      document.removeEventListener("keydown",onKeyDown);
+      window.removeEventListener("scroll",onScrollOrResize,true);
+      window.removeEventListener("resize",onScrollOrResize);
+    };
+  },[open]);
+  const select=(emoji:string)=>{onChange(stripVariationSelectors(emoji));close();};
   return (
     <div className="emoji-picker" ref={rootRef}>
       <div className="emoji-current">
@@ -196,11 +226,12 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
           <button type="button" className="emoji-trigger" onClick={toggle} aria-expanded={open} aria-label="Выбрать эмодзи" title="Выбрать эмодзи">
             <Smile size={16}/>
           </button>
-          {open && <div className={`emoji-popover emoji-popover-${placement}`}>
-            <Suspense fallback={<p className="emoji-note">Загружаем эмодзи…</p>}>
-              <EmojiPickerBody serverEmojis={serverEmojis} onSelect={select} onEscape={() => setOpen(false)}/>
-            </Suspense>
-          </div>}
+          {open&&coords&&createPortal(
+            <div ref={popoverRef} className="emoji-popover emoji-popover-floating" style={{left:coords.left,width:coords.width,...(coords.top!==undefined?{top:coords.top}:{bottom:coords.bottom})}}>
+              <Suspense fallback={<p className="emoji-note">Загружаем эмодзи…</p>}>
+                <EmojiPickerBody serverEmojis={serverEmojis} onSelect={select} onEscape={close}/>
+              </Suspense>
+            </div>, document.body)}
         </div>
       </div>
     </div>

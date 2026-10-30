@@ -236,7 +236,7 @@
 .unsaved-float {
   position: fixed;
   left: 50%;
-  bottom: 1.1rem;
+  bottom: max(1.1rem, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 55;
   display: flex;
@@ -279,6 +279,8 @@
   gap: 1.15rem;
 }
 
+.mobile-section-picker { display: none; }
+
 .sidebar-group {
   display: grid;
   gap: .3rem;
@@ -316,30 +318,74 @@
 
 @media (max-width: 768px) {
   .sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 25;
     height: auto;
+    padding: .8rem 1rem;
     overflow: visible;
+    background: rgba(7, 4, 16, .96);
+    border-bottom: 1px solid var(--line);
   }
 
-  .sidebar-groups {
-    display: flex;
-    gap: .75rem;
-    overflow-x: auto;
-    padding-bottom: .15rem;
+  .sidebar-groups { display: none; }
+
+  .mobile-section-picker {
+    display: grid;
+    gap: .3rem;
   }
 
-  .sidebar-group {
-    display: contents;
+  .mobile-section-picker-label {
+    margin: 0;
+    color: #7f8aa3;
+    font-size: .62rem;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
   }
 
-  .sidebar-group-label {
-    display: none;
+  .mobile-section-select { position: relative; }
+
+  .mobile-section-select select {
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    margin: 0;
+    padding: .62rem 2.3rem .62rem .8rem;
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: var(--r-2);
+    color: var(--text);
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    cursor: pointer;
   }
 
-  .sidebar-group-items {
-    display: flex;
-    flex: none;
-    gap: .35rem;
+  .mobile-section-select select:focus-visible {
+    border-color: var(--focus-border);
+    box-shadow: var(--focus-ring);
+    outline: 0;
+  }
+
+  .mobile-section-select option,
+  .mobile-section-select optgroup {
+    background: var(--panel-solid);
+    color: var(--text);
+  }
+
+  .mobile-section-select::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: .95rem;
+    width: .45rem;
+    height: .45rem;
+    border-right: 1.5px solid #b183ff;
+    border-bottom: 1.5px solid #b183ff;
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
   }
 
   .settings-content {

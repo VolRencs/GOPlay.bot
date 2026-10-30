@@ -98,6 +98,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const [loading, setLoading] = useState(true);
+  const [savingAll, setSavingAll] = useState(false);
 
   const pushToast = (text: string, tone: Toast["tone"]) => {
     if (!text) return;
@@ -230,14 +231,34 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
   const securityDirty=useMemo(()=>dirty(savedSecurity,{roles:ignoredRoleIds,channel:protectedChannelId}),[savedSecurity,ignoredRoleIds,protectedChannelId]);
   const isDirty=Boolean(guildId)&&(welcomeDraft.dirty||rulesDirty||securityDirty||loggingDraft.dirty||tempDraft.dirty||langDraft.dirty||musicDraft.dirty||levelsDraft.dirty||autoroleDraft.dirty);
   async function saveAllDirty():Promise<boolean>{let ok=true;if(welcomeDraft.dirty)ok=(await saveWelcome(false))&&ok;if(rulesDirty)ok=(await saveDirtyRules())&&ok;if(securityDirty)ok=(await saveSecurity(false))&&ok;if(loggingDraft.dirty)ok=(await saveLogging(false))&&ok;if(tempDraft.dirty)ok=(await saveTemp(false))&&ok;if(langDraft.dirty)ok=(await saveLang(false))&&ok;if(musicDraft.dirty)ok=(await saveMusic(false))&&ok;if(levelsDraft.dirty)ok=(await saveLevels(false))&&ok;if(autoroleDraft.dirty)ok=(await saveAutorole(false))&&ok;if(ok&&isDirty) notify("Все изменения сохранены.");return ok;}
+  function selectTab(next: TabKey) {
+    if (next === tab) return;
+    if (isDirty) setPendingNav({ tab: next });
+    else switchTab(next);
+  }
+  async function saveAllFromBar() {
+    if (savingAll) return;
+    setSavingAll(true);
+    try { await saveAllDirty(); } finally { setSavingAll(false); }
+  }
   function discardChanges(){welcomeDraft.reset();musicDraft.reset();loggingDraft.reset();tempDraft.reset();langDraft.reset();levelsDraft.reset();autoroleDraft.reset();if(savedRules)setRules(savedRules);if(savedSecurity){setIgnoredRoleIds(savedSecurity.roles);setProtectedChannelId(savedSecurity.channel);}notify("Несохранённые изменения сброшены.");}
   function applyNav(nav:NonNullable<typeof pendingNav>){if("tab" in nav)switchTab(nav.tab);else window.location.href=nav.href;setPendingNav(null);}
   async function saveAndGo(){if(!pendingNav)return;const ok=await saveAllDirty();if(ok)applyNav(pendingNav);else setPendingNav(null);}
   function discardAndGo(){if(!pendingNav)return;discardChanges();applyNav(pendingNav);}
   useEffect(()=>{if(!isDirty)return;const beforeUnload=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};const blockLinks=(event:MouseEvent)=>{const target=event.target;if(!(target instanceof Element))return;const link=target.closest("a[href]");if(link&&!event.defaultPrevented&&!event.metaKey&&!event.ctrlKey){event.preventDefault();setPendingNav({href:link.getAttribute("href")??"/"});}};window.addEventListener("beforeunload",beforeUnload);document.addEventListener("click",blockLinks,true);return()=>{window.removeEventListener("beforeunload",beforeUnload);document.removeEventListener("click",blockLinks,true);};},[isDirty]);
-  return <main className="settings-shell">
+  return <main className={isDirty ? "settings-shell is-dirty" : "settings-shell"}>
     <aside className="sidebar" aria-label="Настройки сервера">
       <a href="/dashboard" className="brand"><Bot size={22} /> GOPlay</a>
+      <label className="mobile-section-picker">
+        <span className="mobile-section-picker-label">Раздел</span>
+        <span className="mobile-section-select">
+          <select value={tab} onChange={event => selectTab(event.target.value as TabKey)} aria-label="Раздел настроек">
+            {TAB_GROUPS.map(group => <optgroup label={group.label} key={group.label}>
+              {group.keys.map(key => <option value={key} key={key}>{TAB_LABELS[key].nav}</option>)}
+            </optgroup>)}
+          </select>
+        </span>
+      </label>
       <div className="sidebar-groups">
         {TAB_GROUPS.map(group => (
           <section className="sidebar-group" key={group.label}>
@@ -250,7 +271,7 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
                   key={key}
                   className={tab === key ? "nav-item active" : "nav-item"}
                   aria-current={tab === key ? "page" : undefined}
-                  onClick={() => { if (key === tab) return; if (isDirty) setPendingNav({ tab: key }); else switchTab(key); }}
+                  onClick={() => selectTab(key)}
                 ><Icon size={18} />{TAB_LABELS[key].nav}</button>;
               })}
             </div>
@@ -299,7 +320,8 @@ export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId
       <div className="unsaved-float" role="status">
         <span className="warn-dot" aria-hidden="true"/>
         <span>Есть несохранённые изменения</span>
-        <button type="button" className="btn secondary" onClick={discardChanges}>Сбросить</button>
+        <button type="button" className="btn" disabled={savingAll} onClick={() => void saveAllFromBar()}>{savingAll ? "Сохраняем…" : "Сохранить"}</button>
+        <button type="button" className="btn secondary" disabled={savingAll} onClick={discardChanges}>Сбросить</button>
       </div>
     )}
     <ConfirmHost />
