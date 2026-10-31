@@ -4,14 +4,14 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.14.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.17.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord-бот и веб-панель управления сервером в одном репозитории, но в двух
 процессах под общим supervisor (Next.js + бот), с одной SQLite-базой. Стек
-(зафиксирован в `package.json`): Node **≥ 26**, pnpm **12.14.0**,
-Next.js **16.4.3**, React **19.3.1**, TypeScript **7.0.2**, нативное
-снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
+(версии в `package.json`, зафиксированы в `pnpm-lock.yaml`): Node **≥ 26**,
+pnpm **12.17.0**, Next.js **16.4.3**, React **19.3.1**, TypeScript **7.0.2**,
+нативное снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
 
 > Полная английская версия: [README.md](README.md).
 
@@ -50,7 +50,7 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Быстрый старт (локально)
 
-Требования: **Node ≥ 26**, **pnpm 12.14.0**, **ffmpeg с libopus**,
+Требования: **Node ≥ 26**, **pnpm 12.17.0**, **ffmpeg с libopus**,
 **yt-dlp** в PATH.
 
 ```bash
@@ -74,7 +74,7 @@ cp .env.example .env
 # - OAuth2 → Redirects → http://localhost:3000/api/auth/callback/discord
 
 # 5. Запуск (бот + веб через supervisor, лог — data/logs/bot.log)
-pnpm migrate:auth && pnpm dev
+pnpm dev
 # открыть http://localhost:3000
 ```
 

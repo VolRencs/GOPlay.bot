@@ -1,6 +1,11 @@
 node_modules/
 .next/
-.env
+.env*
+!.env.example
+next-env.d.ts
+cookies.txt
+*.pem
+*.key
 data/*
 !data/.gitkeep
 public/uploads/*

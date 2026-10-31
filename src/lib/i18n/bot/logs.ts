@@ -15,7 +15,7 @@ export const logTr = makeTr({
   beforeLabel: { ru: "До", en: "Before" },
   afterLabel: { ru: "После", en: "After" },
   contentLabel: { ru: "Содержание: {content}", en: "Content: {content}" },
-  attachmentsLabel: { ru: "Вложения:", en: "Attachments:" },
+  embedsLabel: { ru: "Эмбеды:", en: "Embeds:" },
   channelCreated: { ru: "Создан канал «{name}».", en: "Channel \"{name}\" created." },
   channelDeleted: { ru: "Удалён канал «{name}».", en: "Channel \"{name}\" deleted." },
   fieldChannel: { ru: "Канал", en: "Channel" },

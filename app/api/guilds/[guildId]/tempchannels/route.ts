@@ -3,7 +3,7 @@ import { guildRoute, isSnowflake, jsonError, readJson } from "#lib/guild-access.
 import { withTransaction } from "#db/database.ts";
 import { tempchannelQueries } from "#db/queries.ts";
 import { parseStringArray, stableJson } from "#lib/json.ts";
-import { clampUserLimit, type TempPresetRow } from "#lib/tempchannels.ts";
+import { clampUserLimit } from "#lib/tempchannels.ts";
 import { defaultTempConfig, fromDto as fromTempPresetDto, toDto as toTempPresetDto, type TempChannelConfigDto, type TempPutBody, type TempchannelsDto } from "#contracts/tempchannels.ts";
 import { stmt } from "#db/statements.ts";
 import { recordDashboardChange } from "#lib/dashboard-audit.ts";
@@ -22,12 +22,8 @@ function parseConfig(value: unknown): TempChannelConfigDto {
   };
 }
 
-function toJson(row: TempPresetRow) {
-  return toTempPresetDto(row);
-}
-
 export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<TempchannelsDto>({ presets: stmt.tempPresets.all(guildId).map(toJson) });
+  return NextResponse.json<TempchannelsDto>({ presets: stmt.tempPresets.all(guildId).map(toTempPresetDto) });
 });
 
 export const PUT = guildRoute(async (request, { guildId, user }) => {
@@ -50,7 +46,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const canonical = (p: { name: string; triggers: string[]; config: TempChannelConfigDto }) => stableJson({ name: p.name, triggers: p.triggers.toSorted(), config: { categoryId: p.config.categoryId, nameTemplate: p.config.nameTemplate, userLimit: p.config.userLimit, canRename: +p.config.canRename, canManageAccess: +p.config.canManageAccess, canClose: +p.config.canClose } });
   const existing = existingRows.map(row => canonical({ name: row.name, triggers: parseStringArray(row.trigger_channel_ids_json), config: { categoryId: row.category_id, nameTemplate: row.name_template, userLimit: row.user_limit, canRename: Boolean(row.can_rename), canManageAccess: Boolean(row.can_manage_access), canClose: Boolean(row.can_close) } }));
   if (stableJson(existing) === stableJson(presets.map(canonical))) {
-    return NextResponse.json({ ok: true, unchanged: true, presets: existingRows.map(toJson) });
+    return NextResponse.json({ ok: true, unchanged: true, presets: existingRows.map(toTempPresetDto) });
   }
   const timestamp = Date.now();
   withTransaction(() => {
@@ -64,5 +60,5 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   const changed = presets.filter(preset => { const was = existingByName.get(preset.name); return was !== undefined && was !== canonical(preset); }).map(preset => `«${preset.name}»`);
   const parts = [added.length ? `добавлены ${added.join(", ")}` : "", removed.length ? `удалены ${removed.join(", ")}` : "", changed.length ? `изменены ${changed.join(", ")}` : ""].filter(Boolean);
   recordDashboardChange(guildId, user, AUDIT_SECTION.tempchannels, `Шаблоны: ${parts.join("; ")}`);
-  return NextResponse.json({ ok: true, presets: stmt.tempPresets.all(guildId).map(toJson) });
+  return NextResponse.json({ ok: true, presets: stmt.tempPresets.all(guildId).map(toTempPresetDto) });
 });

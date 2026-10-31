@@ -14,10 +14,11 @@ export const welcomeQueries = {
     ["guild_id", "enabled", "channel_id", "message", "image_enabled", "image_config_json", "goodbye_enabled", "goodbye_channel_id", "goodbye_message", "updated_at"],
     ["guild_id"],
   ),
-  backgroundUpsert: upsert<Pick<WelcomeSettingsRow, "guild_id" | "background_path" | "updated_at">>(
+  backgroundUpsert: upsert<WelcomeSettingsRow>(
     "welcome_settings",
-    ["guild_id", "background_path", "updated_at"],
+    ["guild_id", "enabled", "channel_id", "message", "image_enabled", "image_config_json", "goodbye_enabled", "goodbye_channel_id", "goodbye_message", "background_path", "updated_at"],
     ["guild_id"],
+    ["background_path=excluded.background_path", "updated_at=excluded.updated_at"],
   ),
 };
 

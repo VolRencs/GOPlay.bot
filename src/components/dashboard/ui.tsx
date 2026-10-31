@@ -242,16 +242,16 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
   );
 }
 
-export function useDismissOnOutside<T extends HTMLElement>(ref: RefObject<T | null>, open: boolean, onClose: () => void, eventType: "mousedown" | "pointerdown" = "pointerdown"): void {
+export function useDismissOnOutside<T extends HTMLElement>(ref: RefObject<T | null>, open: boolean, onClose: () => void): void {
   const close = useEffectEvent(onClose);
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: Event) => { if (!ref.current?.contains(event.target as Node)) close(); };
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
-    document.addEventListener(eventType, onPointerDown);
+    document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
-    return () => { document.removeEventListener(eventType, onPointerDown); document.removeEventListener("keydown", onKeyDown); };
-  }, [ref, open, eventType]);
+    return () => { document.removeEventListener("pointerdown", onPointerDown); document.removeEventListener("keydown", onKeyDown); };
+  }, [ref, open]);
 }
 
 export function useObjectUrl(file: File | null) {

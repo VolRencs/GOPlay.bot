@@ -7,7 +7,6 @@ import { useRegisterChanges } from "./DashboardContext.tsx";
 import type { PanelFail, PanelNotify } from "./types.ts";
 
 type SettingsTabOptions<TGet, TValue> = {
-  guildId: string;
   endpoint: string;
   initial: TValue;
   fromGet: (data: TGet) => TValue;

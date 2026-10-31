@@ -16,15 +16,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: package.json
+          node-version: 26.x
           cache: pnpm
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
-          ffmpeg -encoders | grep opus
-          pip install -U yt-dlp --break-system-packages || pip3 install -U yt-dlp --break-system-packages
 
       - name: Install project dependencies
         run: pnpm install --frozen-lockfile

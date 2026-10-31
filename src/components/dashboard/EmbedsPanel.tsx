@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Image, Trash2, User } from "lucide-react";
 import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, asFields, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
-import { apiMutate, apiSend } from "./api.ts";
+import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type EmbedPayload } from "./types.ts";
@@ -34,11 +34,7 @@ export function EmbedsPanel() {
   const channels = resources?.channels ?? [];
   const { data, setData, reload } = useApiResource<EmbedsGetDto>(
     Boolean(guildId),
-    async signal => {
-      const sent = await apiSend<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, { signal }, "Не удалось загрузить сохранённые сообщения.");
-      if (!sent.ok) throw new Error(sent.error);
-      return sent.data;
-    },
+    signal => apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
     [guildId],
     { embeds: [], sendings: [] },
   );

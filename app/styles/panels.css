@@ -89,7 +89,6 @@
 
 .field-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto auto;
   gap: .5rem;
   align-items: end;
 }
@@ -598,7 +597,7 @@
   color: var(--code);
 }
 
-/* Music settings: three clear groups instead of one long form. */
+/* Music settings: grouped sections instead of one long form. */
 .music-settings-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

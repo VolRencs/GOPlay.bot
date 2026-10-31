@@ -22,7 +22,6 @@ function nextRewardLevel(rewards: LevelRewardDto[]): number | null {
 export function LevelsPanel() {
   const { guildId, resources, notify, fail } = useDashboard();
   const { value: levels, setValue, loading, save } = useSettingsTab<LevelsDto, LevelsDto>({
-    guildId,
     endpoint: `/api/guilds/${guildId}/levels`,
     initial: { settings: { ...levelDefaultsDto, ignoredChannelIds: [], ignoredRoleIds: [] }, rewards: [] },
     fromGet: normalize,

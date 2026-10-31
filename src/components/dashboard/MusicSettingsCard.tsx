@@ -16,7 +16,6 @@ const leavePresets = [
 export function MusicSettingsCard() {
   const { guildId, resources, notify, fail } = useDashboard();
   const { value, setValue, loading, save } = useSettingsTab<MusicDto, MusicDto>({
-    guildId,
     endpoint: `/api/guilds/${guildId}/music`,
     initial: musicDefaults,
     fromGet: normalize,

@@ -16,7 +16,6 @@ const welcomeVariables: [string, string][] = [["{user}", "упоминание"]
 export function WelcomeSettings() {
   const { guildId, resources, notify, fail } = useDashboard();
   const { value, setValue, patch, loading, save } = useSettingsTab<WelcomeDto, WelcomeDto>({
-    guildId,
     endpoint: `/api/guilds/${guildId}/welcome`,
     initial: { ...welcomeDefaults },
     fromGet: data => ({ ...welcomeDefaults, ...data }),

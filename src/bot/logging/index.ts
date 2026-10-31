@@ -32,7 +32,7 @@ const settingsCache = ttlCacheSync<string, { channelId: string | null; categorie
 
 // Очередь на канал + один отправитель: burst событий не упирается в rate
 // limit и не теряет логи — фейлы ретраятся и только потом репортятся.
-const queues = new Map<string, { embed: EmbedBuilder }[]>();
+const queues = new Map<string, EmbedBuilder[]>();
 const draining = new Set<string>();
 const MAX_ATTEMPTS = 3;
 // Отрицательный результат кэшируется ТОЛЬКО для «канал действительно не
@@ -59,7 +59,7 @@ export async function resolveChannel(channelId: string): Promise<SendableChannel
 
 function enqueueLog(channelId: string, embed: EmbedBuilder) {
   const list = queues.get(channelId) ?? [];
-  list.push({ embed });
+  list.push(embed);
   queues.set(channelId, list);
   void drainChannel(channelId);
 }
@@ -90,7 +90,7 @@ async function drainChannel(channelId: string) {
           break;
         }
         try {
-          await channel.send({ embeds: batch.map(item => item.embed) });
+          await channel.send({ embeds: batch });
           sent = true;
           break;
         } catch (error) {

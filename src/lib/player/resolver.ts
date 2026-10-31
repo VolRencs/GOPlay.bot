@@ -218,7 +218,7 @@ function trackFromFullMeta(meta: Record<string, unknown>, fallbackQuery: string,
   return track;
 }
 
-export type ResolveResult = { tracks: Track[]; error: string | null; playlist: boolean };
+type ResolveResult = { tracks: Track[]; error: string | null; playlist: boolean };
 
 /** Ссылка → треки: плейлист до MAX_PLAYLIST позиций, результат кэшируется.
  *  playlistLimit=1 используется, когда сервер разрешает только первый трек. */

@@ -240,7 +240,7 @@ code {
   gap: .55rem;
 }
 
-/* Skeleton and empty-state polish */
+/* Empty-state polish */
 .empty-state .tile {
   margin-bottom: .2rem;
 }

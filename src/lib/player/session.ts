@@ -68,7 +68,7 @@ export const hasCurrent = (guildId: string): boolean => sessions.get(guildId)?.c
 export const queueSizeOf = (guildId: string): number => sessions.get(guildId)?.queue.length ?? 0;
 
 /** Фоновая гидрация следующего трека: старт без ожидания yt-dlp. */
-export function prefetchNext(guildId: string): void {
+function prefetchNext(guildId: string): void {
   const next = sessions.get(guildId)?.queue[0];
   if (next) hydrateTrackMeta(next, guildId);
 }

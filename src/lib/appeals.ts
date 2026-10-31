@@ -8,7 +8,8 @@ import type { Locale } from "./i18n/core.ts";
 import { guildLang } from "./i18n/bot.ts";
 import { trAppeals } from "./i18n/bot/appeals.ts";
 
-import type { AppealStatus } from "../contracts/appeals.ts";
+import type { AppealSource, AppealStatus } from "../contracts/appeals.ts";
+import type { AppealPunishmentRow, AppealRow } from "../db/rows.ts";
 export type { AppealStatus } from "../contracts/appeals.ts";
 export const appealStatuses = ["pending", "reviewing", "approved", "rejected", "closed", "declined"] as const;
 export const reviewActions = ["reviewing", "approved", "rejected", "closed"] as const;
@@ -18,11 +19,11 @@ type ReviewAction = (typeof reviewActions)[number];
 export const appealPunishmentTypes = ["warn", "timeout", "ban"] as const;
 export type AppealPunishmentType = (typeof appealPunishmentTypes)[number];
 
-type Punishment = { id: number; guild_id: string; user_id: string; type: string; reason: string | null; created_at: number };
+type Punishment = AppealPunishmentRow;
 // id — глобальный PK, number — локальная для гильдии нумерация (1,2,3...),
 // берётся из guilds.appeal_counter.
-type Appeal = { id: number; number: number; guild_id: string; user_id: string; punishment_id: number; type: string; reason: string; moderator_comment: string | null; status: AppealStatus; created_at: number; updated_at: number; reviewed_by: string | null; reviewed_at: number | null };
-export type AppealView = Appeal & { punishment_reason: string | null; punishment_created_at: number };
+type Appeal = AppealRow;
+type AppealView = AppealSource;
 
 type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 type ReviewResultValue = { ok: true; value: ReviewResult } | { ok: false; error: string; status: number };

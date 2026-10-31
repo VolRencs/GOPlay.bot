@@ -20,9 +20,10 @@ code; there are no separate LTS releases yet.
 
 ## What is already in place
 
-- All dashboard API routes go through `src/lib/guild-access.ts`
-  (`requireUser`/`requireAdmin`/`withGuild`): only server managers get access,
-  admin panel only for `ADMIN_DISCORD_IDS`.
+- All dashboard API routes go through the public wrappers (`guildRoute`/`adminRoute`
+  from `src/lib/guild-access.ts`, settings via `settingsPutRoute` from
+  `src/lib/settings-route.ts`): only server managers get access, admin panel only
+  for `ADMIN_DISCORD_IDS`.
 - Dashboard uploads for embeds/events are isolated per `guildId`; welcome backgrounds
   are intentionally public by design. Filenames are sanitized (`src/lib/uploads.ts`),
   request body limit + `client_max_body_size 8m` in nginx.

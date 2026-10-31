@@ -7,10 +7,10 @@ import { safeJson, stableJson } from "#lib/json.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { channelRef } from "#lib/mentions.ts";
-import { cleanupOrphanedFiles, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
+import { cleanupUnusedUploads, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
 import { logger } from "#lib/logger.ts";
 import { BOT_TOKEN_ERROR } from "#lib/constants.ts";
-import { DEFAULT_EMBED_COLOR } from "#lib/colors.ts";
+import { colorNumberToHex, DEFAULT_EMBED_COLOR } from "#lib/colors.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
 import type { EmbedPayload } from "#contracts/dashboard.ts";
 import { sendingToDto, toDto as toEmbedDto, type EmbedsGetDto } from "#contracts/embeds.ts";
@@ -24,10 +24,9 @@ function draftImageNames(payloadJson:string,guildId:string) {
 }
 
 async function cleanupUnusedDraftImages(guildId:string) {
-  const referenced=new Set(embedsQueries.payloads.all(guildId).flatMap(row=>draftImageNames(String((row as {payload_json:string}).payload_json),guildId)));
   // Тот же часовой minAge, что у events: файл мог быть записан параллельным
   // сохранением, которое ещё не закоммитило ссылку в БД.
-  await cleanupOrphanedFiles(embedUploadsDir(guildId), referenced, 60 * 60_000);
+  await cleanupUnusedUploads(embedUploadsDir(guildId), embedsQueries.payloads.all(guildId), row => draftImageNames(row.payload_json, guildId), 60 * 60_000);
 }
 
 function payloadDisplay(payloadJson: string): Record<string, unknown> {
@@ -40,7 +39,7 @@ function payloadDisplay(payloadJson: string): Record<string, unknown> {
   return {
     "Заголовок": typeof p.title === "string" ? p.title : null,
     "Описание": typeof p.description === "string" ? p.description : null,
-    "Цвет": typeof p.color === "number" ? `#${p.color.toString(16).padStart(6, "0")}` : null,
+    "Цвет": typeof p.color === "number" ? colorNumberToHex(p.color) : null,
     "Футер": typeof footer?.text === "string" ? footer.text : null,
     "Автор": typeof author?.name === "string" ? author.name : null,
     "Изображение": typeof image?.url === "string" ? image.url : null,

@@ -107,7 +107,7 @@ export function registerLoggingEvents(client: Client) {
     let details = t("channelField", { channel: channelRef(message.channelId) });
     if (content) details += `\n${t("contentLabel", { content: content.slice(0, 500) })}`;
     const embeds = message.embeds.map(embed => renderEmbed(embed, lang)).filter(Boolean);
-    if (embeds.length) details += `\n${t("attachmentsLabel")}\n${embeds.join("\n—\n").slice(0, 800)}`;
+    if (embeds.length) details += `\n${t("embedsLabel")}\n${embeds.join("\n—\n").slice(0, 800)}`;
     logAction({ guildId: message.guild.id, type: "message_delete", targetId: authorId, moderatorId: actor, details });
   });
 

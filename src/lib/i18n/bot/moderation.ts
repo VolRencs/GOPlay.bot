@@ -18,5 +18,4 @@ export const trModeration = makeTr({
   logPurge: { ru: "Удалено сообщений: {n}", en: "Messages deleted: {n}" },
   logWarnClear: { ru: "Снято предупреждений: {n}", en: "Warnings cleared: {n}" },
   logTimeout: { ru: "Тайм-аут: {min} мин. Причина: {reason}", en: "Timeout: {min} min. Reason: {reason}" },
-  logReason: { ru: "Причина: {reason}", en: "Reason: {reason}" },
 });

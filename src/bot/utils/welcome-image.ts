@@ -115,7 +115,7 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
 async function backgroundFingerprint(path?: string | null): Promise<string> {
   if (!path || !/^\/uploads\/welcome\/\d{15,22}-welcome\.(png|jpg|webp)$/.test(path)) return "none";
   const candidate = resolve(PUBLIC_ROOT, "." + path);
-  if (!(candidate.startsWith(WELCOME_ROOT + "/") || candidate === WELCOME_ROOT)) return "none";
+  if (!candidate.startsWith(WELCOME_ROOT + "/")) return "none";
   try {
     const info = await stat(candidate);
     return `${info.mtimeMs}:${info.size}`;

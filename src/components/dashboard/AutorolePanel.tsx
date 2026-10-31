@@ -8,7 +8,6 @@ import { useSettingsTab } from "./useSettingsTab.ts";
 export function AutoroleSettings() {
   const { guildId, resources, notify, fail } = useDashboard();
   const { value, setValue, loading, save } = useSettingsTab<AutoroleDto, AutoroleDto>({
-    guildId,
     endpoint: `/api/guilds/${guildId}/autorole`,
     initial: { enabled: false, roleId: null },
     fromGet: data => data,

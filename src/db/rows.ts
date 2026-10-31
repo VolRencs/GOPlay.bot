@@ -8,7 +8,6 @@ export type DataVersionRow = { data_version: number };
 
 export type AutomodRuleCacheRow = {
   kind: RuleKind;
-  enabled: number;
   action_json: string;
   threshold_json: string;
   window_seconds: number;

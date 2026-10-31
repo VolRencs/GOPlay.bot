@@ -1,4 +1,4 @@
-import type { LevelReward, LevelSettings, NotifyMode } from "../lib/levels.ts";
+import { levelDefaults, levelRanges, type LevelReward, type LevelSettings, type NotifyMode } from "../lib/levels.ts";
 
 export type LevelSettingsDto = {
   enabled: boolean;
@@ -21,26 +21,26 @@ export type LevelsDto = { settings: LevelSettingsDto; rewards: LevelRewardDto[] 
 export type LevelsDomain = { settings: LevelSettings; rewards: LevelReward[] };
 
 export const levelRangesDto = {
-  xpPerMessage: { min: 0, max: 100 },
-  messageCooldownSeconds: { min: 0, max: 3600 },
-  minMessageLength: { min: 0, max: 200 },
-  xpPerVoiceMinute: { min: 0, max: 100 },
-  baseXp: { min: 10, max: 100_000 },
-  growthPercent: { min: 0, max: 100 },
+  xpPerMessage: levelRanges.xp_per_message,
+  messageCooldownSeconds: levelRanges.message_cooldown_seconds,
+  minMessageLength: levelRanges.min_message_length,
+  xpPerVoiceMinute: levelRanges.xp_per_voice_minute,
+  baseXp: levelRanges.base_xp,
+  growthPercent: levelRanges.growth_percent,
 } as const;
 
 export const levelDefaultsDto: LevelSettingsDto = {
-  enabled: false,
-  xpPerMessage: 10,
-  messageCooldownSeconds: 60,
-  minMessageLength: 0,
-  xpPerVoiceMinute: 5,
-  baseXp: 100,
-  growthPercent: 15,
-  ignoredChannelIds: [],
-  ignoredRoleIds: [],
-  notifyMode: "channel",
-  notifyChannelId: null,
+  enabled: levelDefaults.enabled,
+  xpPerMessage: levelDefaults.xp_per_message,
+  messageCooldownSeconds: levelDefaults.message_cooldown_seconds,
+  minMessageLength: levelDefaults.min_message_length,
+  xpPerVoiceMinute: levelDefaults.xp_per_voice_minute,
+  baseXp: levelDefaults.base_xp,
+  growthPercent: levelDefaults.growth_percent,
+  ignoredChannelIds: [...levelDefaults.ignored_channel_ids],
+  ignoredRoleIds: [...levelDefaults.ignored_role_ids],
+  notifyMode: levelDefaults.notify_mode,
+  notifyChannelId: levelDefaults.notify_channel_id,
 };
 
 export function toDto(domain: LevelsDomain): LevelsDto {

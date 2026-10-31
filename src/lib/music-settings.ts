@@ -4,11 +4,11 @@ import { parseStringArray } from "./json.ts";
 import { clampMusicSeconds } from "./labels.ts";
 import { DEFAULT_MUSIC_LEAVE_SECONDS } from "./constants.ts";
 import type { MusicDomain } from "../contracts/music.ts";
+import type { MusicSettingsRow } from "../db/rows.ts";
 
-export type MusicSettings = MusicDomain;
+type MusicSettings = MusicDomain;
 
-function loadMusicSettings(guildId: string): MusicSettings {
-  const row = stmt.musicSettings.get(guildId);
+export function musicSettingsFromRow(row: MusicSettingsRow | undefined): MusicSettings {
   return {
     command_channel_id: row?.command_channel_id ?? null,
     voice_channel_ids: parseStringArray(row?.voice_channel_ids_json),
@@ -19,6 +19,10 @@ function loadMusicSettings(guildId: string): MusicSettings {
     playlists_enabled: row?.playlists_enabled !== 0,
     playlist_role_ids: parseStringArray(row?.playlist_role_ids_json),
   };
+}
+
+function loadMusicSettings(guildId: string): MusicSettings {
+  return musicSettingsFromRow(stmt.musicSettings.get(guildId));
 }
 
 const settingsCache = ttlCacheSync<string, MusicSettings>(loadMusicSettings, 10_000);

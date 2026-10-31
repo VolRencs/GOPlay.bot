@@ -63,7 +63,7 @@ async function handleModal(i: ModalSubmitInteraction) {
 
 // Отправляется сразу после записи наказания (команды, автомод): юзер ещё в
 // гильдии, DM доставаем; сбой (закрытые DM) проглатывается — наказание в силе.
-export function offerAppeal(client: Client, input: { punishmentId: number; guildId: string; guildName: string; userId: string; type: string; reason: string | null; appealType: AppealPunishmentType }) {
+export function offerAppeal(client: Client, input: { punishmentId: number; guildId: string; guildName: string; userId: string; reason: string | null; appealType: AppealPunishmentType }) {
   const lang = guildLang(input.guildId);
   const t = trFor(trAppeals, lang);
   // Тип наказания, а не источник ("automod"): иначе юзер видит «Автомодерация»

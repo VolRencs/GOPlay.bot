@@ -9,7 +9,7 @@ import { eventStatusMetaM } from "#lib/labels.ts";
 import { guildLang } from "#lib/i18n/bot.ts";
 import { BOT_TOKEN_ERROR, buttonStyleId } from "#lib/constants.ts";
 import { eventQueries } from "#db/queries.ts";
-import { cleanupOrphanedFiles, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
+import { cleanupUnusedUploads, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
 import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "#lib/events.ts";
 import type { EventListDto } from "#contracts/events.ts";
@@ -24,8 +24,7 @@ function eventImageNames(embedJson: string, guildId: string) {
 }
 
 async function cleanupUnusedEventImages(guildId: string) {
-  const referenced = new Set(eventQueries.embeds.all(guildId).flatMap(row => eventImageNames(String((row as { embed_json: string }).embed_json), guildId)));
-  await cleanupOrphanedFiles(eventUploadsDir(guildId), referenced, 60 * 60_000);
+  await cleanupUnusedUploads(eventUploadsDir(guildId), eventQueries.embeds.all(guildId), row => eventImageNames(row.embed_json, guildId), 60 * 60_000);
 }
 
 type SendResult = { id: string } | { status: number };

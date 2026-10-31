@@ -144,11 +144,6 @@
 }
 
 
-.sidebar nav {
-  display: grid;
-  gap: .25rem;
-}
-
 .settings-content {
   width: 100%;
   max-width: 1280px;

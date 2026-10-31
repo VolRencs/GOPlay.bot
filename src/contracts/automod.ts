@@ -17,9 +17,8 @@ export type AutomodGetDto = {
   protectedChannelId: string | null;
 };
 
-export type AutomodRuleInput = AutomodRuleDto;
 export type AutomodSecurityInput = { kind: "security"; ignoredRoleIds: string[]; protectedChannelId: string | null };
-export type AutomodInput = AutomodRuleInput | AutomodSecurityInput;
+export type AutomodInput = AutomodRuleDto | AutomodSecurityInput;
 
 export type AutomodRuleDomain = {
   kind: string;
@@ -30,16 +29,7 @@ export type AutomodRuleDomain = {
   escalation: number;
 };
 
-type AutomodRuleSource = {
-  kind: string;
-  enabled: number;
-  action_json: string;
-  threshold_json: string;
-  window_seconds: number;
-  escalation: number;
-};
-
-export function toDto(row: AutomodRuleSource): AutomodRuleDto {
+export function toDto(row: AutomodRuleDomain): AutomodRuleDto {
   const parsed = safeJson<unknown>(row.threshold_json, {});
   return {
     kind: row.kind,

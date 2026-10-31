@@ -27,8 +27,6 @@
   --code: #cdd9ff;
 
   /* Surfaces */
-  --surface: #120a22;
-  --surface-raised: #1a0f30;
   --panel-solid: #160b2a;
   --panel-inset: rgba(13, 8, 27, .58);
   --field: rgba(11, 7, 23, .78);
@@ -48,34 +46,15 @@
   --r-2: 9px;
   --r-3: 12px;
   --r-4: 16px;
-  --r-5: 20px;
   --r-full: 999px;
-
-  /* Spacing */
-  --space-1: .25rem;
-  --space-2: .5rem;
-  --space-3: .75rem;
-  --space-4: 1rem;
-  --space-5: 1.25rem;
-  --space-6: 1.5rem;
-  --space-8: 2rem;
-  --space-10: 2.5rem;
-  --space-12: 3rem;
 
   /* Typography */
   --font-ui: "Onest", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
-  --text-xs: .72rem;
-  --text-sm: .82rem;
-  --text-base: .95rem;
-  --text-lg: 1.05rem;
-  --text-xl: 1.25rem;
 
   /* Elevation */
   --shadow-btn: 0 8px 20px rgba(133, 31, 230, .22);
   --shadow-card: 0 14px 45px rgba(0, 0, 0, .18);
   --shadow-pop: 0 18px 44px rgba(4, 2, 16, .55);
-  --shadow-soft: 0 1px 0 rgba(255, 255, 255, .04) inset;
 
   /* Motion */
   --t: .18s ease;
@@ -84,8 +63,6 @@
 
   /* Layout */
   --container: 1240px;
-  --sidebar: 252px;
-  --content-max: 1120px;
 
   /* Status */
   --tone-ok-bg: rgba(35, 160, 90, .18);

@@ -4,13 +4,14 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.14.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.17.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord bot and server-management web dashboard in a single repository, run as
 two supervised processes (Next.js + bot) sharing one SQLite database. Stack
-(pinned in `package.json`): Node **≥ 26**, pnpm **12.14.0**, Next.js **16.4.3**,
-React **19.3.1**, TypeScript **7.0.2**, Node's native TypeScript type stripping and
+(versions in `package.json`, locked in `pnpm-lock.yaml`): Node **≥ 26**,
+pnpm **12.17.0**, Next.js **16.4.3**, React **19.3.1**, TypeScript **7.0.2**,
+Node's native TypeScript type stripping and
 `node:sqlite` (no separate DB driver).
 
 ## Features
@@ -48,7 +49,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Node ≥ 26**, **pnpm 12.14.0**, **ffmpeg with libopus**,
+Requirements: **Node ≥ 26**, **pnpm 12.17.0**, **ffmpeg with libopus**,
 **yt-dlp** in PATH.
 
 ```bash
@@ -71,8 +72,8 @@ cp .env.example .env
 # - Bot → Reset Token → enable the Server Members and Message Content intents
 # - OAuth2 → Redirects → http://localhost:3000/api/auth/callback/discord
 
-# 5. Run (bot + web in one process, log at data/logs/bot.log)
-pnpm migrate:auth && pnpm dev
+# 5. Run (bot + web under supervisor, log at data/logs/bot.log)
+pnpm dev
 # open http://localhost:3000
 ```
 

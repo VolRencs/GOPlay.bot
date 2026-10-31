@@ -6,11 +6,11 @@
 
 ## Стек и команды
 
-- Node ≥ 26, pnpm 12.14.0, ffmpeg с libopus, yt-dlp в PATH.
+- Node ≥ 26, pnpm 12.17.0, ffmpeg с libopus, yt-dlp в PATH.
 - `pnpm i --frozen-lockfile` — установка.
 - `cp .env.example .env` — заполнить `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).
-- `pnpm migrate:auth && pnpm dev` — запуск (бот + веб, `http://localhost:3000`).
+- `pnpm dev` — запуск (бот + веб под supervisor, `http://localhost:3000`).
 - `pnpm check` (`next typegen && tsc --noEmit`) и `pnpm test` (`node --test test/*.test.ts`) —
   обязательны перед каждым PR. CI выполняет то же самое плюс `pnpm build`.
 
@@ -33,7 +33,7 @@
   (применяется автоматически через `src/db/database.ts`, таблица `_migrations`).
   Таблицы better-auth трогать нельзя — ими управляет `scripts/migrate-auth.ts`.
 - API дашборда: `app/api/guilds/[guildId]/*/route.ts`. Любая новая точка обязана
-  идти через проверки из `src/lib/guild-access.ts` (`requireUser`/`guildRoute`)
+  идти через публичные обёртки из `src/lib/guild-access.ts` (`guildRoute`/`adminRoute`)
   и писать в журнал через `src/lib/dashboard-audit.ts`, где это уместно.
 - Панели дашборда: `src/components/dashboard/*.tsx` + типы в `types.ts`.
 - Музыка (`src/lib/player/`):Resolver не выходит за allowlist YouTube-доменов;

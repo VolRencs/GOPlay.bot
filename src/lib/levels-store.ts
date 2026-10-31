@@ -2,6 +2,7 @@ import { stmt } from "../db/statements.ts";
 import { clampNumber } from "./constants.ts";
 import { parseStringArray } from "./json.ts";
 import { levelDefaults, levelRanges, notifyModes, type LevelReward, type LevelSettings } from "./levels.ts";
+import type { LevelSettingsRow } from "../db/rows.ts";
 
 // Доступ к БД системы уровней: только серверная сторона (бот и API-роут).
 // Клиентская панель импортирует чистый levels.ts без node:sqlite.
@@ -9,8 +10,7 @@ import { levelDefaults, levelRanges, notifyModes, type LevelReward, type LevelSe
 const clampInt = (value: unknown, fallback: number, range: { min: number; max: number }): number => clampNumber(value, fallback, range.min, range.max, "integer");
 
 /** Единый парсер настроек для бота и API: клампы те же, что и при записи. */
-export function levelSettingsFor(guildId: string): LevelSettings {
-  const row = stmt.levelSettings.get(guildId);
+export function levelSettingsFromRow(row: LevelSettingsRow | undefined): LevelSettings {
   if (!row) return { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] };
   return {
     enabled: Boolean(row.enabled),
@@ -25,6 +25,10 @@ export function levelSettingsFor(guildId: string): LevelSettings {
     notify_mode: notifyModes.find(value => value === row.notify_mode) ?? levelDefaults.notify_mode,
     notify_channel_id: typeof row.notify_channel_id === "string" ? row.notify_channel_id : null,
   };
+}
+
+export function levelSettingsFor(guildId: string): LevelSettings {
+  return levelSettingsFromRow(stmt.levelSettings.get(guildId));
 }
 
 export function levelRewardsFor(guildId: string): LevelReward[] {

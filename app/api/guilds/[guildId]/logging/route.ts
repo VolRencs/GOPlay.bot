@@ -2,13 +2,13 @@ import { NextResponse } from "next/server.js";
 import { guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
 import { loggingQueries } from "#db/queries.ts";
 import { logKeys } from "#lib/labels.ts";
-import { fromDto as fromLoggingDto, toDto as toLoggingDto, type LoggingDto } from "#contracts/logging.ts";
+import { fromDto as fromLoggingDto, type LoggingDto } from "#contracts/logging.ts";
 import { settingsPutRoute } from "#lib/settings-route.ts";
 import { loggingState, loggingView } from "#lib/settings-views.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 
 export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<LoggingDto>(toLoggingDto(loggingState(guildId).state));
+  return NextResponse.json<LoggingDto>(loggingState(guildId).state);
 });
 
 export const PUT = settingsPutRoute<LoggingDto>({

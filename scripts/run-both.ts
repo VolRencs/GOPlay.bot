@@ -3,8 +3,9 @@ import { spawn, type ChildProcess } from "node:child_process";
 const mode = process.argv[2];
 if (mode !== "dev" && mode !== "start") throw new Error("run-both: expected dev|start");
 
+const nextArgs = mode === "start" ? [mode, "-H", "127.0.0.1"] : [mode];
 const children: ChildProcess[] = [
-  spawn("node_modules/.bin/next", [mode], { stdio: "inherit" }),
+  spawn("node_modules/.bin/next", nextArgs, { stdio: "inherit" }),
   spawn(process.execPath, ["--env-file=.env", "src/bot/index.ts"], { stdio: "inherit" }),
 ];
 

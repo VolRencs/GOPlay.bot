@@ -39,7 +39,7 @@ export function discordAccountOf(userId: string) {
 
 // Discord-токен связанного аккаунта не выдался (истёк/отозван): нужен
 // повторный вход, а не 502 «обновите страницу».
-export class DiscordAuthError extends Error {}
+class DiscordAuthError extends Error {}
 
 function guildsRequest(accessToken: string): Promise<Response> {
   return fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
@@ -168,7 +168,7 @@ export async function resolveSession() {
 
 // Общий гейт сессии + allowlist для списка серверов и всех guild-роутов:
 // ни одна точка входа не открывает панель без логина и allowlist.
-export async function requireUser() {
+async function requireUser() {
   const resolved = await resolveSession();
   if (!resolved) return { ok: false as const, error: "Unauthorized", status: 401 };
   // resolved.user.id — внутренний id Better Auth, а allowlist хранит

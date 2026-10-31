@@ -5,6 +5,12 @@ export const embedUploadsDir = (guildId: string) => join(process.cwd(), "data", 
 export const embedUploadPrefix = (guildId: string) => `/uploads/embeds/${guildId}/`;
 export const eventUploadsDir = (guildId: string) => join(process.cwd(), "data", "uploads", "events", guildId);
 export const eventUploadPrefix = (guildId: string) => `/uploads/events/${guildId}/`;
+export const welcomeUploadsDir = () => join(process.cwd(), "public", "uploads", "welcome");
+export const WELCOME_UPLOAD_PREFIX = "/uploads/welcome/";
+
+export const UPLOAD_CONTENT_TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };
+export const WELCOME_CONTENT_TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", webp: "image/webp" };
+export const WELCOME_IMAGE_EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
 // Имя файла из локального URL: null, если URL не из этого каталога или содержит
 // разделители путей. Единая проверка для uploads/assets/бот-переотправки.
@@ -24,6 +30,12 @@ export function extractFilenames(prefix: string, urls: (string | null | undefine
   }))];
 }
 
+export async function cleanupUnusedUploads<T>(dir: string, rows: Iterable<T>, filenamesOf: (row: T) => string[], minAgeMs = 0): Promise<void> {
+  const referenced = new Set<string>();
+  for (const row of rows) for (const filename of filenamesOf(row)) referenced.add(filename);
+  await cleanupOrphanedFiles(dir, referenced, minAgeMs);
+}
+
 export async function cleanupOrphanedFiles(dir: string, referenced: Set<string>, minAgeMs = 0): Promise<void> {
   try {
     const now = Date.now();
@@ -41,13 +53,17 @@ export async function cleanupOrphanedFiles(dir: string, referenced: Set<string>,
   } catch { /* directory may not exist */ }
 }
 
+export async function deleteWelcomeBackgrounds(guildId: string, keep?: string) {
+  const dir = welcomeUploadsDir();
+  const files = await readdir(dir).catch(() => [] as string[]);
+  await Promise.all(files.filter(name => name.startsWith(`${guildId}-welcome.`) && name !== keep).map(name => unlink(join(dir, name)).catch(() => null)));
+}
+
 // Локальные файлы сервера: вложения embeds/events и фон приветствия.
 export async function deleteGuildFiles(guildId: string) {
   await rm(embedUploadsDir(guildId), { recursive: true, force: true }).catch(() => null);
   await rm(eventUploadsDir(guildId), { recursive: true, force: true }).catch(() => null);
-  const dir = join(process.cwd(), "public", "uploads", "welcome");
-  const files = await readdir(dir).catch(() => [] as string[]);
-  await Promise.all(files.filter(name => name.startsWith(`${guildId}-welcome.`)).map(name => unlink(join(dir, name)).catch(() => null)));
+  await deleteWelcomeBackgrounds(guildId);
 }
 
 /** Ранний отказ по размеру запроса: formData()/json() буферизуют всё тело в

@@ -18,14 +18,14 @@ import { musicTr } from "../../lib/i18n/bot/music.ts";
 import { userRef } from "../../lib/mentions.ts";
 
 /** Компактная строка трека: панель не должна падать от длинного названия YouTube. */
-export const QUEUE_PAGE_SIZE = 10;
+const QUEUE_PAGE_SIZE = 10;
 
 export const trackLabel = (title: string, limit = 180): string => {
   const flat = title.replace(/\s+/g, " ").trim();
   return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat;
 };
 
-export type MusicPanelState = {
+type MusicPanelState = {
   current: Track;
   queuePreview: Track[];
   queueLength: number;
@@ -41,7 +41,7 @@ const progressBar = (position: number, duration: number): string => {
   return `${"▰".repeat(filled)}${"▱".repeat(width - filled)}`;
 };
 
-export type QueueView = { content: string; page: number; pages: number };
+type QueueView = { content: string; page: number; pages: number };
 
 export function queueView(guildId: string, lang: Locale, requestedPage = 0): QueueView {
   const t = trFor(musicTr, lang);

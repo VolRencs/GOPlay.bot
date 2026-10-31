@@ -9,7 +9,6 @@ import { CardHeader, SaveButton, SectionLoading, channelOptions, Select, useAsyn
 export function LoggingSettings() {
   const { guildId, resources, notify, fail } = useDashboard();
   const { value, setValue, loading, save } = useSettingsTab<LoggingDto, LoggingDto>({
-    guildId,
     endpoint: `/api/guilds/${guildId}/logging`,
     initial: loggingDefaults,
     fromGet: fromDto,

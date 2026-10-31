@@ -1,4 +1,5 @@
 import { parseStringArray } from "../lib/json.ts";
+import { DEFAULT_SETTINGS } from "../lib/tempchannels.ts";
 
 export type TempChannelConfigDto = {
   categoryId: string | null;
@@ -33,12 +34,12 @@ export type TempPresetSource = {
 };
 
 export const defaultTempConfig: TempChannelConfigDto = {
-  categoryId: null,
-  nameTemplate: "🔊 {username}'s room",
-  userLimit: 0,
-  canRename: true,
-  canManageAccess: true,
-  canClose: true,
+  categoryId: DEFAULT_SETTINGS.category_id,
+  nameTemplate: DEFAULT_SETTINGS.name_template,
+  userLimit: DEFAULT_SETTINGS.user_limit,
+  canRename: Boolean(DEFAULT_SETTINGS.can_rename),
+  canManageAccess: Boolean(DEFAULT_SETTINGS.can_manage_access),
+  canClose: Boolean(DEFAULT_SETTINGS.can_close),
 };
 
 export function toDto(row: TempPresetSource): TempPresetDto {

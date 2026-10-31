@@ -19,15 +19,9 @@
 @media (max-width: 768px) {
   .settings-shell { display: block; }
 
-  .sidebar {
-    padding: .8rem 1rem;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
+  .sidebar { border-right: 0; }
 
   .sidebar .brand { margin: 0 0 .75rem; }
-
-  .settings-content { padding: 1.35rem 1rem 2.5rem; }
 
   .settings-shell.is-dirty .toast-stack {
     bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.8rem));
@@ -53,7 +47,6 @@
   .hero-cta { justify-content: center; }
   .hero-art { order: -1; }
   .hero-art::before { width: 100%; }
-  .hero-panel { width: 360px; --hero-panel-scale: .45; }
 
   .landing-footer { justify-content: center; text-align: center; }
 
@@ -67,7 +60,6 @@
 }
 
 @media (max-width: 480px) {
-  .hero-panel { width: 320px; --hero-panel-scale: .4; }
   .color-field { flex-wrap: wrap; }
   .color-presets { flex-wrap: wrap; }
   .color-preset { width: 30px; height: 30px; }

@@ -20,9 +20,10 @@
 
 ## Что уже предусмотрено в коде
 
-- Все API-роуты дашборда идут через `src/lib/guild-access.ts`
-  (`requireUser`/`requireAdmin`/`withGuild`): доступ только у управляющих
-  сервером, админка — только `ADMIN_DISCORD_IDS`.
+- Все API-роуты дашборда идут через публичные обёртки (`guildRoute`/`adminRoute`
+  из `src/lib/guild-access.ts`, настройки — через `settingsPutRoute` из
+  `src/lib/settings-route.ts`): доступ только у управляющих сервером, админка —
+  только `ADMIN_DISCORD_IDS`.
 - Загрузки embeds/events изолированы по `guildId`; фоны приветствия намеренно
   публичны. Имена файлов санитизируются (`src/lib/uploads.ts`), лимит тела запроса
   + `client_max_body_size 8m` в nginx.

@@ -68,8 +68,7 @@ async function handleOwnerLeave(guild: Guild, userId: string) {
       logger.warn("[TEMP] Владелец ушёл, свободного получателя владения нет", guild.id, channel.id);
       return;
     }
-    stmt.tempDelete.run(channel.id);
-    await channel.delete().catch((error) => logger.warn("[TEMP] Удаление канала ушедшего владельца не удалось", guild.id, error));
+    await deleteTempChannel(guild, channel, "[TEMP] Удаление канала ушедшего владельца не удалось");
     return;
   }
   stmt.tempUpdateOwner.run(nextOwner, channel.id);
@@ -131,10 +130,10 @@ function isTempEmpty(channel: VoiceChannel): boolean {
   return !channel.members.some((m) => !m.user.bot);
 }
 
-async function destroyTempChannel(guild: Guild, channelId: string, channel: VoiceChannel): Promise<void> {
-  stmt.tempDelete.run(channelId);
-  if (guild.members.me?.voice.channelId === channelId) stopAndLeave(guild.id);
-  await channel.delete().catch((error) => logger.warn("[TEMP] Удаление пустого канала не удалось", guild.id, error));
+async function deleteTempChannel(guild: Guild, channel: VoiceChannel, failureMessage: string): Promise<void> {
+  stmt.tempDelete.run(channel.id);
+  if (guild.members.me?.voice.channelId === channel.id) stopAndLeave(guild.id);
+  await channel.delete().catch((error) => logger.warn(failureMessage, guild.id, error));
 }
 
 // Один таймер на канал: уход всей компании эмитит по voice-event на каждого,
@@ -149,7 +148,7 @@ function scheduleEmptinessCheck(guild: Guild, channelId: string) {
       const channel = await fetchTempChannel(guild, channelId);
       if (channel === undefined) return; // транзиентный сбой — строка ждёт следующей проверки
       if (!channel) { stmt.tempDelete.run(channelId); return; }
-      if (isTempEmpty(channel)) await destroyTempChannel(guild, channelId, channel);
+      if (isTempEmpty(channel)) await deleteTempChannel(guild, channel, "[TEMP] Удаление пустого канала не удалось");
     } catch (error) {
       logger.warn("[TEMP] Проверка пустоты канала не удалась", guild.id, error);
     }
@@ -279,13 +278,13 @@ async function handlePanelButton(i: ButtonInteraction, action: string) {
     await i.showModal(textModal("temp:modal-rename", t("modalRenameTitle"), t("modalNameLabel"), channel.name));
   } else if (action === "limit") {
     if (settings.can_manage_access === 0) return i.reply({ content: t("manageDisabled"), flags: MessageFlags.Ephemeral });
-    await i.showModal(textModal("temp:modal-limit", t("modalLimitTitle"), t("modalLimitLabel"), String(channel.userLimit ?? 0)));
+    await i.showModal(textModal("temp:modal-limit", t("btnLimit"), t("modalLimitLabel"), String(channel.userLimit ?? 0)));
   } else if (action === "allow" || action === "deny") {
     if (settings.can_manage_access === 0) return i.reply({ content: t("accessDisabled"), flags: MessageFlags.Ephemeral });
-    await i.showModal(textModal(`temp:modal-${action}`, action === "allow" ? t("modalAllowTitle") : t("modalDenyTitle"), t("modalUserPh")));
+    await i.showModal(textModal(`temp:modal-${action}`, action === "allow" ? t("btnAllow") : t("btnDeny"), t("modalUserPh")));
   } else if (action === "transfer") {
     if (settings.can_manage_access === 0) return i.reply({ content: t("manageDisabled"), flags: MessageFlags.Ephemeral });
-    await i.showModal(textModal("temp:modal-transfer", t("modalTransferTitle"), t("modalNewOwnerLabel")));
+    await i.showModal(textModal("temp:modal-transfer", t("btnTransfer"), t("modalNewOwnerLabel")));
   } else if (action === "lock") {
     if (settings.can_close === 0) return i.reply({ content: t("closeDisabled"), flags: MessageFlags.Ephemeral });
     const everyone = guild.roles.everyone;
@@ -296,8 +295,7 @@ async function handlePanelButton(i: ButtonInteraction, action: string) {
     await channel.permissionOverwrites.edit(everyone, { Connect: closed ? null : false }).catch((error) => logger.warn("[TEMP] Не удалось изменить доступ", guild.id, error));
   } else if (action === "delete") {
     await i.reply({ content: t("deleting"), flags: MessageFlags.Ephemeral });
-    stmt.tempDelete.run(channel.id);
-    await channel.delete().catch((error) => logger.warn("[TEMP] Удаление канала не удалось", guild.id, error));
+    await deleteTempChannel(guild, channel, "[TEMP] Удаление канала не удалось");
   }
 }
 
@@ -361,7 +359,7 @@ export async function cleanupTempChannels(client: Client) {
     if (fetched === undefined) continue;
     if (!fetched) { stmt.tempDelete.run(row.channel_id); continue; }
     if (isTempEmpty(fetched)) {
-      await destroyTempChannel(guild, row.channel_id, fetched);
+      await deleteTempChannel(guild, fetched, "[TEMP] Удаление пустого канала не удалось");
       continue;
     }
     if (row.panel_message_id) {

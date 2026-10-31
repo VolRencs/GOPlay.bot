@@ -2,7 +2,7 @@
 
 import { Suspense, use, useEffect, useState, useTransition } from "react";
 import { Bot } from "lucide-react";
-import { ConfirmHost, ModalShell } from "#components/dashboard/ui.tsx";
+import { ConfirmHost, ModalShell, SectionLoading } from "#components/dashboard/ui.tsx";
 import { DashboardProvider, useDashboard } from "#components/dashboard/DashboardContext.tsx";
 import { TAB_DEFS, TAB_GROUPS, isTabKey, type TabKey } from "#components/dashboard/tabs.tsx";
 import { SERVER_FALLBACK_NAME } from "#lib/constants.ts";
@@ -127,7 +127,7 @@ function DashboardShell() {
         </div>
       </header>
       {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
-      {!loading && <Suspense fallback={<p className="loading" role="status">Загружаем раздел…</p>}><ActiveTab/></Suspense>}
+      {!loading && <Suspense fallback={<SectionLoading/>}><ActiveTab/></Suspense>}
     </section>
     {pendingNav && <ConfirmNavigationDialog onSave={() => void saveAndGo()} onDiscard={discardAndGo} onCancel={() => setPendingNav(null)}/>}
     {isDirty && <div className="unsaved-float" role="status">

@@ -29,7 +29,6 @@ const channelLabel = (count: number) => count === 1 ? "1 канал" : count >= 
 export function TemporaryChannelsSettings() {
   const { guildId, resources, notify, fail } = useDashboard();
   const { value, setValue: onChange, saved, loading, save } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
-    guildId,
     endpoint: `/api/guilds/${guildId}/tempchannels`,
     initial: { presets: [] },
     fromGet: data => ({ presets: data.presets }),

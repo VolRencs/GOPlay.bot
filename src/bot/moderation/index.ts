@@ -11,6 +11,7 @@ import { clearWarns } from "../../lib/warns.ts";
 import { DAY_MS } from "../../lib/constants.ts";
 import { guildTr } from "../../lib/i18n/bot.ts";
 import { trModeration } from "../../lib/i18n/bot/moderation.ts";
+import { logTr } from "../../lib/i18n/bot/logs.ts";
 function canTarget(actor: GuildMember, target: GuildMember) { return actor.id !== target.id && actor.roles.highest.position > target.roles.highest.position && target.manageable; }
 export function recordPunishmentAndOffer(client: Client, input: { guildId: string; guildName: string; userId: string; type: string; reason: string; moderatorId: string | null }) {
   // Запись наказания обязана пережить сбой БД: она вызывается из .then() внутри
@@ -25,16 +26,16 @@ export function recordPunishmentAndOffer(client: Client, input: { guildId: strin
   }
   addMetric(input.guildId, "moderation");
   // untimeout — коррекция, kick необратим: оффер апелляции не нужен обоим.
-  if (input.type === "untimeout" || input.type === "kick") return;
   const appealType = appealPunishmentTypes.find(type => type === input.type);
   if (!appealType) return;
-  void offerAppeal(client, { punishmentId, guildId: input.guildId, guildName: input.guildName, userId: input.userId, type: input.type, reason: input.reason, appealType });
+  void offerAppeal(client, { punishmentId, guildId: input.guildId, guildName: input.guildName, userId: input.userId, reason: input.reason, appealType });
 }
 // Логируем сразу с известным исполнителем (без audit-lookup) и помечаем,
 // чтобы соответствующее gateway-событие не задублировало запись.
 const logTypes: Record<string, string> = { ban: "member_ban", kick: "member_kick", timeout: "member_timeout", untimeout: "member_timeout" };
 export async function moderate(i: ChatInputCommandInteraction) {
   const t = guildTr(trModeration, i.guildId ?? "");
+  const tLog = guildTr(logTr, i.guildId ?? "");
   if (!i.guild || !i.member) return void i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
   if (!i.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void i.reply({ content: t("noPermsSelf"), flags: MessageFlags.Ephemeral }).catch(() => null);
   const command = i.commandName;
@@ -69,7 +70,7 @@ export async function moderate(i: ChatInputCommandInteraction) {
       return i.editReply({ content: rows.length ? rows.map((x, n) => `${n + 1}. ${x.reason} — <t:${Math.floor(x.created_at / 1000)}:d>`).join("\n") : t("warnListEmpty") });
     }
     recordPunishmentAndOffer(i.client, { guildId: i.guildId!, guildName: i.guild.name, userId: user.id, type: command, reason, moderatorId: i.user.id });
-    if (logType) logAction({ guildId: i.guildId!, type: logType, targetId: user.id, moderatorId: i.user.id, details: command === "timeout" ? t("logTimeout", { min: String(i.options.getInteger("minutes") ?? 10), reason }) : t("logReason", { reason }) });
+    if (logType) logAction({ guildId: i.guildId!, type: logType, targetId: user.id, moderatorId: i.user.id, details: command === "timeout" ? t("logTimeout", { min: String(i.options.getInteger("minutes") ?? 10), reason }) : tLog("reason", { reason }) });
     return i.editReply(`✅ ${command}: ${user.username}`);
   } catch (error) {
     logger.warn("Команда модерации не выполнена:", i.commandName, i.guildId, error);

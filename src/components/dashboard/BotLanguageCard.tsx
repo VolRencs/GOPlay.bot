@@ -8,7 +8,6 @@ import { useSettingsTab } from "./useSettingsTab.ts";
 export function BotLanguageCard() {
   const { guildId, notify, fail } = useDashboard();
   const { value, setValue, loading, save } = useSettingsTab<LangDto, LangCode>({
-    guildId,
     endpoint: `/api/guilds/${guildId}/lang`,
     initial: "ru",
     fromGet: fromDto,

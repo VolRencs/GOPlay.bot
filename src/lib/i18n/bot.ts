@@ -79,11 +79,7 @@ export const tempTr = makeTr({
   transferred: { ru: "Владение каналом передано <@{id}>.", en: "Channel ownership transferred to <@{id}>." },
   modalRenameTitle: { ru: "Переименовать канал", en: "Rename channel" },
   modalNameLabel: { ru: "Название", en: "Name" },
-  modalLimitTitle: { ru: "Лимит участников", en: "Member limit" },
   modalLimitLabel: { ru: "Лимит (0 — без лимита)", en: "Limit (0 = unlimited)" },
-  modalAllowTitle: { ru: "Разрешить вход", en: "Allow join" },
-  modalDenyTitle: { ru: "Запретить вход", en: "Deny join" },
-  modalTransferTitle: { ru: "Передать владение", en: "Transfer ownership" },
   modalNewOwnerLabel: { ru: "Новый владелец (@упоминание или ID)", en: "New owner (@mention or ID)" },
   modalUserPh: { ru: "Пользователь (@упоминание или ID)", en: "User (@mention or ID)" },
 });

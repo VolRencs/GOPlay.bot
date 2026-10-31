@@ -1,6 +1,6 @@
 import { ChannelType, type Client, type Guild, type Message } from "discord.js";
 import { stmt } from "../../db/statements.ts";
-import { safeJson } from "../../lib/json.ts";
+import { parseActions } from "../../lib/json.ts";
 import { automodActions, automodDefaultActions } from "../../lib/automod.ts";
 import { automodRulesFor } from "../../lib/labels.ts";
 import { DAY_MS, DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS } from "../../lib/constants.ts";
@@ -26,7 +26,7 @@ function automodDuration(guildId: string, userId: string, base: number, escalate
 export async function enforceAutoMod(client: Client, message: Message, row: CachedRule, threshold: Record<string, unknown>, data: MessageData) {
   const started = performance.now();
   const guild = message.guild!, author = message.author;
-  let actions: string[] = []; const parsedActions = safeJson<unknown>(row.action_json, []); if (Array.isArray(parsedActions)) actions = parsedActions.filter((x): x is string => typeof x === "string" && automodActionSet.has(x));
+  let actions = parseActions(row.action_json).filter(x => automodActionSet.has(x));
   if (!actions.length) actions = [...automodDefaultActions];
   const lang = cachedRules(guild.id).lang;
   const t = trFor(logTr, lang), tAuto = trFor(automodTr, lang);
@@ -83,7 +83,7 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
   const appealType = banApplied ? "ban" : timeoutApplied ? "timeout" : applied.includes("warn") && warnPunishmentId !== null ? "warn" : null;
   if (appealType && (!burstKind || firstInBurst)) {
     const appealTarget = appealType === "warn" ? warnPunishmentId : punishmentId;
-    if (appealTarget !== null) void offerAppeal(client, { punishmentId: appealTarget, guildId: guild.id, guildName: guild.name, userId: author.id, type: "automod", appealType, reason });
+    if (appealTarget !== null) void offerAppeal(client, { punishmentId: appealTarget, guildId: guild.id, guildName: guild.name, userId: author.id, appealType, reason });
   }
   // Наказание не применилось (только delete или отказ Discord) — снимаем
   // claim окна, иначе следующее сообщение в окне уже не получит наказания.

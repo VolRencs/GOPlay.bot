@@ -8,7 +8,7 @@
 
 ## How it was verified
 
-- [ ] `pnpm check` (tsc --noEmit)
+- [ ] `pnpm check` (next typegen && tsc --noEmit)
 - [ ] `pnpm test` (node --test)
 - [ ] Manual check: <!-- bot on a test server / dashboard in the browser -->
 

@@ -256,6 +256,21 @@ const pendingMoves = new Map<string, PendingMove>(); // ключ `${guildId}:${u
  *  индекс устаревает, если очередь изменилась между двумя шагами меню. */
 const trackIdentity = (track: Track): string => `${track.query}\u0000${track.title}`;
 
+function queuePageButtons(prefix: string, page: number, pages: number, t: ReturnType<typeof musicTFor>): ButtonBuilder[] {
+  return [
+    new ButtonBuilder()
+      .setCustomId(`${prefix}${page - 1}`)
+      .setLabel(t("queuePrev"))
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page === 0),
+    new ButtonBuilder()
+      .setCustomId(`${prefix}${page + 1}`)
+      .setLabel(t("queueNext"))
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(page >= pages - 1),
+  ];
+}
+
 /** Экран очереди: удаление или выбор трека для перемещения, с пагинацией по 25. */
 async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", requestedPage: number, update: boolean): Promise<void> {
   const t = musicTFor(i.guildId ?? "");
@@ -284,18 +299,7 @@ async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", re
     new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(menu),
   ];
   if (pages > 1) {
-    components.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`music:${action}:${page - 1}`)
-        .setLabel(t("queuePrev"))
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page === 0),
-      new ButtonBuilder()
-        .setCustomId(`music:${action}:${page + 1}`)
-        .setLabel(t("queueNext"))
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(page >= pages - 1),
-    ));
+    components.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(...queuePageButtons(`music:${action}:`, page, pages, t)));
   }
   const payload = { content: prompt, components };
   if (update) await i.update(payload).catch(() => null);
@@ -307,18 +311,7 @@ async function openQueueView(i: ButtonInteraction, requestedPage: number, update
   const view = queueView(i.guildId!, guildLang(i.guildId!), requestedPage);
   const components: ActionRowBuilder<ButtonBuilder>[] = [];
   if (view.pages > 1) {
-    components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`music:queue:${view.page - 1}`)
-        .setLabel(t("queuePrev"))
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(view.page === 0),
-      new ButtonBuilder()
-        .setCustomId(`music:queue:${view.page + 1}`)
-        .setLabel(t("queueNext"))
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(view.page >= view.pages - 1),
-    ));
+    components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...queuePageButtons("music:queue:", view.page, view.pages, t)));
   }
   const payload = { content: view.content, components };
   if (update) await i.update(payload).catch(() => null);
