@@ -16,9 +16,11 @@ jobs:
       BETTER_AUTH_SECRET: ci-dummy-secret-32-chars-long-ok
       BETTER_AUTH_URL: http://localhost:3000
       NEXT_PUBLIC_APP_URL: http://localhost:3000
-      DATABASE_PATH: ${{ runner.temp }}/ci-build.sqlite
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure temporary database path
+        run: echo "DATABASE_PATH=$RUNNER_TEMP/ci-build.sqlite" >> "$GITHUB_ENV"
 
       - uses: pnpm/action-setup@v4
 
