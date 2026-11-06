@@ -3,7 +3,7 @@
 import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { stripVariationSelectors } from "goemoji/discord";
-import { ArrowDown, ArrowRight, Check, ChevronDown, Image, Smile } from "lucide-react";
+import { ArrowDown, ArrowRight, Check, ChevronDown, Image, Smile, User } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
 import { safeJson, stableJson } from "../../lib/json.ts";
 import { embedCharacterCount, EMBED_LIMITS, type EmbedContent } from "#contracts/embeds.ts";
@@ -60,7 +60,7 @@ function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (f
   );
 }
 
-type EmbedFieldsValue = { title: string; description: string; footer: string; fields: EmbedField[] };
+export type EmbedFieldsValue = { title: string; description: string; footer: string; fields: EmbedField[] };
 
 export function EmbedFields({ value, onChange, titlePlaceholder = "Заголовок", descriptionPlaceholder = "Описание" }: { value: EmbedFieldsValue; onChange: (patch: Partial<EmbedFieldsValue>) => void; titlePlaceholder?: string; descriptionPlaceholder?: string }) {
   return <>
@@ -71,16 +71,16 @@ export function EmbedFields({ value, onChange, titlePlaceholder = "Заголо�
   </>;
 }
 
-export function EmbedUsage({ content, label = "Контент embed" }: { content: EmbedContent; label?: string }) {
+export function EmbedUsage({ content }: { content: EmbedContent }) {
   const used = embedCharacterCount(content);
   const max = EMBED_LIMITS.total;
   return <div className={used > max * .9 ? "embed-usage is-near" : "embed-usage"} aria-label={`Использовано ${used} из ${max} символов`}>
-    <div className="embed-usage-head"><span>{label}</span><output>{used} / {max}</output></div>
+    <div className="embed-usage-head"><span>Символы</span><output>{used} / {max}</output></div>
     <div className="embed-usage-track"><i style={{ width: `${Math.min(100, used / max * 100)}%` }}/></div>
   </div>;
 }
 
-type EmbedMediaSlot = {
+export type EmbedMediaSlot = {
   file: File | null;
   preview: string;
   saved: boolean;
@@ -93,6 +93,56 @@ export function EmbedMediaFields({ image, thumbnail }: { image: EmbedMediaSlot; 
   return <div className="embed-bottom">
     <MediaField icon={<Image size={18}/>} label="Основное изображение" file={image.file} previewUrl={image.preview} saved={image.saved} onPick={image.onPick} onClear={image.onClear} {...(image.inputRef ? { ref: image.inputRef } : {})} clearLabel="Удалить изображение"/>
     <MediaField icon={<Image size={18}/>} label="Миниатюра" file={thumbnail.file} previewUrl={thumbnail.preview} saved={thumbnail.saved} onPick={thumbnail.onPick} onClear={thumbnail.onClear} {...(thumbnail.inputRef ? { ref: thumbnail.inputRef } : {})} clearLabel="Удалить миниатюру"/>
+  </div>;
+}
+
+type EmbedAuthorEditor = {
+  name: string;
+  url: string;
+  icon: EmbedMediaSlot;
+  onChange: (patch: { name?: string; url?: string }) => void;
+  onClearIcon: () => void;
+};
+
+type EmbedComposerProps = {
+  color: string;
+  onColorChange: (color: string) => void;
+  value: EmbedFieldsValue;
+  onChange: (patch: Partial<EmbedFieldsValue>) => void;
+  image: EmbedMediaSlot;
+  thumbnail: EmbedMediaSlot;
+  author?: EmbedAuthorEditor;
+  timestamp?: { checked: boolean; onChange: (checked: boolean) => void };
+  titlePlaceholder?: string;
+  descriptionPlaceholder?: string;
+};
+
+export function EmbedComposer({
+  color, onColorChange, value, onChange, image, thumbnail, author, timestamp,
+  titlePlaceholder = "Заголовок", descriptionPlaceholder = "Описание",
+}: EmbedComposerProps) {
+  const usage: EmbedContent = {
+    title: value.title,
+    description: value.description,
+    footer: { text: value.footer },
+    ...(author?.name.trim() ? { author: { name: author.name } } : {}),
+    fields: value.fields,
+  };
+  return <div className="embed-form" style={{ borderLeftColor: color }}>
+    <ColorRow color={color} onChange={onColorChange}/>
+    {timestamp && <label className="check-row"><input type="checkbox" checked={timestamp.checked} onChange={event => timestamp.onChange(event.target.checked)}/> Показывать дату события в сообщении (Discord @time)</label>}
+    {author && <div className="embed-author-row">
+      <input value={author.name} maxLength={256} placeholder="Имя автора" onChange={event => author.onChange({ name: event.target.value })}/>
+      {author.name && (
+        <>
+          <input value={author.url} maxLength={256} placeholder="Ссылка автора https://…" onChange={event => author.onChange({ url: event.target.value })}/>
+          <MediaField icon={<User size={18}/>} label="Иконка автора" file={author.icon.file} previewUrl={author.icon.preview} saved={author.icon.saved} onPick={author.icon.onPick} onClear={author.onClearIcon} {...(author.icon.inputRef ? { ref: author.icon.inputRef } : {})}/>
+        </>
+      )}
+    </div>}
+    <EmbedFields value={value} onChange={onChange} titlePlaceholder={titlePlaceholder} descriptionPlaceholder={descriptionPlaceholder}/>
+    <EmbedMediaFields image={image} thumbnail={thumbnail}/>
+    <EmbedUsage content={usage}/>
   </div>;
 }
 
@@ -152,7 +202,7 @@ export function StatCard({ label, value, hint }: { label: string; value: ReactNo
 }
 
 export function SaveButton({ saving, onClick, label = "Сохранить", disabled = false, savingLabel = "Сохраняем…", variant }: { saving: boolean; onClick: () => void; label?: string; disabled?: boolean; savingLabel?: string; variant?: "secondary" }) {
-  return <button type="button" className={variant === "secondary" ? "btn secondary" : "btn"} disabled={disabled || saving} onClick={onClick}>{saving ? savingLabel : label}</button>;
+  return <button type="button" className={variant === "secondary" ? "btn secondary" : "btn success"} disabled={disabled || saving} onClick={onClick}>{saving ? savingLabel : label}</button>;
 }
 
 type CheckListProps = {

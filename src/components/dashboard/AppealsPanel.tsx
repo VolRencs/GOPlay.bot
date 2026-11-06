@@ -106,8 +106,8 @@ export function AppealsPanel() {
                   </label>
                   <div className="appeal-buttons">
                     {row.status==="pending"&&<button type="button" className="btn secondary" disabled={busy} onClick={()=>void review(row,"reviewing")}>Взять в работу</button>}
-                    <button type="button" className="btn" disabled={busy} onClick={()=>void review(row,"approved")}>Одобрить</button>
-                    <button type="button" className="btn secondary" disabled={busy} onClick={()=>void review(row,"rejected")}>Отклонить</button>
+                    <button type="button" className="btn success" disabled={busy} onClick={()=>void review(row,"approved")}>Одобрить</button>
+                    <button type="button" className="btn danger" disabled={busy} onClick={()=>void review(row,"rejected")}>Отклонить</button>
                     <button type="button" className="btn secondary" disabled={busy} onClick={()=>void review(row,"closed")}>Закрыть</button>
                   </div>
                 </div>:<p className="muted">Апелляция завершена — её статус больше нельзя изменить.</p>}

@@ -127,6 +127,23 @@
   border-color: #613742;
 }
 
+.btn.success {
+  background: linear-gradient(180deg, rgba(52, 211, 153, .22), rgba(52, 211, 153, .08));
+  border-color: #3f8f70;
+  color: #d9ffec;
+}
+
+.btn.success:hover {
+  background: linear-gradient(180deg, rgba(52, 211, 153, .32), rgba(52, 211, 153, .13));
+  border-color: #6ee7b7;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 14px 32px rgba(16, 185, 129, .22);
+}
+
+.btn.success:disabled {
+  background: rgba(52, 211, 153, .07);
+  border-color: #2f6b55;
+}
+
 .btn.small {
   min-height: 32px;
   padding: .4rem .65rem;

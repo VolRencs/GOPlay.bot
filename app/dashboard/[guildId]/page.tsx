@@ -134,7 +134,7 @@ function DashboardShell() {
     {isDirty && <div className="unsaved-float" role="status">
       <span className="warn-dot" aria-hidden="true"/>
       <span>Есть несохранённые изменения</span>
-      <button type="button" className="btn" disabled={savingAll} onClick={() => void saveAllFromBar()}>{savingAll ? "Сохраняем…" : "Сохранить"}</button>
+      <button type="button" className="btn success" disabled={savingAll} onClick={() => void saveAllFromBar()}>{savingAll ? "Сохраняем…" : "Сохранить"}</button>
       <button type="button" className="btn secondary" disabled={savingAll} onClick={discardAll}>Сбросить</button>
     </div>}
     <ConfirmHost/>
@@ -146,7 +146,7 @@ function ConfirmNavigationDialog({ onSave, onDiscard, onCancel }: { onSave: () =
     <h2 id="unsaved-modal-title">Несохранённые изменения</h2>
     <p className="muted">В текущем разделе есть несохранённые изменения. Сохраните их или сбросьте перед переходом, чтобы ничего не потерять.</p>
     <div className="modal-actions">
-      <button type="button" className="btn" onClick={onSave}>Сохранить изменения и перейти</button>
+      <button type="button" className="btn success" onClick={onSave}>Сохранить изменения и перейти</button>
       <button type="button" className="btn secondary" onClick={onDiscard}>Сбросить изменения и перейти</button>
       <button type="button" data-autofocus className="btn secondary" onClick={onCancel}>Отмена</button>
     </div>

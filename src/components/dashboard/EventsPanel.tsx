@@ -7,7 +7,7 @@ import { userRef } from "#lib/format.ts";
 import type { EventButtonStyle, EventStatus, RecurrenceFrequency } from "#lib/events.ts";
 import type { EventListDto, EventListItemDto } from "#contracts/events.ts";
 import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, EmbedFields, EmbedMediaFields, EmbedUsage, formatTime, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { CardHeader, channelOptions, confirmAction, EmojiPicker, EmbedComposer, formatTime, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -233,24 +233,23 @@ export function EventsPanel() {
           </div>
           <label className="check-row"><input type="checkbox" checked={draft.registrationEnabled} onChange={e => set({ registrationEnabled: e.target.checked })}/> Регистрация открыта</label>
           <label className="check-row"><input type="checkbox" checked={draft.waitlistEnabled} onChange={e => set({ waitlistEnabled: e.target.checked })}/> Очередь, когда места закончились</label>
-          <div className="embed-form" style={{ borderLeftColor: draft.color }}>
-            <ColorRow color={draft.color} onChange={color => set({ color })}/>
-            <label className="check-row"><input type="checkbox" checked={draft.timestamp} onChange={e => set({ timestamp: e.target.checked })}/> Показывать дату события в сообщении (Discord @time)</label>
-            <EmbedFields value={draft} onChange={patch => set(patch)} titlePlaceholder="Заголовок события" descriptionPlaceholder="Описание: markdown, эмодзи, несколько абзацев"/>
-            <EmbedMediaFields
-              image={{ file: image.file, preview: image.preview, saved: Boolean(draft.image), inputRef: image.inputRef, onPick: image.setFile, onClear: clearImage }}
-              thumbnail={{ file: thumbnail.file, preview: thumbnail.preview, saved: Boolean(draft.thumbnail), inputRef: thumbnail.inputRef, onPick: thumbnail.setFile, onClear: clearThumbnail }}
-            />
-            <EmbedUsage label="Контент без служебных полей" content={{ title: draft.title, description: draft.description, footer: { text: draft.footer }, fields: draft.fields }}/>
-          </div>
+          <EmbedComposer
+            color={draft.color}
+            onColorChange={color => set({ color })}
+            value={draft}
+            onChange={patch => set(patch)}
+            image={{ file: image.file, preview: image.preview, saved: Boolean(draft.image), inputRef: image.inputRef, onPick: image.setFile, onClear: clearImage }}
+            thumbnail={{ file: thumbnail.file, preview: thumbnail.preview, saved: Boolean(draft.thumbnail), inputRef: thumbnail.inputRef, onPick: thumbnail.setFile, onClear: clearThumbnail }}
+            timestamp={{ checked: draft.timestamp, onChange: timestamp => set({ timestamp }) }}
+          />
           <div className="event-buttons-grid">
             <ButtonEditor title="Кнопка «Участвовать»" label={draft.joinLabel} emoji={draft.joinEmoji} style={draft.joinStyle} enabled={draft.joinEnabled} emojis={emojis} onChange={setButton("join")}/>
             <ButtonEditor title="Кнопка «Отказаться»" label={draft.leaveLabel} emoji={draft.leaveEmoji} style={draft.leaveStyle} enabled={draft.leaveEnabled} emojis={emojis} onChange={setButton("leave")}/>
           </div>
           <div className="template-actions">
             <SaveButton saving={busy} onClick={() => void save()} label={editingId ? "Сохранить изменения" : "Создать событие"}/>
-            {editingId && <button type="button" className="btn secondary" disabled={busy} onClick={() => void save("live")}>Начать сейчас</button>}
-            {editingId && <button type="button" className="btn secondary" disabled={busy} onClick={() => void save("completed")}>Завершить</button>}
+            {editingId && <button type="button" className="btn success" disabled={busy} onClick={() => void save("live")}>Начать сейчас</button>}
+            {editingId && <button type="button" className="btn danger" disabled={busy} onClick={() => void save("completed")}>Завершить</button>}
           </div>
         </section>
         {editing && (

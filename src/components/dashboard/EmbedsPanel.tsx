@@ -1,8 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Trash2, User } from "lucide-react";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmbedFields, EmbedMediaFields, EmbedUsage, MediaField, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { Trash2 } from "lucide-react";
+import { CardHeader, channelOptions, confirmAction, EmbedComposer, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiJsonMutate, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -189,7 +189,7 @@ export function EmbedsPanel() {
               return (
                 <TemplateRow key={item.id} actions={<>
                   <button className="btn secondary" type="button" onClick={() => editTemplate(item)}>Изменить</button>
-                  <button className="btn" type="button" disabled={busy} onClick={() => void resend(item)}>{item.messageId ? "Отправить ещё раз" : "Отправить"}</button>
+                  <button className="btn success" type="button" disabled={busy} onClick={() => void resend(item)}>{item.messageId ? "Отправить ещё раз" : "Отправить"}</button>
                   <button className="btn danger" type="button" disabled={busy} onClick={() => void remove(item)} aria-label={`Удалить ${item.name}`}><Trash2 size={16}/>Удалить</button>
                 </>}>
                   <strong>{item.name}</strong>
@@ -226,30 +226,30 @@ export function EmbedsPanel() {
             </label>
           </div>
           {form.mode === "embed" ? (
-            <div className="embed-form" style={{ borderLeftColor: form.color }}>
-              <ColorRow color={form.color} onChange={color => setForm({ color })}/>
-              <div className="embed-author-row">
-                <input value={form.author} maxLength={256} placeholder="Имя автора" onChange={e => setForm({ author: e.target.value })}/>
-                {form.author && (
-                  <>
-                    <input value={form.authorUrl} maxLength={256} placeholder="Ссылка автора https://…" onChange={e => setForm({ authorUrl: e.target.value })}/>
-                    <MediaField icon={<User size={18}/>} label="Иконка автора" file={authorIcon.file} previewUrl={authorIcon.preview} saved={Boolean(form.authorIcon)} onPick={authorIcon.setFile} onClear={clearAuthor} ref={authorIcon.inputRef}/>
-                  </>
-                )}
-              </div>
-              <EmbedFields value={form} onChange={patch => setForm(patch)} titlePlaceholder="Заголовок" descriptionPlaceholder="Описание"/>
-              <EmbedMediaFields
-                image={{ file: image.file, preview: image.preview, saved: Boolean(form.image), inputRef: image.inputRef, onPick: image.setFile, onClear: clearImage }}
-                thumbnail={{ file: thumbnail.file, preview: thumbnail.preview, saved: Boolean(form.thumbnail), inputRef: thumbnail.inputRef, onPick: thumbnail.setFile, onClear: clearThumbnail }}
-              />
-              <EmbedUsage content={{ title: form.title, description: form.description, footer: { text: form.footer }, ...(form.author.trim() ? { author: { name: form.author } } : {}), fields: form.fields }}/>
-            </div>
+            <EmbedComposer
+              color={form.color}
+              onColorChange={color => setForm({ color })}
+              value={form}
+              onChange={patch => setForm(patch)}
+              image={{ file: image.file, preview: image.preview, saved: Boolean(form.image), inputRef: image.inputRef, onPick: image.setFile, onClear: clearImage }}
+              thumbnail={{ file: thumbnail.file, preview: thumbnail.preview, saved: Boolean(form.thumbnail), inputRef: thumbnail.inputRef, onPick: thumbnail.setFile, onClear: clearThumbnail }}
+              author={{
+                name: form.author,
+                url: form.authorUrl,
+                icon: { file: authorIcon.file, preview: authorIcon.preview, saved: Boolean(form.authorIcon), inputRef: authorIcon.inputRef, onPick: authorIcon.setFile, onClear: clearAuthor },
+                onChange: patch => setForm({
+                  ...(patch.name !== undefined ? { author: patch.name } : {}),
+                  ...(patch.url !== undefined ? { authorUrl: patch.url } : {}),
+                }),
+                onClearIcon: clearAuthor,
+              }}
+            />
           ) : (
             <label>Текст<textarea rows={7} value={form.description} maxLength={2000} onChange={e => setForm({ description: e.target.value })}/></label>
           )}
           <div className="template-actions">
             <SaveButton saving={busy} onClick={() => void submit("save")} label="Сохранить шаблон"/>
-            {form.published && <SaveButton saving={busy} variant="secondary" onClick={() => void submit("update")} label="Обновить опубликованное" savingLabel="Обновляем…"/>}
+            {form.published && <SaveButton saving={busy} onClick={() => void submit("update")} label="Обновить опубликованное" savingLabel="Обновляем…"/>}
           </div>
           {form.id && !form.published && <p className="hint">Шаблон сохранён. Отправьте его из блока «Сохранённые сообщения».</p>}
         </section>
