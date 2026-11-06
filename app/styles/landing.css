@@ -135,7 +135,7 @@
     var(--ink);
 }
 
-.hero-panel .settings-top { position: static; margin-bottom: 1rem; padding: 0 0 .8rem; background: none; backdrop-filter: none; }
+.hero-panel .settings-top { margin-bottom: 1rem; padding: 0 0 .8rem; }
 .hero-panel .panel-stack { gap: .65rem; }
 .hero-panel .server-heading h1 { font-size: 2rem; }
 .hero-panel .stat-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }

@@ -241,7 +241,6 @@ export function EmbedsPanel() {
                   ...(patch.name !== undefined ? { author: patch.name } : {}),
                   ...(patch.url !== undefined ? { authorUrl: patch.url } : {}),
                 }),
-                onClearIcon: clearAuthor,
               }}
             />
           ) : (

@@ -6,7 +6,7 @@ import { stripVariationSelectors } from "goemoji/discord";
 import { ArrowDown, ArrowRight, Check, ChevronDown, Image, Smile, User } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
 import { safeJson, stableJson } from "../../lib/json.ts";
-import { embedCharacterCount, EMBED_LIMITS, type EmbedContent } from "#contracts/embeds.ts";
+import { EMBED_LIMITS } from "#contracts/embeds.ts";
 
 export function SectionLoading() {
   return <p className="loading" role="status">Загружаем раздел…</p>;
@@ -16,7 +16,7 @@ export function channelOptions(channels: Channel[], emptyLabel: string) {
   return [{ value: "", label: emptyLabel }, ...channels.map(c => ({ value: c.id, label: `# ${c.name}` }))];
 }
 
-export function ColorRow({ color, onChange }: { color: string; onChange: (color: string) => void }) {
+function ColorRow({ color, onChange }: { color: string; onChange: (color: string) => void }) {
   return (
     <div className="color-field">
       <span>Цвет</span>
@@ -39,8 +39,8 @@ function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (f
       <div className="section-title"><strong>Поля</strong></div>
       {fields.map((field, index) => (
         <div className="field-row-simple" key={index}>
-          <input value={field.name} maxLength={256} placeholder="Заголовок" onChange={e => onChange(fields.with(index, { ...field, name: e.target.value }))}/>
-          <textarea rows={2} value={field.value} maxLength={1024} placeholder="Текст" onChange={e => onChange(fields.with(index, { ...field, value: e.target.value }))}/>
+          <input value={field.name} maxLength={EMBED_LIMITS.fieldName} placeholder="Заголовок" onChange={e => onChange(fields.with(index, { ...field, name: e.target.value }))}/>
+          <textarea rows={2} value={field.value} maxLength={EMBED_LIMITS.fieldValue} placeholder="Текст" onChange={e => onChange(fields.with(index, { ...field, value: e.target.value }))}/>
           <div className="field-actions">
             <button
               type="button"
@@ -60,27 +60,28 @@ function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (f
   );
 }
 
-export type EmbedFieldsValue = { title: string; description: string; footer: string; fields: EmbedField[] };
+type EmbedFieldsValue = { title: string; description: string; footer: string; fields: EmbedField[] };
 
-export function EmbedFields({ value, onChange, titlePlaceholder = "Заголовок", descriptionPlaceholder = "Описание" }: { value: EmbedFieldsValue; onChange: (patch: Partial<EmbedFieldsValue>) => void; titlePlaceholder?: string; descriptionPlaceholder?: string }) {
-  return <>
-    <input className="embed-title-input" value={value.title} maxLength={256} placeholder={titlePlaceholder} onChange={e => onChange({ title: e.target.value })}/>
-    <textarea className="embed-description-input" rows={6} value={value.description} maxLength={4096} placeholder={descriptionPlaceholder} onChange={e => onChange({ description: e.target.value })}/>
-    <FieldsEditor fields={value.fields} onChange={fields => onChange({ fields })}/>
-    <input className="embed-footer-input" value={value.footer} maxLength={2048} placeholder="Футер" onChange={e => onChange({ footer: e.target.value })}/>
-  </>;
-}
-
-export function EmbedUsage({ content }: { content: EmbedContent }) {
-  const used = embedCharacterCount(content);
-  const max = EMBED_LIMITS.total;
-  return <div className={used > max * .9 ? "embed-usage is-near" : "embed-usage"} aria-label={`Использовано ${used} из ${max} символов`}>
-    <div className="embed-usage-head"><span>Символы</span><output>{used} / {max}</output></div>
+function EmbedTextUsage({ value }: { value: string }) {
+  const used = value.length;
+  const max = EMBED_LIMITS.description;
+  return <div className={used > max * .9 ? "embed-usage is-near" : "embed-usage"} aria-label={`Использовано ${used} из ${max} символов основного текста`}>
+    <div className="embed-usage-head"><span>Основной текст</span><output>{used} / {max}</output></div>
     <div className="embed-usage-track"><i style={{ width: `${Math.min(100, used / max * 100)}%` }}/></div>
   </div>;
 }
 
-export type EmbedMediaSlot = {
+function EmbedFields({ value, onChange }: { value: EmbedFieldsValue; onChange: (patch: Partial<EmbedFieldsValue>) => void }) {
+  return <>
+    <input className="embed-title-input" value={value.title} maxLength={EMBED_LIMITS.title} placeholder="Заголовок" onChange={e => onChange({ title: e.target.value })}/>
+    <textarea className="embed-description-input" rows={6} value={value.description} maxLength={EMBED_LIMITS.description} placeholder="Описание" onChange={e => onChange({ description: e.target.value })}/>
+    <EmbedTextUsage value={value.description}/>
+    <FieldsEditor fields={value.fields} onChange={fields => onChange({ fields })}/>
+    <input className="embed-footer-input" value={value.footer} maxLength={EMBED_LIMITS.footer} placeholder="Футер" onChange={e => onChange({ footer: e.target.value })}/>
+  </>;
+}
+
+type EmbedMediaSlot = {
   file: File | null;
   preview: string;
   saved: boolean;
@@ -89,7 +90,7 @@ export type EmbedMediaSlot = {
   onClear: () => void;
 };
 
-export function EmbedMediaFields({ image, thumbnail }: { image: EmbedMediaSlot; thumbnail: EmbedMediaSlot }) {
+function EmbedMediaFields({ image, thumbnail }: { image: EmbedMediaSlot; thumbnail: EmbedMediaSlot }) {
   return <div className="embed-bottom">
     <MediaField icon={<Image size={18}/>} label="Основное изображение" file={image.file} previewUrl={image.preview} saved={image.saved} onPick={image.onPick} onClear={image.onClear} {...(image.inputRef ? { ref: image.inputRef } : {})} clearLabel="Удалить изображение"/>
     <MediaField icon={<Image size={18}/>} label="Миниатюра" file={thumbnail.file} previewUrl={thumbnail.preview} saved={thumbnail.saved} onPick={thumbnail.onPick} onClear={thumbnail.onClear} {...(thumbnail.inputRef ? { ref: thumbnail.inputRef } : {})} clearLabel="Удалить миниатюру"/>
@@ -101,7 +102,6 @@ type EmbedAuthorEditor = {
   url: string;
   icon: EmbedMediaSlot;
   onChange: (patch: { name?: string; url?: string }) => void;
-  onClearIcon: () => void;
 };
 
 type EmbedComposerProps = {
@@ -113,36 +113,23 @@ type EmbedComposerProps = {
   thumbnail: EmbedMediaSlot;
   author?: EmbedAuthorEditor;
   timestamp?: { checked: boolean; onChange: (checked: boolean) => void };
-  titlePlaceholder?: string;
-  descriptionPlaceholder?: string;
 };
 
-export function EmbedComposer({
-  color, onColorChange, value, onChange, image, thumbnail, author, timestamp,
-  titlePlaceholder = "Заголовок", descriptionPlaceholder = "Описание",
-}: EmbedComposerProps) {
-  const usage: EmbedContent = {
-    title: value.title,
-    description: value.description,
-    footer: { text: value.footer },
-    ...(author?.name.trim() ? { author: { name: author.name } } : {}),
-    fields: value.fields,
-  };
+export function EmbedComposer({ color, onColorChange, value, onChange, image, thumbnail, author, timestamp }: EmbedComposerProps) {
   return <div className="embed-form" style={{ borderLeftColor: color }}>
     <ColorRow color={color} onChange={onColorChange}/>
     {timestamp && <label className="check-row"><input type="checkbox" checked={timestamp.checked} onChange={event => timestamp.onChange(event.target.checked)}/> Показывать дату события в сообщении (Discord @time)</label>}
     {author && <div className="embed-author-row">
-      <input value={author.name} maxLength={256} placeholder="Имя автора" onChange={event => author.onChange({ name: event.target.value })}/>
+      <input value={author.name} maxLength={EMBED_LIMITS.authorName} placeholder="Имя автора" onChange={event => author.onChange({ name: event.target.value })}/>
       {author.name && (
         <>
-          <input value={author.url} maxLength={256} placeholder="Ссылка автора https://…" onChange={event => author.onChange({ url: event.target.value })}/>
-          <MediaField icon={<User size={18}/>} label="Иконка автора" file={author.icon.file} previewUrl={author.icon.preview} saved={author.icon.saved} onPick={author.icon.onPick} onClear={author.onClearIcon} {...(author.icon.inputRef ? { ref: author.icon.inputRef } : {})}/>
+          <input value={author.url} maxLength={EMBED_LIMITS.url} placeholder="Ссылка автора https://…" onChange={event => author.onChange({ url: event.target.value })}/>
+          <MediaField icon={<User size={18}/>} label="Иконка автора" file={author.icon.file} previewUrl={author.icon.preview} saved={author.icon.saved} onPick={author.icon.onPick} onClear={author.icon.onClear} {...(author.icon.inputRef ? { ref: author.icon.inputRef } : {})}/>
         </>
       )}
     </div>}
-    <EmbedFields value={value} onChange={onChange} titlePlaceholder={titlePlaceholder} descriptionPlaceholder={descriptionPlaceholder}/>
+    <EmbedFields value={value} onChange={onChange}/>
     <EmbedMediaFields image={image} thumbnail={thumbnail}/>
-    <EmbedUsage content={usage}/>
   </div>;
 }
 
@@ -201,8 +188,8 @@ export function StatCard({ label, value, hint }: { label: string; value: ReactNo
   return <article className="card stat-card"><span>{label}</span><strong>{value}</strong>{hint != null && <small>{hint}</small>}</article>;
 }
 
-export function SaveButton({ saving, onClick, label = "Сохранить", disabled = false, savingLabel = "Сохраняем…", variant }: { saving: boolean; onClick: () => void; label?: string; disabled?: boolean; savingLabel?: string; variant?: "secondary" }) {
-  return <button type="button" className={variant === "secondary" ? "btn secondary" : "btn success"} disabled={disabled || saving} onClick={onClick}>{saving ? savingLabel : label}</button>;
+export function SaveButton({ saving, onClick, label = "Сохранить", disabled = false, savingLabel = "Сохраняем…" }: { saving: boolean; onClick: () => void; label?: string; disabled?: boolean; savingLabel?: string }) {
+  return <button type="button" className="btn success" disabled={disabled || saving} onClick={onClick}>{saving ? savingLabel : label}</button>;
 }
 
 type CheckListProps = {
@@ -369,7 +356,7 @@ export function TemplateLibrary({ title, note, description, action, extra, empty
   );
 }
 
-export function MediaField({ icon, label, file, previewUrl, saved, onPick, onClear, ref, clearLabel = "Удалить" }: { icon: ReactNode; label: string; file: File | null; previewUrl: string; saved: boolean; onPick: (file: File | null) => void; onClear: () => void; ref?: React.Ref<HTMLInputElement>; clearLabel?: string }) {
+function MediaField({ icon, label, file, previewUrl, saved, onPick, onClear, ref, clearLabel = "Удалить" }: { icon: ReactNode; label: string; file: File | null; previewUrl: string; saved: boolean; onPick: (file: File | null) => void; onClear: () => void; ref?: React.Ref<HTMLInputElement>; clearLabel?: string }) {
   return (
     <label className="media-upload">
       {icon}
