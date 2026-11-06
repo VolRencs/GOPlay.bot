@@ -4,7 +4,7 @@ import { auth } from "./auth.ts";
 import { read, type ReadStatement } from "../db/typed.ts";
 import { logger } from "./logger.ts";
 import { ttlCacheAsync } from "./cache.ts";
-import { DAY_MS } from "./constants.ts";
+import { BOT_TOKEN_ERROR, DAY_MS } from "./constants.ts";
 import { DiscordRateLimitError, discordFetch, withRateLimitRetry } from "./discord-api.ts";
 
 export { DiscordRateLimitError, discordFetch } from "./discord-api.ts";
@@ -211,15 +211,22 @@ async function authorize(guildId: string) {
   return { ok: true as const, user: gate.user };
 }
 
-export { isSnowflake, isSnowflakeArray } from "./ids.ts";
+export { isSnowflake, isSnowflakeArray, isSnowflakeOrNull } from "./ids.ts";
 
 // Единый формат ошибок API: `{ error }` с нужным статусом.
 export const jsonError = (message: string, status = 400) => Response.json({ error: message }, { status });
+
+export const botTokenError = () => jsonError(BOT_TOKEN_ERROR, 503);
 
 // Чтение JSON-тела: битый/пустой JSON → null, дальше роут проверяет форму.
 // Тело читается вручную с лимитом: request.json() буферизует в памяти всё,
 // что прислал клиент (chunked body обходит проверку content-length).
 const MAX_JSON_BYTES = 1024 * 1024;
+export async function readJsonRecord(request: Request): Promise<Record<string, unknown> | null> {
+  const body = await readJson<unknown>(request);
+  return body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+}
+
 export async function readJson<T>(request: Request): Promise<T | null> {
   const declared = Number(request.headers.get("content-length") ?? "");
   if (Number.isFinite(declared) && declared > MAX_JSON_BYTES) return null;

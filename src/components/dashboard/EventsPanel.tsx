@@ -1,13 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Image, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { eventStatusMeta } from "#lib/labels.ts";
-import { userRef } from "#lib/mentions.ts";
+import { userRef } from "#lib/format.ts";
 import type { EventButtonStyle, EventStatus, RecurrenceFrequency } from "#lib/events.ts";
 import type { EventListDto, EventListItemDto } from "#contracts/events.ts";
 import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, FieldsEditor, formatTime, MediaField, NumberField, SaveButton, Select, TemplateLibrary, asBoolean, asFields, asNumber, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, EmbedFields, EmbedMediaFields, formatTime, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -198,16 +198,13 @@ export function EventsPanel() {
             {events.map(e => {
               const ch = channels.find(c => c.id === e.channelId);
               return (
-                <article className="template-item event-item" key={e.id}>
-                  <div>
-                    <strong>{e.embed.title ?? "Без названия"}</strong>
-                    <p className="muted"><span className={`pill ${EVENT_TONE[e.status] ?? ""}`}>{eventStatusMeta[e.status]?.label ?? e.status}</span> · {formatTime(e.scheduledAt)} · #{ch?.name ?? e.channelId} · {e.counts.joined}{e.maxParticipants > 0 ? ` / ${e.maxParticipants}` : ""}{e.counts.waitlist > 0 ? ` +${e.counts.waitlist} в очереди` : ""}</p>
-                  </div>
-                  <div className="template-actions">
-                    <button type="button" className="btn secondary" disabled={busy} onClick={() => edit(e)}>Изменить</button>
-                    <button type="button" className="btn danger" disabled={busy} onClick={() => void remove(e)} aria-label={`Удалить ${e.embed.title ?? "событие"}`}><Trash2 size={16}/>Удалить</button>
-                  </div>
-                </article>
+                <TemplateRow key={e.id} className="event-item" actions={<>
+                  <button type="button" className="btn secondary" disabled={busy} onClick={() => edit(e)}>Изменить</button>
+                  <button type="button" className="btn danger" disabled={busy} onClick={() => void remove(e)} aria-label={`Удалить ${e.embed.title ?? "событие"}`}><Trash2 size={16}/>Удалить</button>
+                </>}>
+                  <strong>{e.embed.title ?? "Без названия"}</strong>
+                  <p className="muted"><span className={`pill ${EVENT_TONE[e.status] ?? ""}`}>{eventStatusMeta[e.status]?.label ?? e.status}</span> · {formatTime(e.scheduledAt)} · #{ch?.name ?? e.channelId} · {e.counts.joined}{e.maxParticipants > 0 ? ` / ${e.maxParticipants}` : ""}{e.counts.waitlist > 0 ? ` +${e.counts.waitlist} в очереди` : ""}</p>
+                </TemplateRow>
               );
             })}
           </div>
@@ -244,14 +241,11 @@ export function EventsPanel() {
           <div className="embed-form" style={{ borderLeftColor: draft.color }}>
             <ColorRow color={draft.color} onChange={color => set({ color })}/>
             <label className="check-row"><input type="checkbox" checked={draft.timestamp} onChange={e => set({ timestamp: e.target.checked })}/> Показывать дату события в сообщении (Discord @time)</label>
-            <input className="embed-title-input" value={draft.title} maxLength={256} placeholder="Заголовок события" onChange={e => set({ title: e.target.value })}/>
-            <textarea className="embed-description-input" rows={6} value={draft.description} maxLength={4096} placeholder="Описание: markdown, эмодзи, несколько абзацев" onChange={e => set({ description: e.target.value })}/>
-            <FieldsEditor fields={draft.fields} onChange={fields => set({ fields })}/>
-            <input className="embed-footer-input" value={draft.footer} maxLength={2048} placeholder="Футер" onChange={e => set({ footer: e.target.value })}/>
-            <div className="embed-bottom">
-              <MediaField icon={<Image size={18}/>} label="Основное изображение" file={draft.imageFile} previewUrl={imagePreview} saved={Boolean(draft.image)} onPick={file => set({ imageFile: file })} onClear={clearImage} ref={imageInput} clearLabel="Удалить изображение"/>
-              <MediaField icon={<Image size={18}/>} label="Миниатюра" file={draft.thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(draft.thumbnail)} onPick={file => set({ thumbnailFile: file })} onClear={clearThumbnail} ref={thumbnailInput} clearLabel="Удалить миниатюру"/>
-            </div>
+            <EmbedFields value={draft} onChange={patch => set(patch)} titlePlaceholder="Заголовок события" descriptionPlaceholder="Описание: markdown, эмодзи, несколько абзацев"/>
+            <EmbedMediaFields
+              image={{ file: draft.imageFile, preview: imagePreview, saved: Boolean(draft.image), inputRef: imageInput, onPick: file => set({ imageFile: file }), onClear: clearImage }}
+              thumbnail={{ file: draft.thumbnailFile, preview: thumbnailPreview, saved: Boolean(draft.thumbnail), inputRef: thumbnailInput, onPick: file => set({ thumbnailFile: file }), onClear: clearThumbnail }}
+            />
           </div>
           <div className="event-buttons-grid">
             <ButtonEditor title="Кнопка «Участвовать»" label={draft.joinLabel} emoji={draft.joinEmoji} style={draft.joinStyle} enabled={draft.joinEnabled} emojis={emojis} onChange={setButton("join")}/>

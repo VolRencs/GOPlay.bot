@@ -1,5 +1,117 @@
 import { safeJson } from "../lib/json.ts";
-import type { EmbedPayload } from "./dashboard.ts";
+
+// Единая модель содержимого embed'а для панели сообщений и событий.
+// Специфичные поля (режим/отправки у сообщений, timestamp у событий) живут
+// в своих контрактах, а общая форма и лимиты Discord — только здесь.
+
+export type EmbedField = { name: string; value: string; inline?: boolean };
+
+export type EmbedAuthor = { name?: string; url?: string; iconUrl?: string };
+
+export type EmbedContent = { title?: string; description?: string; color?: number; footer?: { text?: string }; author?: EmbedAuthor; image?: { url?: string }; thumbnail?: { url?: string }; fields?: EmbedField[] };
+
+/** DTO панели сообщений: та же форма, что и у общего EmbedContent. */
+export type EmbedPayload = EmbedContent;
+
+/** Нормализованная форма, которая уходит в Discord REST. */
+export type DiscordEmbed = Omit<EmbedContent, "footer" | "author" | "image" | "thumbnail"> & {
+  footer?: { text: string };
+  author?: { name: string; url?: string; icon_url?: string };
+  image?: { url: string };
+  thumbnail?: { url: string };
+};
+
+export const EMBED_LIMITS = { title: 256, description: 4096, fields: 25, fieldName: 256, fieldValue: 1024, footer: 2048, authorName: 256, url: 2048, total: 6000 } as const;
+
+function text(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (value && typeof value === "object") {
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.text === "string") return entry.text.trim() || undefined;
+    if (typeof entry.url === "string") return entry.url.trim() || undefined;
+  }
+  return undefined;
+}
+
+function mediaUrl(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (value && typeof value === "object") {
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.url === "string") return entry.url.trim() || undefined;
+  }
+  return undefined;
+}
+
+/** Поля embed'а: обрезка лимитов и признак полузаполненного поля. */
+function cleanEmbedFields(value: unknown): { fields: EmbedField[]; halfFilled: boolean } {
+  const raw = Array.isArray(value) ? value : [];
+  const fields: EmbedField[] = [];
+  let halfFilled = false;
+  for (const entry of raw) {
+    const field = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+    const name = (typeof field.name === "string" ? field.name : "").trim().slice(0, EMBED_LIMITS.fieldName);
+    const textValue = (typeof field.value === "string" ? field.value : "").trim().slice(0, EMBED_LIMITS.fieldValue);
+    if (Boolean(name) !== Boolean(textValue)) halfFilled = true;
+    if (name && textValue && fields.length < EMBED_LIMITS.fields) fields.push({ name, value: textValue, inline: Boolean(field.inline) });
+  }
+  return { fields, halfFilled };
+}
+
+/** Приводит пользовательский ввод к форме Discord, сохраняя старый формат
+ *  footer/thumbnail/image в виде строки. Пустые значения отбрасываются. */
+export function normalizeEmbedContent(value: unknown): { content: EmbedContent; halfFilled: boolean } {
+  const v = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
+  const { fields, halfFilled } = cleanEmbedFields(v.fields);
+  const title = text(v.title)?.slice(0, EMBED_LIMITS.title);
+  const description = text(v.description)?.slice(0, EMBED_LIMITS.description);
+  const footer = text(v.footer)?.slice(0, EMBED_LIMITS.footer);
+  const author = (v.author && typeof v.author === "object" ? v.author : {}) as Record<string, unknown>;
+  const authorName = text(author.name)?.slice(0, EMBED_LIMITS.authorName);
+  const authorUrl = text(author.url)?.slice(0, EMBED_LIMITS.url);
+  const authorIcon = text(author.iconUrl)?.slice(0, EMBED_LIMITS.url);
+  const thumbnail = mediaUrl(v.thumbnail)?.slice(0, EMBED_LIMITS.url);
+  const image = mediaUrl(v.image)?.slice(0, EMBED_LIMITS.url);
+  return {
+    content: {
+      ...(title ? { title } : {}),
+      ...(description ? { description } : {}),
+      ...(Number.isInteger(v.color) ? { color: v.color as number } : {}),
+      ...(footer ? { footer: { text: footer } } : {}),
+      ...(authorName ? { author: { name: authorName, ...(authorUrl ? { url: authorUrl } : {}), ...(authorIcon ? { iconUrl: authorIcon } : {}) } } : {}),
+      ...(thumbnail ? { thumbnail: { url: thumbnail } } : {}),
+      ...(image ? { image: { url: image } } : {}),
+      ...(fields.length ? { fields } : {}),
+    },
+    halfFilled,
+  };
+}
+
+/** Суммарный лимит Discord: title + description + поля + footer + author. */
+export function embedCharacterCount(content: EmbedContent): number {
+  return (content.title?.length ?? 0)
+    + (content.description?.length ?? 0)
+    + (content.footer?.text?.length ?? 0)
+    + (content.author?.name?.length ?? 0)
+    + (content.fields ?? []).reduce((sum, field) => sum + field.name.length + field.value.length, 0);
+}
+
+/** Маппинг в форму Discord REST: camelCase author.iconUrl → icon_url. */
+export function toDiscordEmbed(content: EmbedContent): DiscordEmbed {
+  const { footer, author, image, thumbnail, fields, ...rest } = content;
+  return {
+    ...rest,
+    ...(fields?.length ? { fields: fields.map(field => ({ ...field, inline: Boolean(field.inline) })) } : {}),
+    ...(footer?.text ? { footer: { text: footer.text } } : {}),
+    ...(author?.name ? { author: { name: author.name, ...(author.url ? { url: author.url } : {}), ...(author.iconUrl ? { icon_url: author.iconUrl } : {}) } } : {}),
+    ...(image?.url ? { image: { url: image.url } } : {}),
+    ...(thumbnail?.url ? { thumbnail: { url: thumbnail.url } } : {}),
+  };
+}
+
+export function parseEmbedJson(raw: string | null | undefined): EmbedContent {
+  const parsed = safeJson<unknown>(raw, {});
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as EmbedContent : {};
+}
 
 export type EmbedDto = {
   id: number;
@@ -40,12 +152,10 @@ export type EmbedSendingSource = {
 };
 
 export function toDto(row: EmbedSource): EmbedDto {
-  const parsed = safeJson<unknown>(row.payload_json, {});
-  const payload = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as EmbedPayload : {};
   return {
     id: row.id,
     name: row.name,
-    payload,
+    payload: parseEmbedJson(row.payload_json),
     mode: row.mode,
     updatedAt: row.updated_at,
     channelId: row.channel_id,

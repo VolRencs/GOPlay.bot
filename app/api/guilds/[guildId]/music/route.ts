@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server.js";
-import { guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { isSnowflake, jsonError } from "#lib/guild-access.ts";
 import { musicSettingsFor, invalidateMusicSettings } from "#lib/music-settings.ts";
 import { clampMusicSeconds } from "#lib/labels.ts";
 import { DEFAULT_MUSIC_LEAVE_SECONDS } from "#lib/constants.ts";
 import { musicQueries } from "#db/queries.ts";
-import { settingsPutRoute } from "#lib/settings-route.ts";
+import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { musicState, musicView } from "#lib/settings-views.ts";
 import { fromDto as fromMusicDto, toDto as toMusicDto, type MusicDto } from "#contracts/music.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
@@ -12,9 +11,7 @@ import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 const isValidCommandChannel = (value: unknown): boolean =>
   value === undefined || value === null || (typeof value === "string" && (value === "" || isSnowflake(value)));
 
-export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<MusicDto>(toMusicDto(musicSettingsFor(guildId)));
-});
+export const GET = settingsGetRoute(guildId => toMusicDto(musicSettingsFor(guildId)));
 
 export const PUT = settingsPutRoute<MusicDto>({
   load: guildId => musicState(guildId),

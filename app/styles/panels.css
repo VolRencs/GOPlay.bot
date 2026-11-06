@@ -87,20 +87,15 @@
 
 
 
-.field-row {
+.field-row-simple {
   display: grid;
   gap: .5rem;
-  align-items: end;
-}
-
-.field-row-simple {
   grid-template-columns: minmax(120px, .7fr) minmax(180px, 1.3fr) auto;
   align-items: start;
 }
 
 .field-row-simple textarea {
   min-height: 71px;
-  margin-top: .4rem;
 }
 
 .field-actions {

@@ -9,6 +9,8 @@ import { CardHeader, StatCard, formatNumber } from "./ui.tsx";
 import { formatDay } from "../../lib/format.ts";
 
 type TopRow = { key: string; name: string; value: number };
+const PERIODS = [["24h", "24 часа"], ["7d", "7 дней"], ["30d", "30 дней"]] as const;
+const PERIOD_LABELS = { "24h": "за 24 часа", "7d": "за 7 дней", "30d": "за 30 дней" } as const;
 function TopCard({ title, rows, empty, rank }: { title: string; rows: TopRow[] | undefined; empty: string; rank?: boolean }) {
   return (
     <article className="card settings-card">
@@ -44,13 +46,13 @@ export function ServerStatistics() {
   const points = data?.points ?? [];
   const max = Math.max(1, ...points.map(p => p.messages));
   const avg = points.length ? Math.round(points.reduce((sum, p) => sum + p.messages, 0) / points.length) : 0;
-  const periodLabel = ({"24h":"за 24 часа","7d":"за 7 дней","30d":"за 30 дней"} as const)[period];
+  const periodLabel = PERIOD_LABELS[period];
   const balance = totals.joins - totals.leaves;
 
   return (
     <section className="panel-stack">
       <div className="period-switch" role="group" aria-label="Период">
-        {([["24h", "24 часа"], ["7d", "7 дней"], ["30d", "30 дней"]] as const).map(([key, label]) => (
+        {PERIODS.map(([key, label]) => (
           <button type="button" key={key} className={period === key ? "active" : ""} onClick={() => setPeriod(key)}>{label}</button>
         ))}
       </div>

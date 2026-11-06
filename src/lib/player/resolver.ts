@@ -201,16 +201,22 @@ function pickThumbnail(meta: Record<string, unknown>): string | undefined {
   return usable.at(-1)?.url;
 }
 
+function metaFields(meta: Record<string, unknown>): { duration: number; thumbnail: string | undefined; mediaUrl: string | null } {
+  return {
+    duration: typeof meta.duration === "number" ? meta.duration : 0,
+    thumbnail: pickThumbnail(meta),
+    mediaUrl: pickAudioUrl(meta),
+  };
+}
+
 function cacheSingleMeta(key: string, title: string, duration: number, thumbnail: string | undefined, mediaUrl: string | null): void {
   evictOldest(singleMeta);
   singleMeta.set(key, { at: Date.now(), title, duration, ...(thumbnail ? { thumbnail } : {}), ...(mediaUrl ? { mediaUrl, mediaUrlExpiresAt: Date.now() + MEDIA_URL_TTL_MS } : {}) });
 }
 
 function trackFromFullMeta(meta: Record<string, unknown>, fallbackQuery: string, requestedBy: string): Track | null {
-  const duration = typeof meta.duration === "number" ? meta.duration : 0;
+  const { duration, thumbnail, mediaUrl } = metaFields(meta);
   if (duration > MAX_DURATION_SECONDS) return null;
-  const mediaUrl = pickAudioUrl(meta);
-  const thumbnail = pickThumbnail(meta);
   const track: Track = { query: String(meta.webpage_url ?? fallbackQuery), title: String(meta.title ?? fallbackQuery), requestedBy, ...(duration > 0 ? { duration } : {}), ...(thumbnail ? { thumbnail } : {}) };
   // Прямой URL экономит вторую полную экстракцию на старте стрима.
   if (mediaUrl) { track.mediaUrl = mediaUrl; track.mediaUrlExpiresAt = Date.now() + MEDIA_URL_TTL_MS; }
@@ -294,9 +300,7 @@ export function hydrateTrackMeta(track: Track, guildId: string): void {
   }
   void runYtDlpJson(track.query).then(({ meta }) => {
     if (!meta || meta._type === "playlist") { track.metaPending = false; return; }
-    const duration = typeof meta.duration === "number" ? meta.duration : 0;
-    const thumbnail = pickThumbnail(meta);
-    const mediaUrl = pickAudioUrl(meta);
+    const { duration, thumbnail, mediaUrl } = metaFields(meta);
     cacheSingleMeta(key, String(meta.title ?? track.query), duration, thumbnail, mediaUrl);
     applyHydration(track, guildId, String(meta.title ?? track.title), duration, thumbnail, mediaUrl ?? undefined, mediaUrl ? Date.now() + MEDIA_URL_TTL_MS : undefined);
   }).catch(() => { track.metaPending = false; });

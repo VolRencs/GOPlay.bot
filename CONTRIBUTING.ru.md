@@ -6,7 +6,7 @@
 
 ## Стек и команды
 
-- Node ≥ 26, pnpm 12.17.0, ffmpeg с libopus, yt-dlp в PATH.
+- Node ≥ 26, pnpm 12.18.0, ffmpeg с libopus, yt-dlp в PATH.
 - `pnpm i --frozen-lockfile` — установка.
 - `cp .env.example .env` — заполнить `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).
@@ -36,6 +36,7 @@
   идти через публичные обёртки из `src/lib/guild-access.ts` (`guildRoute`/`adminRoute`)
   и писать в журнал через `src/lib/dashboard-audit.ts`, где это уместно.
 - Панели дашборда: `src/components/dashboard/*.tsx` + типы в `types.ts`.
+- Поля и лимиты embed: `src/contracts/embeds.ts`; композеры сообщений и событий используют общую модель.
 - Музыка (`src/lib/player/`):Resolver не выходит за allowlist YouTube-доменов;
   новые источники — только с аналогичными ограничениями (см. SSRF-комментарии).
 

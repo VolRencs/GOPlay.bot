@@ -33,9 +33,19 @@ export async function apiSend<T>(url: string, init: RequestInit, failMessage: st
   return { ok: true, data: await response.json().catch(() => ({})) as T };
 }
 
+/** JSON-мутация: единый content-type и сериализация тела. */
+export function apiJson<T>(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body: unknown, failMessage: string): Promise<ApiResult<T>> {
+  return apiSend<T>(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, failMessage);
+}
+
 /** Мутация без нужды в теле ответа: только факт успеха и текст ошибки.
  *  data: undefined сохраняет единый ApiResult-контракт usePanelAction. */
 export async function apiMutate(url: string, init: RequestInit, failMessage: string): Promise<ApiResult<undefined>> {
   const result = await apiSend<unknown>(url, init, failMessage);
+  return result.ok ? { ok: true, data: undefined } : result;
+}
+
+export async function apiJsonMutate(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body: unknown, failMessage: string): Promise<ApiResult<undefined>> {
+  const result = await apiJson<unknown>(url, method, body, failMessage);
   return result.ok ? { ok: true, data: undefined } : result;
 }

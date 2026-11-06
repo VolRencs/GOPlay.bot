@@ -9,7 +9,7 @@ import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import { levelsTr } from "../../lib/i18n/bot/levels.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
-import { userRef } from "../../lib/mentions.ts";
+import { userRef } from "../../lib/format.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { fetchMember } from "../utils/members.ts";
 

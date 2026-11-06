@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
+import { botTokenError, discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
 import { withTransaction } from "#db/database.ts";
 import { rolesQueries } from "#db/queries.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { logger } from "#lib/logger.ts";
-import { BUTTON_STYLE_IDS, BOT_TOKEN_ERROR, buttonStyleId, type ButtonStyleName } from "#lib/constants.ts";
+import { BUTTON_STYLE_IDS, buttonStyleId, type ButtonStyleName } from "#lib/constants.ts";
 import { roleModeLabels, roleStyleLabels } from "#lib/labels.ts";
-import { roleRef } from "#lib/mentions.ts";
-import { REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT } from "#lib/limits.ts";
+import { roleRef } from "#lib/format.ts";
+import { REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT } from "#lib/constants.ts";
 import { toDto as toRolePanelDto, type RolePanelInput, type RolePanelRowDto } from "#contracts/roles.ts";
 import { stripVariationSelectors, toDiscordEmoji, toDiscordReaction } from "goemoji/discord";
 
@@ -63,7 +63,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if (!value.channelId || !value.messageId) return jsonError("Выберите уже отправленное сообщение.");
   const embed = { channel_id: value.channelId, message_id: value.messageId, name: tpl.name };
   const token = process.env.DISCORD_TOKEN;
-  if (!token) return jsonError(BOT_TOKEN_ERROR, 503);
+  if (!token) return botTokenError();
   const assignable = await assignableRoleIds(guildId, options.map(o => o.roleId));
   if (assignable === null) return jsonError("Не удалось проверить иерархию ролей в Discord.", 502);
   if (options.some(o => !assignable.has(o.roleId))) return jsonError("Некоторые роли нельзя выдавать: переместите роль бота выше них в Discord.");
@@ -172,7 +172,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   const panel = rolesQueries.forDelete.get(id, guildId);
   if (!panel) return jsonError("Панель не найдена.", 404);
   const token = process.env.DISCORD_TOKEN;
-  if (!token) return jsonError(BOT_TOKEN_ERROR, 503);
+  if (!token) return botTokenError();
   const headers = { "content-type": "application/json" };
   let response: Response | undefined;
   try {

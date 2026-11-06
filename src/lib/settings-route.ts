@@ -17,6 +17,10 @@ type SettingsPutConfig<T> = {
   saveMissing?: boolean;
 };
 
+export function settingsGetRoute<T>(load: (guildId: string) => T) {
+  return guildRoute(async (_, { guildId }) => NextResponse.json(load(guildId)));
+}
+
 export function settingsPutRoute<T>(config: SettingsPutConfig<T>) {
   return guildRoute(async (request, { guildId, user }) => {
     const parsed = config.parse(await readJson<unknown>(request), guildId);

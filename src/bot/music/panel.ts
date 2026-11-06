@@ -15,7 +15,7 @@ import { fmtTime, getQueueSnapshot, type LoopMode, type Track } from "../../lib/
 import { trFor } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
-import { userRef } from "../../lib/mentions.ts";
+import { userRef } from "../../lib/format.ts";
 
 /** Компактная строка трека: панель не должна падать от длинного названия YouTube. */
 const QUEUE_PAGE_SIZE = 10;

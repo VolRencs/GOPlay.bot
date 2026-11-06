@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server.js";
 import { guildRoute } from "#lib/guild-access.ts";
 import { auditQueries } from "#db/queries.ts";
-import { toDto as toAuditEntryDto, type AuditListDto } from "#contracts/audit.ts";
+import { toAuditDto, type AuditListDto } from "#contracts/dashboard.ts";
 
 // Чистое чтение: retention выполняется на записи (recordDashboardChange).
 export const GET = guildRoute(async (request, { guildId }) => {
@@ -12,5 +12,5 @@ export const GET = guildRoute(async (request, { guildId }) => {
 
   const rows = section ? auditQueries.bySection.all(guildId, section, limit, offset) : auditQueries.list.all(guildId, limit, offset);
   const total = rows[0]?.total ?? 0;
-  return NextResponse.json<AuditListDto>({ entries: rows.map(toAuditEntryDto), total });
+  return NextResponse.json<AuditListDto>({ entries: rows.map(toAuditDto), total });
 });

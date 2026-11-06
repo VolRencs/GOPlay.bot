@@ -1,3 +1,5 @@
+import type { DiscordEmbed, EmbedContent } from "../../contracts/embeds.ts";
+
 export const eventStatuses = ["scheduled", "live", "completed", "cancelled"] as const;
 export type EventStatus = (typeof eventStatuses)[number];
 export const eventButtonStyles = ["primary", "secondary", "success", "danger"] as const;
@@ -5,19 +7,10 @@ export type EventButtonStyle = (typeof eventButtonStyles)[number];
 export const recurrenceFrequencies = ["none", "daily", "weekly", "biweekly", "custom"] as const;
 export type RecurrenceFrequency = (typeof recurrenceFrequencies)[number];
 
-// Форма embed'а совпадает с тем, что уходит в Discord API: композер панели
-// показывает ровно то, что будет опубликовано.
-export type EventEmbed = {
-  title?: string;
-  description?: string;
-  color?: number;
-  footer?: { text?: string };
-  thumbnail?: { url?: string };
-  image?: { url?: string };
-  fields?: { name: string; value: string; inline?: boolean }[];
-  timestamp?: boolean;
-};
-export type EventEmbedPayload = Omit<EventEmbed, "timestamp" | "footer" | "thumbnail" | "image"> & { footer?: { text: string }; thumbnail?: { url: string }; image?: { url: string } };
+// Общие поля embed'а — из contracts/embeds.ts. timestamp здесь не нативный
+// Discord timestamp, а флаг «показать дату события отдельным полем».
+export type EventEmbed = EmbedContent & { timestamp?: boolean };
+export type EventEmbedPayload = DiscordEmbed;
 export type EventButton = { key: "join" | "leave"; label: string; emoji: string; style: EventButtonStyle; enabled: boolean; order: number };
 export type EventRecurrence = { freq: RecurrenceFrequency; interval: number };
 

@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { MAX_LEVEL, MAX_REWARDS, xpForLevel, type NotifyMode } from "#lib/levels.ts";
 import { levelDefaultsDto, levelRangesDto, normalize, type LevelRewardDto, type LevelSettingsDto, type LevelsDto } from "#contracts/levels.ts";
-import { CardHeader, CheckList, NumberField, SaveButton, SectionLoading, Select, channelOptions, formatNumber, useAsyncAction } from "./ui.tsx";
+import { CardHeader, CheckList, NumberField, SaveButton, SectionLoading, Select, channelOptions, formatNumber } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
@@ -20,9 +20,8 @@ function nextRewardLevel(rewards: LevelRewardDto[]): number | null {
 }
 
 export function LevelsPanel() {
-  const { guildId, resources, notify, fail } = useDashboard();
-  const { value: levels, setValue, loading, save } = useSettingsTab<LevelsDto, LevelsDto>({
-    endpoint: `/api/guilds/${guildId}/levels`,
+  const { resources } = useDashboard();
+  const { value: levels, setValue, loading, saving, saveNow } = useSettingsTab<LevelsDto, LevelsDto>({
     initial: { settings: { ...levelDefaultsDto, ignoredChannelIds: [], ignoredRoleIds: [] }, rewards: [] },
     fromGet: normalize,
     toBody: normalize,
@@ -31,10 +30,7 @@ export function LevelsPanel() {
     saveError: "Не удалось сохранить настройки уровней.",
     savedMessage: "Настройки уровней сохранены.",
     registerKey: "levels",
-    onDone: notify,
-    onError: fail,
   });
-  const { busy: saving, run } = useAsyncAction();
   if (loading) return <SectionLoading/>;
   const channels = resources?.channels ?? [];
   const roles = resources?.roles ?? [];
@@ -42,7 +38,6 @@ export function LevelsPanel() {
   const rewards = levels.rewards;
   const onChange = (settings: LevelSettingsDto) => setValue({ ...levels, settings });
   const onRewardsChange = (rewards: LevelRewardDto[]) => setValue({ ...levels, rewards });
-  const onSave = save;
   const set = (change: Partial<LevelSettingsDto>) => onChange({ ...value, ...change });
   const needsChannel = value.notifyMode === "channel";
   const addLevel = nextRewardLevel(rewards);
@@ -54,7 +49,7 @@ export function LevelsPanel() {
       <article className="card settings-card">
         <CardHeader title="Система уровней"
           muted="Опыт начисляется за сообщения и время в голосовых каналах."
-          action={<SaveButton saving={saving} onClick={() => run(onSave)}/>}/>
+          action={<SaveButton saving={saving} onClick={saveNow}/>}/>
       </article>
       <article className={value.enabled ? "card settings-card level-card" : "card settings-card level-card is-off"}>
         <CardHeader title="Настройки"

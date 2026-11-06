@@ -6,7 +6,7 @@ import { recordPunishmentAndOffer } from "../moderation/index.ts";
 import { auditActor, auditFind, isBotAction, logAction } from "./index.ts";
 import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
-import { channelRef } from "../../lib/mentions.ts";
+import { channelRef } from "../../lib/format.ts";
 import { count } from "../../lib/perf.ts";
 import { addMetric } from "../metrics.ts";
 import { sendMemberEvent } from "../welcome.ts";

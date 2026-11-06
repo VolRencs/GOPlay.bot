@@ -1,14 +1,14 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, PermissionFlagsBits, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type Client, type Interaction, type StringSelectMenuInteraction } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type Client, type Interaction, type StringSelectMenuInteraction } from "discord.js";
 import { count } from "../../lib/perf.ts";
 import { logger } from "../../lib/logger.ts";
 import { stmt } from "../../db/statements.ts";
 import { failInteraction, guard, isMissingDiscordResource } from "../../lib/errors.ts";
 import { guildLang } from "../../lib/i18n/bot.ts";
-import { SELECT_OPTION_LIMIT } from "../../lib/limits.ts";
+import { SELECT_OPTION_LIMIT } from "../../lib/constants.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { musicSettingsFor } from "../../lib/music-settings.ts";
 import { queueView, renderMusicPanel, trackLabel } from "./panel.ts";
-import { isAdminInteraction, musicTFor } from "./shared.ts";
+import { canConnectAndSpeak, isAdminInteraction, musicTFor } from "./shared.ts";
 import {
   cycleLoop, getSessionTextChannelId, getQueueSnapshot,
   moveToVoice, moveQueueTrack, pickFollowTarget, playbackStateOf,
@@ -62,8 +62,12 @@ export function registerMusic(client: Client): void {
     if (!target) return;
     // Права и тип проверяем по кэшу; нет данных — остаёмся на месте.
     const channel = guild.channels.cache.get(target);
-    const perms = channel?.permissionsFor(guild.members.me ?? guild.roles.everyone);
-    if (!channel?.isVoiceBased() || !perms?.has(PermissionFlagsBits.Connect) || !perms.has(PermissionFlagsBits.Speak)) {
+    if (!channel?.isVoiceBased()) {
+      logger.info("[MUSIC] Не переехал к автору: канал недоступен или нет прав", guildId, target);
+      return;
+    }
+    const perms = canConnectAndSpeak(channel, guild.members.me);
+    if (!perms.connect || !perms.speak) {
       logger.info("[MUSIC] Не переехал к автору: канал недоступен или нет прав", guildId, target);
       return;
     }

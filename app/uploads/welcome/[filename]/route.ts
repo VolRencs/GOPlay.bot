@@ -1,6 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { WELCOME_CONTENT_TYPES as contentTypes, welcomeUploadsDir } from "#lib/uploads.ts";
+import { serveUploadFile, WELCOME_CONTENT_TYPES as contentTypes, welcomeUploadsDir } from "#lib/uploads.ts";
 
 // Фон приветствия пишется в public/uploads/welcome уже после сборки, а Next в
 // production отдаёт из public только файлы, перечисленные на старте сервера.
@@ -11,10 +9,5 @@ export async function GET(_: Request, context: RouteContext<"/uploads/welcome/[f
   const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
   const type = contentTypes[ext];
   if (!type || !/^\d{15,22}-welcome\.[a-z0-9]+$/i.test(filename)) return new Response(null, { status: 404 });
-  try {
-    const bytes = await readFile(join(welcomeUploadsDir(), filename));
-    return new Response(bytes, { headers: { "content-type": type, "cache-control": "public, max-age=3600", "x-content-type-options": "nosniff" } });
-  } catch {
-    return new Response(null, { status: 404 });
-  }
+  return serveUploadFile(welcomeUploadsDir(), filename, type, "public, max-age=3600", { "x-content-type-options": "nosniff" });
 }

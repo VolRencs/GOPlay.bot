@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiSend } from "./api.ts";
+import { apiJson, apiSend } from "./api.ts";
 import { useConfigDraft } from "./hooks.ts";
-import { useRegisterChanges } from "./DashboardContext.tsx";
-import type { PanelFail, PanelNotify } from "./types.ts";
+import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
+import { useAsyncAction } from "./ui.tsx";
 
 type SettingsTabOptions<TGet, TValue> = {
-  endpoint: string;
+  /** По умолчанию endpoint совпадает с registerKey: /api/guilds/{guildId}/{registerKey}. */
+  endpoint?: string;
   initial: TValue;
   fromGet: (data: TGet) => TValue;
   toBody: (value: TValue) => unknown;
@@ -17,11 +18,10 @@ type SettingsTabOptions<TGet, TValue> = {
   saveError: string;
   savedMessage: string;
   registerKey: string;
-  onDone: PanelNotify;
-  onError: PanelFail;
 };
 
 export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, TValue>) {
+  const { guildId, notify, fail } = useDashboard();
   const draft = useConfigDraft(options.initial);
   const [loading, setLoading] = useState(true);
   const optionsRef = useRef(options);
@@ -29,40 +29,41 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
+  const endpoint = options.endpoint ?? `/api/guilds/${guildId}/${options.registerKey}`;
+
   useEffect(() => {
     let active = true;
     setLoading(true);
-    void apiSend<TGet>(options.endpoint, {}, options.loadError).then(result => {
+    void apiSend<TGet>(endpoint, {}, options.loadError).then(result => {
       if (!active) return;
       if (result.ok) draftRef.current.commit(optionsRef.current.fromGet(result.data));
       else {
         draftRef.current.commit(optionsRef.current.initial);
-        optionsRef.current.onError(result.error);
+        fail(result.error);
       }
       setLoading(false);
     });
     return () => { active = false; };
-  }, [options.endpoint, options.loadError]);
+  }, [endpoint, options.loadError, fail]);
 
   const save = useCallback(async (report = true): Promise<boolean> => {
     const current = draftRef.current;
-    const sent = await apiSend<{ unchanged?: boolean } & Record<string, unknown>>(optionsRef.current.endpoint, {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(optionsRef.current.toBody(current.value)),
-    }, optionsRef.current.saveError);
+    const sent = await apiJson<{ unchanged?: boolean } & Record<string, unknown>>(endpoint, "PUT", optionsRef.current.toBody(current.value), optionsRef.current.saveError);
     if (!sent.ok) {
-      optionsRef.current.onError(sent.error);
+      fail(sent.error);
       return false;
     }
     const next = optionsRef.current.afterSave ? optionsRef.current.afterSave(current.value, sent.data) : current.value;
     if (optionsRef.current.saveMode === "markSaved") current.markSaved(next);
     else current.commit(next);
-    if (report) optionsRef.current.onDone(sent.data.unchanged ? "Изменений нет." : optionsRef.current.savedMessage);
+    if (report) notify(sent.data.unchanged ? "Изменений нет." : optionsRef.current.savedMessage);
     return true;
-  }, []);
+  }, [endpoint, fail, notify]);
+
+  const { busy: saving, run } = useAsyncAction();
+  const saveNow = useCallback(() => run(save), [run, save]);
 
   useRegisterChanges(options.registerKey, { dirty: draft.dirty, save, discard: () => draftRef.current.reset() });
 
-  return { ...draft, loading, save };
+  return { ...draft, loading, save, saving, saveNow };
 }

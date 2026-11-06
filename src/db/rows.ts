@@ -1,5 +1,8 @@
 import type { RuleKind } from "../lib/automod.ts";
 import type { AppealStatus } from "../lib/appeals.ts";
+import type { AutoroleDomain } from "../contracts/roles.ts";
+import type { AutomodRuleDomain } from "../contracts/automod.ts";
+import type { WelcomeDomain } from "../contracts/welcome.ts";
 
 export type GuildNameRow = { name: string };
 export type GuildIdRow = { id: string };
@@ -53,14 +56,7 @@ export type MusicSessionRow = {
   updated_at: number;
 };
 
-export type AutoroleSettingsRow = {
-  guild_id: string;
-  enabled: number;
-  role_id: string | null;
-  updated_at: number;
-};
-
-export type AutoroleSettingsReadRow = { enabled: number; role_id: string | null };
+export type AutoroleSettingsRow = AutoroleDomain & { guild_id: string; updated_at: number };
 
 export type LevelSettingsRow = {
   guild_id: string;
@@ -127,19 +123,7 @@ export type ReminderDueRow = { id: number; event_id: string };
 export type EventGuildCountRow = { eventId: string; joined: number; waitlist: number };
 export type EventGuildParticipantRow = { eventId: string; userId: string; joinedAt: number; waitlist: number };
 
-export type WelcomeSettingsRow = {
-  guild_id: string;
-  enabled: number;
-  channel_id: string | null;
-  message: string;
-  image_enabled: number;
-  updated_at: number;
-  background_path: string | null;
-  image_config_json: string;
-  goodbye_enabled: number;
-  goodbye_channel_id: string | null;
-  goodbye_message: string;
-};
+export type WelcomeSettingsRow = WelcomeDomain & { guild_id: string; updated_at: number };
 
 export type GuildSecuritySettingsRow = {
   guild_id: string;
@@ -148,17 +132,7 @@ export type GuildSecuritySettingsRow = {
   updated_at: number;
 };
 
-export type AutomodRuleSettingsRow = {
-  id: number;
-  guild_id: string;
-  kind: string;
-  enabled: number;
-  action_json: string;
-  threshold_json: string;
-  window_seconds: number;
-  escalation: number;
-  updated_at: number;
-};
+export type AutomodRuleSettingsRow = AutomodRuleDomain & { id: number; guild_id: string; updated_at: number };
 
 export type LoggingSettingsRow = {
   guild_id: string;

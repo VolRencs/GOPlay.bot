@@ -14,10 +14,8 @@ export const COLOR_PRESETS = [
   "#313338",
 ] as const;
 
-export const DEFAULT_EMBED_COLOR = BRAND_COLOR;
-
 /** Один конвертер чисел Discord-цвета и hex — общий для обоих композеров. */
 export const colorNumberToHex = (value: number | null | undefined): string =>
-  `#${(value ?? DEFAULT_EMBED_COLOR).toString(16).padStart(6, "0")}`;
+  `#${(value ?? BRAND_COLOR).toString(16).padStart(6, "0")}`;
 
 export const hexToColorNumber = (value: string): number => Number.parseInt(value.slice(1), 16);

@@ -6,7 +6,8 @@ import { BarChart3, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, Scr
 const StatsTab = lazy(() => import("./StatsPanel.tsx").then(module => ({ default: module.ServerStatistics })));
 const WelcomeTab = lazy(() => import("./WelcomePanel.tsx").then(module => ({ default: module.WelcomeSettings })));
 const AutomodTab = lazy(() => import("./AutomodTab.tsx").then(module => ({ default: module.AutomodTab })));
-const RolesTab = lazy(() => import("./RolesTab.tsx").then(module => ({ default: module.RolesTab })));
+const AutoroleTab = lazy(() => import("./AutorolePanel.tsx").then(module => ({ default: module.AutoroleSettings })));
+const RolePanelTab = lazy(() => import("./RolesPanel.tsx").then(module => ({ default: module.RoleSettings })));
 const LevelsTab = lazy(() => import("./LevelsPanel.tsx").then(module => ({ default: module.LevelsPanel })));
 const EmbedsTab = lazy(() => import("./EmbedsPanel.tsx").then(module => ({ default: module.EmbedsPanel })));
 const MusicTab = lazy(() => import("./MusicSettingsCard.tsx").then(module => ({ default: module.MusicSettingsCard })));
@@ -15,7 +16,16 @@ const LoggingTab = lazy(() => import("./LoggingPanel.tsx").then(module => ({ def
 const TempChannelsTab = lazy(() => import("./TempChannelsPanel.tsx").then(module => ({ default: module.TemporaryChannelsSettings })));
 const AppealsTab = lazy(() => import("./AppealsPanel.tsx").then(module => ({ default: module.AppealsPanel })));
 const AuditTab = lazy(() => import("./AuditPanel.tsx").then(module => ({ default: module.DashboardAuditLog })));
-const SettingsTab = lazy(() => import("./SettingsTab.tsx").then(module => ({ default: module.SettingsTab })));
+const BotLanguageTab = lazy(() => import("./BotLanguageCard.tsx").then(module => ({ default: module.BotLanguageCard })));
+const CleanupTab = lazy(() => import("./AuditPanel.tsx").then(module => ({ default: module.ServerDataCleanup })));
+
+function RolesTab() {
+  return <section className="panel-stack"><AutoroleTab/><RolePanelTab/></section>;
+}
+
+function SettingsTab() {
+  return <section className="panel-stack"><BotLanguageTab/><CleanupTab/></section>;
+}
 
 export type TabKey = "stats" | "welcome" | "automod" | "roles" | "levels" | "embeds" | "music" | "events" | "logging" | "tempchannels" | "appeals" | "audit" | "settings";
 

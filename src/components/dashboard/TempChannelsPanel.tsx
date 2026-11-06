@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import type { Channel } from "./types.ts";
 import { clampUserLimit } from "#lib/tempchannels.ts";
 import { defaultTempConfig, type TempChannelConfigDto, type TempPresetDto, type TempchannelsDto } from "#contracts/tempchannels.ts";
-import { CardHeader, CheckList, SectionLoading, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, useAsyncAction } from "./ui.tsx";
+import { CardHeader, CheckList, SectionLoading, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, TemplateRow } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
@@ -27,9 +27,8 @@ function TempChannelConfigForm({ categories, value, onChange }: { categories: Ch
 const channelLabel = (count: number) => count === 1 ? "1 канал" : count >= 2 && count <= 4 ? `${count} канала` : `${count} каналов`;
 
 export function TemporaryChannelsSettings() {
-  const { guildId, resources, notify, fail } = useDashboard();
-  const { value, setValue: onChange, saved, loading, save } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
-    endpoint: `/api/guilds/${guildId}/tempchannels`,
+  const { resources } = useDashboard();
+  const { value, setValue: onChange, saved, loading, saving, saveNow } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
     initial: { presets: [] },
     fromGet: data => ({ presets: data.presets }),
     toBody: value => ({ presets: value.presets }),
@@ -38,15 +37,11 @@ export function TemporaryChannelsSettings() {
     saveError: "Не удалось сохранить временные каналы.",
     savedMessage: "Настройки временных каналов сохранены.",
     registerKey: "tempchannels",
-    onDone: notify,
-    onError: fail,
   });
-  const { busy: saving, run } = useAsyncAction();
   const [editingId, setEditingId] = useState<number | null>(null);
   if (loading) return <SectionLoading/>;
   const voiceChannels = resources?.voiceChannels ?? [];
   const categories = resources?.categories ?? [];
-  const onSave = save;
   const editing = value.presets.find(p => p.id === editingId) ?? null;
   const changed = saved !== null && stableStringify(saved) !== stableStringify(value);
 
@@ -73,16 +68,13 @@ export function TemporaryChannelsSettings() {
         {value.presets.length > 0 ? (
           <div className="template-list">
             {value.presets.map(preset => (
-              <article className="template-item" key={preset.id}>
-                <div>
-                  <strong>{preset.name || "Без названия"}</strong>
-                  <p className="muted">{preset.triggerChannelIds.length ? `${channelLabel(preset.triggerChannelIds.length)} · ${preset.config.nameTemplate}` : "Каналы не выбраны"}</p>
-                </div>
-                <div className="template-actions">
-                  <button type="button" className="btn secondary" onClick={() => setEditingId(preset.id)}>Изменить</button>
-                  <button type="button" className="btn danger" onClick={() => void removePreset(preset)} aria-label={`Удалить ${preset.name || "шаблон"}`}><Trash2 size={16}/>Удалить</button>
-                </div>
-              </article>
+              <TemplateRow key={preset.id} actions={<>
+                <button type="button" className="btn secondary" onClick={() => setEditingId(preset.id)}>Изменить</button>
+                <button type="button" className="btn danger" onClick={() => void removePreset(preset)} aria-label={`Удалить ${preset.name || "шаблон"}`}><Trash2 size={16}/>Удалить</button>
+              </>}>
+                <strong>{preset.name || "Без названия"}</strong>
+                <p className="muted">{preset.triggerChannelIds.length ? `${channelLabel(preset.triggerChannelIds.length)} · ${preset.config.nameTemplate}` : "Каналы не выбраны"}</p>
+              </TemplateRow>
             ))}
           </div>
         ) : null}
@@ -93,7 +85,7 @@ export function TemporaryChannelsSettings() {
           action={<div className="template-actions">
             <button type="button" className="btn secondary" onClick={newPreset}>Новый шаблон</button>
             {(editing || changed) && (
-              <SaveButton saving={saving} onClick={() => run(onSave)} label="Сохранить настройки"/>
+              <SaveButton saving={saving} onClick={saveNow} label="Сохранить настройки"/>
             )}
           </div>}/>
         {editing ? (

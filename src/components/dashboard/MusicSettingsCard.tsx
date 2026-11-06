@@ -1,6 +1,6 @@
 "use client";
 
-import { CardHeader, CheckList, NumberField, SaveButton, SectionLoading, Select, channelOptions, useAsyncAction } from "./ui.tsx";
+import { CardHeader, CheckList, NumberField, SaveButton, SectionLoading, Select, channelOptions } from "./ui.tsx";
 import { musicDefaults, normalize, type MusicDto } from "#contracts/music.ts";
 import { formatLeaveAfter } from "#lib/format.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -14,9 +14,8 @@ const leavePresets = [
 ] as const;
 
 export function MusicSettingsCard() {
-  const { guildId, resources, notify, fail } = useDashboard();
-  const { value, setValue, loading, save } = useSettingsTab<MusicDto, MusicDto>({
-    endpoint: `/api/guilds/${guildId}/music`,
+  const { resources } = useDashboard();
+  const { value, setValue, loading, saving, saveNow } = useSettingsTab<MusicDto, MusicDto>({
     initial: musicDefaults,
     fromGet: normalize,
     toBody: normalize,
@@ -25,10 +24,7 @@ export function MusicSettingsCard() {
     saveError: "Не удалось сохранить настройки музыки.",
     savedMessage: "Настройки музыки сохранены.",
     registerKey: "music",
-    onDone: notify,
-    onError: fail,
   });
-  const { busy: saving, run } = useAsyncAction();
   if (loading) return <SectionLoading/>;
   const channels = resources?.channels ?? [];
   const voiceChannels = resources?.voiceChannels ?? [];
@@ -41,7 +37,7 @@ export function MusicSettingsCard() {
           title="Музыка"
           note={`автовыход: ${leaveLabel}`}
           muted="YouTube в голосовом канале: очередь, плейлисты и управление из панели."
-          action={<SaveButton saving={saving} onClick={() => run(save)}/>}
+          action={<SaveButton saving={saving} onClick={saveNow}/>}
         />
         <div className="music-settings-grid">
           <section className="music-section">

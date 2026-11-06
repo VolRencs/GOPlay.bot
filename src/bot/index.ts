@@ -2,7 +2,7 @@ import { Client, Events, GatewayIntentBits, Partials, REST, Routes, PermissionFl
 import { logger } from "../lib/logger.ts";
 import { guard } from "../lib/errors.ts";
 import { count } from "../lib/perf.ts";
-import { automodTr, guildLang, guildTr, trFor } from "../lib/i18n/bot.ts";
+import { automodTr, guildTr } from "../lib/i18n/bot.ts";
 import { logTr } from "../lib/i18n/bot/logs.ts";
 import { detect, isIgnored, pruneDetectors, type MessageData } from "./automod/detectors.ts";
 import { enforceAutoMod } from "./automod/enforce.ts";
@@ -92,7 +92,7 @@ on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
   if (cache.protectedChannelId === message.channel.id && !isAdmin && !isIgnoredMember) {
     await message.delete().catch(() => null);
     void purgeUserMessages(message.guild, message.author.id, 24);
-    const t = trFor(automodTr, guildLang(message.guild.id));
+    const t = guildTr(automodTr, message.guild.id);
     let banned = false;
     if (member?.bannable) {
       // Метку ставим ДО запроса: иначе gateway-событие успевает обогнать её и

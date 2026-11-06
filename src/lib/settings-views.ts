@@ -7,11 +7,11 @@ import { toDto, welcomeDefaults, type WelcomeDto } from "../contracts/welcome.ts
 import { logKeys, logTitleFor } from "./labels.ts";
 import { fromDto as fromLoggingDto, type LoggingDto } from "../contracts/logging.ts";
 import { safeJson, stableJson } from "./json.ts";
-import { channelRef, roleRef } from "./mentions.ts";
+import { channelRef, roleRef } from "./format.ts";
 import { formatLeaveAfter } from "./format.ts";
 import { toDto as toMusicDto, type MusicDto } from "../contracts/music.ts";
 import { musicSettingsFromRow } from "./music-settings.ts";
-import { toDto as toAutoroleDto, type AutoroleDto } from "../contracts/autorole.ts";
+import { toAutoroleDto, type AutoroleDto } from "../contracts/roles.ts";
 
 export function autoroleState(guildId: string): { state: AutoroleDto; exists: boolean } {
   const row = stmt.autoroleSettings.get(guildId);

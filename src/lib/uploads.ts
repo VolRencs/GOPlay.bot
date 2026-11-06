@@ -1,5 +1,5 @@
-import { readdir, rm, stat, unlink } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, rm, stat, unlink } from "node:fs/promises";
+import { join, sep } from "node:path";
 
 export const embedUploadsDir = (guildId: string) => join(process.cwd(), "data", "uploads", "embeds", guildId);
 export const embedUploadPrefix = (guildId: string) => `/uploads/embeds/${guildId}/`;
@@ -30,13 +30,25 @@ export function extractFilenames(prefix: string, urls: (string | null | undefine
   }))];
 }
 
+/** Отдача файла из каталога загрузок с защитой от выхода за его пределы. */
+export async function serveUploadFile(dir: string, filename: string, contentType: string, cacheControl: string, headers: Record<string, string> = {}): Promise<Response> {
+  try {
+    const path = join(dir, filename);
+    if (!path.startsWith(dir + sep)) return new Response(null, { status: 404 });
+    const bytes = await readFile(path);
+    return new Response(bytes, { headers: { "content-type": contentType, "cache-control": cacheControl, ...headers } });
+  } catch {
+    return new Response(null, { status: 404 });
+  }
+}
+
 export async function cleanupUnusedUploads<T>(dir: string, rows: Iterable<T>, filenamesOf: (row: T) => string[], minAgeMs = 0): Promise<void> {
   const referenced = new Set<string>();
   for (const row of rows) for (const filename of filenamesOf(row)) referenced.add(filename);
   await cleanupOrphanedFiles(dir, referenced, minAgeMs);
 }
 
-export async function cleanupOrphanedFiles(dir: string, referenced: Set<string>, minAgeMs = 0): Promise<void> {
+async function cleanupOrphanedFiles(dir: string, referenced: Set<string>, minAgeMs = 0): Promise<void> {
   try {
     const now = Date.now();
     for (const entry of await readdir(dir, { withFileTypes: true })) {

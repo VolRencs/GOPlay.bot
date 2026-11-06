@@ -3,11 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { cleanupTargets } from "#lib/labels.ts";
 import { AUDIT_SECTIONS } from "#lib/audit-sections.ts";
-import { apiGet, apiSend } from "./api.ts";
+import { apiGet, apiJson } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { CardHeader, confirmAction, formatTime, Select } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
-import type { AuditListDto } from "#contracts/audit.ts";
+import type { AuditListDto } from "#contracts/dashboard.ts";
 
 export function DashboardAuditLog() {
   const { guildId } = useDashboard();
@@ -58,7 +58,7 @@ export function ServerDataCleanup() {
     setActive(target.key);
     try {
       await run(
-        () => apiSend<{ removed?: number }>(`/api/guilds/${guildId}/cleanup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: target.key }) }, "Не удалось очистить данные."),
+        () => apiJson<{ removed?: number }>(`/api/guilds/${guildId}/cleanup`, "POST", { target: target.key }, "Не удалось очистить данные."),
         data => {
           const removedCount = data.removed ?? 0;
           return { message: `${target.done}${removedCount ? ` Удалено записей: ${removedCount}.` : ""}${target.key === "audit" ? " Запись об очистке останется в журнале." : ""}` };

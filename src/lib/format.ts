@@ -21,3 +21,12 @@ export const formatNumber = (value: number): string => number.format(value);
 /** Подпись автовыхода музыки: 0 — выключен, иначе минуты/секунды. */
 export const formatLeaveAfter = (seconds: number): string =>
   seconds === 0 ? "выключен" : seconds % 60 === 0 ? `${seconds / 60} мин` : `${seconds} с`;
+
+/** URL иконки сервера Discord; null — иконки нет. */
+export const guildIconUrl = (guildId: string, icon: string | null | undefined, size = 128): string | null =>
+  icon ? `https://cdn.discordapp.com/icons/${guildId}/${icon}.png?size=${size}` : null;
+
+/** Единые Discord-упоминания для аудита, уведомлений и логов. */
+export const channelRef = (id: string): string => `<#${id}>`;
+export const roleRef = (id: string): string => `<@&${id}>`;
+export const userRef = (id: string): string => `<@${id}>`;

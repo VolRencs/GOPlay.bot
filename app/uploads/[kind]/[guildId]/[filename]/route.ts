@@ -1,6 +1,4 @@
-import { readFile } from "node:fs/promises";
-import { join, sep } from "node:path";
-import { embedUploadsDir, eventUploadsDir, UPLOAD_CONTENT_TYPES as contentTypes } from "#lib/uploads.ts";
+import { embedUploadsDir, eventUploadsDir, serveUploadFile, UPLOAD_CONTENT_TYPES as contentTypes } from "#lib/uploads.ts";
 import { guildRoute, isSnowflake } from "#lib/guild-access.ts";
 // Только простое имя файла: сегмент [filename] декодирует %2f, поэтому
 // «../../../secret.png» иначе дошёл бы до readFile.
@@ -15,15 +13,8 @@ export const GET = guildRoute<{ kind: string; guildId: string; filename: string 
   const ext = filename.toLowerCase().split(".").pop() ?? "";
   const type = contentTypes[ext];
   if (!type) return new Response(null, { status: 404 });
-  try {
-    const dir = kind === "embeds" ? embedUploadsDir(guildId) : eventUploadsDir(guildId);
-    const path = join(dir, filename);
-    if (!path.startsWith(dir + sep)) return new Response(null, { status: 404 });
-    const bytes = await readFile(path);
-    // Имя файла содержит timestamp и никогда не перезаписывается: контент
-    // неизменяем, браузер может кэшировать навсегда.
-    return new Response(bytes, { headers: { "content-type": type, "cache-control": "private, max-age=31536000, immutable" } });
-  } catch {
-    return new Response(null, { status: 404 });
-  }
+  // Имя файла содержит timestamp и никогда не перезаписывается: контент
+  // неизменяем, браузер может кэшировать навсегда.
+  const dir = kind === "embeds" ? embedUploadsDir(guildId) : eventUploadsDir(guildId);
+  return serveUploadFile(dir, filename, type, "private, max-age=31536000, immutable");
 });

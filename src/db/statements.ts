@@ -1,7 +1,7 @@
 import { read, upsert, write } from "./typed.ts";
 import type {
   AppealCounterRow, AppealExistingRow, AppealPunishmentRow, AppealRow,
-  AutoroleSettingsReadRow, AutoroleSettingsRow, AutomodRuleCacheRow,
+  AutoroleSettingsRow, AutomodRuleCacheRow,
   CountRow, DataVersionRow, EventCountsRow, EventGuildCountRow, EventGuildParticipantRow,
   EventNextSeriesRow, EventNextWaitlistedRow, GuildDailyChannelStatRow, GuildDailyMetricRow,
   GuildDailyUserStatRow, GuildHourlyMessageRow, GuildIdRow, GuildNameRow,
@@ -85,7 +85,7 @@ export const stmt = {
   messageDelete: write("DELETE FROM message_cache WHERE message_id=?"),
   messagePrune: write("DELETE FROM message_cache WHERE guild_id=? AND created_at < (SELECT created_at FROM message_cache WHERE guild_id=? ORDER BY created_at DESC LIMIT 1 OFFSET ?)"),
   musicSettings: read<MusicSettingsRow>("SELECT * FROM music_settings WHERE guild_id=?"),
-  autoroleSettings: read<AutoroleSettingsReadRow>("SELECT enabled, role_id, updated_at FROM autorole_settings WHERE guild_id=?"),
+  autoroleSettings: read<AutoroleSettingsRow>("SELECT guild_id, enabled, role_id, updated_at FROM autorole_settings WHERE guild_id=?"),
   musicSessionUpsert: upsert<MusicSessionRow>(
     "music_sessions",
     ["guild_id", "channel_id", "message_id", "updated_at"],

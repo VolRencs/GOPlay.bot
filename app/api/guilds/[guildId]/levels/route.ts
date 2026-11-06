@@ -1,16 +1,13 @@
-import { NextResponse } from "next/server.js";
-import { guildRoute, isSnowflake, isSnowflakeArray, jsonError } from "#lib/guild-access.ts";
+import { isSnowflake, isSnowflakeArray, isSnowflakeOrNull, jsonError } from "#lib/guild-access.ts";
 import { withTransaction } from "#db/database.ts";
 import { stmt } from "#db/statements.ts";
 import { MAX_LEVEL, MAX_REWARDS, notifyModes } from "#lib/levels.ts";
-import { settingsPutRoute } from "#lib/settings-route.ts";
+import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { levelsState, levelsView } from "#lib/settings-views.ts";
 import { fromDto as fromLevelsDto, levelRangesDto, type LevelRewardDto, type LevelsDto } from "#contracts/levels.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 
-export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<LevelsDto>(levelsState(guildId).state);
-});
+export const GET = settingsGetRoute(guildId => levelsState(guildId).state);
 
 export const PUT = settingsPutRoute<LevelsDto>({
   load: guildId => levelsState(guildId),
@@ -32,7 +29,7 @@ export const PUT = settingsPutRoute<LevelsDto>({
     const notifyMode = notifyModes.find(value => value === s.notifyMode);
     if (!notifyMode) return { ok: false, response: jsonError("Некорректный режим уведомлений.") };
     const notifyChannelId = s.notifyChannelId ?? null;
-    if (notifyChannelId !== null && (typeof notifyChannelId !== "string" || !isSnowflake(notifyChannelId))) return { ok: false, response: jsonError("Некорректный канал уведомлений.") };
+    if (!isSnowflakeOrNull(notifyChannelId)) return { ok: false, response: jsonError("Некорректный канал уведомлений.") };
     if (s.enabled && notifyMode === "channel" && !notifyChannelId) return { ok: false, response: jsonError("Выберите канал для уведомлений о новом уровне.") };
     const ignoredChannels = s.ignoredChannelIds ?? [];
     const ignoredRoles = s.ignoredRoleIds ?? [];

@@ -4,13 +4,13 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.17.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.18.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord bot and server-management web dashboard in a single repository, run as
 two supervised processes (Next.js + bot) sharing one SQLite database. Stack
 (versions in `package.json`, locked in `pnpm-lock.yaml`): Node **≥ 26**,
-pnpm **12.17.0**, Next.js **16.4.3**, React **19.3.1**, TypeScript **7.0.2**,
+pnpm **12.18.0**, Next.js **16.4.5**, React **19.3.1**, TypeScript **7.0.2**,
 Node's native TypeScript type stripping and
 `node:sqlite` (no separate DB driver).
 
@@ -49,7 +49,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Node ≥ 26**, **pnpm 12.17.0**, **ffmpeg with libopus**,
+Requirements: **Node ≥ 26**, **pnpm 12.18.0**, **ffmpeg with libopus**,
 **yt-dlp** in PATH.
 
 ```bash
@@ -125,12 +125,13 @@ app/                  Next.js App Router: landing, /dashboard, /admin,
                       upload serving (/uploads/...); styles/ — design tokens
                       and page/component CSS
 src/bot/              Bot entry point (index.ts) + modules:
-                      commands, moderation, automod, appeals, logging,
-                      tempchannels, music (panel/command/shared), events, levels, utils
+                      commands, moderation, automod, appeals, logging, tempchannels, music
+                      (panel/command/shared), events, levels, welcome, self-roles,
+                      onboarding, interactions, config-cache, metrics, heartbeat, shutdown
 src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
-src/lib/              Shared logic: auth, guild-access, automod, welcome,
-                      colors/format/mentions/limits,
-                      appeals, levels, uploads, player/* (yt-dlp/ffmpeg stack), i18n
+src/lib/              Shared logic: auth, guild-access, settings-route/views, automod, welcome,
+                      colors/format, appeals, levels, events, uploads,
+                      player/* (yt-dlp/ffmpeg stack), i18n
 src/components/       React: user-menu + dashboard/* (tab panels)
 scripts/              migrate-auth.ts, run-both.ts (bot + web supervisor)
 deploy/               nginx-ip-https.conf (reverse-proxy example)

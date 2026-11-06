@@ -1,4 +1,8 @@
 export const DAY_MS = 86_400_000;
+
+/** Лимиты компонентов Discord, общие для панели, бота и роутов. */
+export const SELECT_OPTION_LIMIT = 25;
+export const REACTION_OPTION_LIMIT = 20;
 export const MAX_TIMEOUT_SECONDS = 2_419_200;
 export const DEFAULT_TIMEOUT_SECONDS = 300;
 export const DEFAULT_MUSIC_LEAVE_SECONDS = 300;

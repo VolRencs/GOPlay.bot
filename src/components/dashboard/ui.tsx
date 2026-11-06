@@ -3,7 +3,7 @@
 import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { stripVariationSelectors } from "goemoji/discord";
-import { ArrowDown, ArrowRight, Check, ChevronDown, Smile } from "lucide-react";
+import { ArrowDown, ArrowRight, Check, ChevronDown, Image, Smile } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
 import { safeJson, stableJson } from "../../lib/json.ts";
 
@@ -32,12 +32,12 @@ export function ColorRow({ color, onChange }: { color: string; onChange: (color:
   );
 }
 
-export function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (fields: EmbedField[]) => void }) {
+function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (fields: EmbedField[]) => void }) {
   return (
     <div className="embed-fields">
       <div className="section-title"><strong>Поля</strong></div>
       {fields.map((field, index) => (
-        <div className="field-row field-row-simple" key={index}>
+        <div className="field-row-simple" key={index}>
           <input value={field.name} maxLength={256} placeholder="Заголовок" onChange={e => onChange(fields.with(index, { ...field, name: e.target.value }))}/>
           <textarea rows={2} value={field.value} maxLength={1024} placeholder="Текст" onChange={e => onChange(fields.with(index, { ...field, value: e.target.value }))}/>
           <div className="field-actions">
@@ -57,6 +57,35 @@ export function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onCha
       <button type="button" className="btn secondary" onClick={() => onChange([...fields, { name: "", value: "", inline: false }])}>Добавить поле</button>
     </div>
   );
+}
+
+type EmbedFieldsValue = { title: string; description: string; footer: string; fields: EmbedField[] };
+
+/** Общие текстовые поля embed'а: одинаковый порядок и лимиты в сообщениях и событиях. */
+export function EmbedFields({ value, onChange, titlePlaceholder = "Заголовок", descriptionPlaceholder = "Описание" }: { value: EmbedFieldsValue; onChange: (patch: Partial<EmbedFieldsValue>) => void; titlePlaceholder?: string; descriptionPlaceholder?: string }) {
+  return <>
+    <input className="embed-title-input" value={value.title} maxLength={256} placeholder={titlePlaceholder} onChange={e => onChange({ title: e.target.value })}/>
+    <textarea className="embed-description-input" rows={6} value={value.description} maxLength={4096} placeholder={descriptionPlaceholder} onChange={e => onChange({ description: e.target.value })}/>
+    <FieldsEditor fields={value.fields} onChange={fields => onChange({ fields })}/>
+    <input className="embed-footer-input" value={value.footer} maxLength={2048} placeholder="Футер" onChange={e => onChange({ footer: e.target.value })}/>
+  </>;
+}
+
+type EmbedMediaSlot = {
+  file: File | null;
+  preview: string;
+  saved: boolean;
+  inputRef?: React.Ref<HTMLInputElement>;
+  onPick: (file: File | null) => void;
+  onClear: () => void;
+};
+
+/** Общие медиа-поля embed'а: изображение и миниатюра. */
+export function EmbedMediaFields({ image, thumbnail }: { image: EmbedMediaSlot; thumbnail: EmbedMediaSlot }) {
+  return <div className="embed-bottom">
+    <MediaField icon={<Image size={18}/>} label="Основное изображение" file={image.file} previewUrl={image.preview} saved={image.saved} onPick={image.onPick} onClear={image.onClear} {...(image.inputRef ? { ref: image.inputRef } : {})} clearLabel="Удалить изображение"/>
+    <MediaField icon={<Image size={18}/>} label="Миниатюра" file={thumbnail.file} previewUrl={thumbnail.preview} saved={thumbnail.saved} onPick={thumbnail.onPick} onClear={thumbnail.onClear} {...(thumbnail.inputRef ? { ref: thumbnail.inputRef } : {})} clearLabel="Удалить миниатюру"/>
+  </div>;
 }
 
 export { formatNumber, formatTime } from "../../lib/format.ts";
@@ -269,6 +298,15 @@ export function CardHeader({ title, note, muted, action }: { title: ReactNode; n
       </div>
       {action}
     </div>
+  );
+}
+
+export function TemplateRow({ children, actions, className }: { children: ReactNode; actions: ReactNode; className?: string }) {
+  return (
+    <article className={className ? `template-item ${className}` : "template-item"}>
+      <div>{children}</div>
+      <div className="template-actions">{actions}</div>
+    </article>
   );
 }
 

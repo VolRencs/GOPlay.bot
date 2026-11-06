@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import type { WelcomeImageConfig } from "#lib/welcome.ts";
-import { toWelcomeInput, welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
+import { welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
 import { WelcomePreview } from "./WelcomePreview.tsx";
-import { CardHeader, SectionLoading, channelOptions, NumberField, SaveButton, Select, useAsyncAction } from "./ui.tsx";
+import { CardHeader, SectionLoading, channelOptions, NumberField, SaveButton, Select } from "./ui.tsx";
 import { apiSend } from "./api.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
@@ -15,21 +15,17 @@ const welcomeVariables: [string, string][] = [["{user}", "упоминание"]
 
 export function WelcomeSettings() {
   const { guildId, resources, notify, fail } = useDashboard();
-  const { value, setValue, patch, loading, save } = useSettingsTab<WelcomeDto, WelcomeDto>({
-    endpoint: `/api/guilds/${guildId}/welcome`,
+  const { value, setValue, patch, loading, saving, saveNow } = useSettingsTab<WelcomeDto, WelcomeDto>({
     initial: { ...welcomeDefaults },
     fromGet: data => ({ ...welcomeDefaults, ...data }),
-    toBody: toWelcomeInput,
+    toBody: value => value,
     saveMode: "markSaved",
     loadError: "Не удалось загрузить настройки приветствия.",
     saveError: "Не удалось сохранить настройки приветствия.",
     savedMessage: "Настройки приветствия и прощания сохранены.",
     registerKey: "welcome",
-    onDone: notify,
-    onError: fail,
   });
   const [bgTimestamp, setBgTimestamp] = useState(0);
-  const { busy: saving, run } = useAsyncAction();
   if (loading) return <SectionLoading/>;
   const channels = resources?.channels ?? [];
   async function upload(file: File) {
@@ -42,7 +38,7 @@ export function WelcomeSettings() {
       notify("Фон загружен.");
     } else fail(sent.error);
   }
-  return <div className="welcome-layout"><div className="event-settings"><MemberEvent title="Приветствие новых участников" event="welcome" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/><MemberEvent title="Прощание с участником" event="goodbye" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/></div><aside className="card variables-card floating-preview"><h2>Переменные</h2><div className="variables-list">{welcomeVariables.map(([token,help])=><span key={token}><code>{token}</code> {help}</span>)}</div><SaveButton saving={saving} onClick={() => run(save)}/></aside></div>;
+  return <div className="welcome-layout"><div className="event-settings"><MemberEvent title="Приветствие новых участников" event="welcome" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/><MemberEvent title="Прощание с участником" event="goodbye" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/></div><aside className="card variables-card floating-preview"><h2>Переменные</h2><div className="variables-list">{welcomeVariables.map(([token,help])=><span key={token}><code>{token}</code> {help}</span>)}</div><SaveButton saving={saving} onClick={saveNow}/></aside></div>;
 }
 
 function MemberEvent({title,event,channels,value,onChange,onUpload,bgTimestamp}:{title:string;event:"welcome"|"goodbye";channels:Channel[];value:WelcomeDto;onChange:(value:WelcomeDto)=>void;onUpload:(file:File)=>void;bgTimestamp:number}) {

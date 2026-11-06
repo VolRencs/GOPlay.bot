@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { appealStatusMeta, punishmentLabels } from "#lib/labels.ts";
 import type { AppealsListDto, AppealDto } from "#contracts/appeals.ts";
 import { formatTime, CardHeader, Select, useAsyncAction } from "./ui.tsx";
-import { apiGet, apiSend } from "./api.ts";
+import { apiGet, apiJson } from "./api.ts";
 import { usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 
@@ -31,7 +31,7 @@ export function AppealsPanel() {
   // иначе устаревшая страница дописывается в уже перезагруженный список.
   const more=()=>{const gen=loadGen.current;void runMore(async()=>{const data=await loadPage(appeals?.length ?? 0);if(gen!==loadGen.current)return;const rows=data.appeals;if(!rows.length){setHasMore(false);return;}setAppeals(value=>[...(value??[]),...rows]);setHasMore(rows.length>=100);});};
   const review=(row:AppealDto,action:string)=>run(
-    () => apiSend<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,comment:comment.trim()||undefined})},"Не удалось изменить статус апелляции."),
+    () => apiJson<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,"POST",{action,comment:comment.trim()||undefined},"Не удалось изменить статус апелляции."),
     data => {
       const label=appealStatusMeta[data.appeal?.status ?? ""]?.label??action;const dmNote=data.notified===false?" · личное сообщение пользователю не доставлено":"";const revNote=data.reversal?` · ${data.reversal.failed?"Снять не удалось":"Снят"}: ${data.reversal.label}.`:"";const failed = Boolean(data.reversal?.failed);
       setComment("");

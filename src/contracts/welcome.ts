@@ -65,16 +65,3 @@ export function fromDto(dto: WelcomeInput): WelcomeDomain {
     goodbye_message: dto.goodbyeMessage,
   };
 }
-
-export function toWelcomeInput(dto: WelcomeDto): WelcomeInput {
-  return {
-    enabled: dto.enabled,
-    channelId: dto.channelId,
-    message: dto.message,
-    imageEnabled: dto.imageEnabled,
-    imageConfig: dto.imageConfig,
-    goodbyeEnabled: dto.goodbyeEnabled,
-    goodbyeChannelId: dto.goodbyeChannelId,
-    goodbyeMessage: dto.goodbyeMessage,
-  };
-}

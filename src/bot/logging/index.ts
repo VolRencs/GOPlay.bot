@@ -10,7 +10,7 @@ import { logTitleFor } from "../../lib/labels.ts";
 import { guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
-import { channelRef, userRef } from "../../lib/mentions.ts";
+import { channelRef, userRef } from "../../lib/format.ts";
 
 let client: Client | null = null;
 export function initLogging(c: Client) { client = c; }

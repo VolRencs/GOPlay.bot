@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { defaultRule, type AutomodGetDto, type AutomodRuleDto, type AutomodSecurityInput } from "#contracts/automod.ts";
 import { AutoModSettings } from "./AutomodPanel.tsx";
-import { apiSend } from "./api.ts";
+import { apiJson, apiSend } from "./api.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
 import { SectionLoading, stableStringify } from "./ui.tsx";
 
@@ -45,7 +45,7 @@ export function AutomodTab() {
 
   async function saveRule(kind: string): Promise<boolean> {
     const current = rules[kind] ?? defaultRule(kind);
-    const sent = await apiSend<{ unchanged?: boolean }>(`/api/guilds/${guildId}/automod`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(current) }, "Не удалось сохранить правило.");
+    const sent = await apiJson<{ unchanged?: boolean }>(`/api/guilds/${guildId}/automod`, "PUT", current, "Не удалось сохранить правило.");
     if (!sent.ok) { fail(sent.error); return false; }
     setRules(value => ({ ...value, [kind]: current }));
     setSavedRules(value => value ? { ...value, [kind]: current } : { [kind]: current });
@@ -54,7 +54,7 @@ export function AutomodTab() {
 
   async function saveSecurity(): Promise<boolean> {
     const body: AutomodSecurityInput = { kind: "security", ignoredRoleIds, protectedChannelId };
-    const sent = await apiSend<{ unchanged?: boolean }>(`/api/guilds/${guildId}/automod`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, "Не удалось сохранить общие исключения.");
+    const sent = await apiJson<{ unchanged?: boolean }>(`/api/guilds/${guildId}/automod`, "PUT", body, "Не удалось сохранить общие исключения.");
     if (!sent.ok) { fail(sent.error); return false; }
     setSavedSecurity({ roles: ignoredRoleIds, channel: protectedChannelId });
     return true;

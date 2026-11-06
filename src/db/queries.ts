@@ -1,5 +1,5 @@
 import { read, upsert, write } from "./typed.ts";
-import type { AuditEntrySource } from "../contracts/audit.ts";
+import type { AuditEntrySource } from "../contracts/dashboard.ts";
 import type { EmbedSendingSource, EmbedSource } from "../contracts/embeds.ts";
 import type { RolePanelRowSource } from "../contracts/roles.ts";
 import type {

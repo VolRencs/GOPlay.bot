@@ -4,8 +4,8 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { buttonColorOptionsList, type EmbedDto, type EmbedSendingDto, type EmbedsGetDto, type Role, type RolePanelRowDto, type SavedRolePanel, type ServerEmoji } from "./types.ts";
 import { roleStyleLabels } from "../../lib/labels.ts";
-import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, formatTime } from "./ui.tsx";
-import { apiGet, apiMutate, apiSend } from "./api.ts";
+import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime } from "./ui.tsx";
+import { apiGet, apiJsonMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 
@@ -124,11 +124,7 @@ export function RoleSettings() {
     if (!sending) return onError("Выберите отправленное сообщение.");
     if (!options.some(o => o.roleId)) return onError("Добавьте хотя бы одну роль.");
     await run(
-      () => apiMutate(`/api/guilds/${guildId}/roles`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ panelId, embedId: sending.embedId, channelId: sending.channelId, messageId: sending.messageId, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }),
-      }, "Не удалось сохранить панель."),
+      () => apiJsonMutate(`/api/guilds/${guildId}/roles`, "POST", { panelId, embedId: sending.embedId, channelId: sending.channelId, messageId: sending.messageId, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }, "Не удалось сохранить панель."),
       () => {
         const message = panelId ? "Панель самовыдачи обновлена." : "Панель самовыдачи сохранена.";
         reset();
@@ -149,16 +145,13 @@ export function RoleSettings() {
         {panels.length > 0 ? (
           <div className="template-list">
             {panels.map(panel => (
-              <article className="template-item" key={panel.id}>
-                <div>
-                  <strong>{panel.title}</strong>
-                  <p className="muted">{roleStyleLabels[panel.style]} · {panel.options.length} ролей</p>
-                </div>
-                <div className="template-actions">
-                  <button type="button" className="btn secondary" onClick={() => edit(panel)}>Изменить</button>
-                  <button type="button" className="btn danger" onClick={() => void remove(panel)} aria-label={`Удалить панель ${panel.title}`}><Trash2 size={16}/>Удалить</button>
-                </div>
-              </article>
+              <TemplateRow key={panel.id} actions={<>
+                <button type="button" className="btn secondary" onClick={() => edit(panel)}>Изменить</button>
+                <button type="button" className="btn danger" onClick={() => void remove(panel)} aria-label={`Удалить панель ${panel.title}`}><Trash2 size={16}/>Удалить</button>
+              </>}>
+                <strong>{panel.title}</strong>
+                <p className="muted">{roleStyleLabels[panel.style]} · {panel.options.length} ролей</p>
+              </TemplateRow>
             ))}
           </div>
         ) : null}

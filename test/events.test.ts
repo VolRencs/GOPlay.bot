@@ -177,6 +177,8 @@ test("rendering mirrors live state", () => {
   const dateField = (payload.fields ?? []).find(f => f.name === "🕒 Дата");
   assert.ok(dateField, "дата рендерится полем");
   assert.match(dateField!.value, /^<t:\d+:d> \(<t:\d+:R>\)$/, "формат @time: короткая дата + относительное время");
+  assert.ok(!("timestamp" in payload), "служебный timestamp не уходит в Discord");
+  assert.deepEqual(payload.footer, { text: "Событие" });
   const names = (payload.fields ?? []).map(f => f.name);
   assert.ok(names.includes("👥 Участники"), "участники добавляются");
   assert.ok(names.includes("⏳ Очередь"), "очередь добавляется");

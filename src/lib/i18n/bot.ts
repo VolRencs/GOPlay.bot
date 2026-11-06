@@ -1,10 +1,9 @@
-import { read } from "../../db/typed.ts";
+import { langQueries } from "../../db/queries.ts";
 import { ttlCacheSync } from "../cache.ts";
 import type { Bi, Locale } from "./core.ts";
 
-const guildLangStmt = read<{ lang: string }>("SELECT lang FROM guilds WHERE id=?");
 const langCache = ttlCacheSync<string, Locale>((guildId) => {
-  const row = guildLangStmt.get(guildId);
+  const row = langQueries.get.get(guildId);
   return row?.lang === "en" ? "en" : "ru";
 }, 10_000);
 
@@ -16,21 +15,25 @@ export function invalidateGuildLang(guildId: string): void {
   langCache.delete(guildId);
 }
 
-export function makeTr<M extends Record<string, Bi>>(messages: M) {
-  return (lang: Locale, key: keyof M & string, vars?: Record<string, string | number>): string => {
-    let text = messages[key]?.[lang] ?? messages[key]?.ru ?? key;
-    if (vars) for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, () => String(v));
-    return text;
-  };
-}
-
 /** Общие строки всех словарей интерфейса: один источник текста для
  *  genericError/notGuild/noReason вместо копий в каждом файле. */
-export const commonMessages = {
+const commonMessages = {
   genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
   notGuild: { ru: "❌ Команда доступна только на сервере.", en: "❌ This command is only available in a server." },
   noReason: { ru: "Без причины", en: "No reason" },
 } as const satisfies Record<string, Bi>;
+
+type CommonKey = keyof typeof commonMessages;
+type TrKeys<M> = (keyof M & string) | CommonKey;
+
+export function makeTr<M extends Record<string, Bi>>(messages: M): (lang: Locale, key: TrKeys<M>, vars?: Record<string, string | number>) => string {
+  return (lang, key, vars) => {
+    const entry = messages[key as keyof M] ?? (commonMessages as Record<string, Bi>)[key as CommonKey];
+    let text = entry?.[lang] ?? entry?.ru ?? key;
+    if (vars) for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, () => String(v));
+    return text;
+  };
+}
 
 /** Тип готового переводчика на guildId (см. guildTr). */
 type Tr<K extends string> = (key: K, vars?: Record<string, string | number>) => string;
@@ -47,7 +50,6 @@ export function guildTr<K extends string>(tr: (lang: Locale, key: K, vars?: Reco
 }
 
 export const tempTr = makeTr({
-  ...commonMessages,
   panelTitle: { ru: "Управление каналом", en: "Channel controls" },
   panelDesc: { ru: "Вы владелец этого временного канала. Используйте кнопки ниже, чтобы настроить его.", en: "You own this temporary channel. Use the buttons below to configure it." },
   btnRename: { ru: "Переименовать", en: "Rename" },
@@ -85,7 +87,6 @@ export const tempTr = makeTr({
 });
 
 export const automodTr = makeTr({
-  ...commonMessages,
   roleUpdateFail: { ru: "❌ Не удалось обновить роль.", en: "❌ Failed to update the role." },
   reason: { ru: "Автомодерация: {rule}", en: "AutoMod: {rule}" },
   protectedAdminOnly: { ru: "Защищённый канал: сообщения разрешены только администраторам", en: "Protected channel: only administrators may send messages here" },

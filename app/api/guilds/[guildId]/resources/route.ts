@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, guildRoute, jsonError } from "#lib/guild-access.ts";
-import { BOT_TOKEN_ERROR, SERVER_FALLBACK_NAME } from "#lib/constants.ts";
+import { botTokenError, discordFetch, guildRoute, jsonError } from "#lib/guild-access.ts";
+import { SERVER_FALLBACK_NAME } from "#lib/constants.ts";
 import { ttlCacheAsync } from "#lib/cache.ts";
 import type { ResourcesGet } from "#contracts/dashboard.ts";
 
@@ -37,7 +37,7 @@ async function loadResources(guildId: string, botUserId: string): Promise<Resour
 
 export const GET = guildRoute(async (_, { guildId }) => {
   const token = process.env.DISCORD_TOKEN, botUserId = process.env.DISCORD_CLIENT_ID;
-  if (!token || !botUserId) return jsonError(BOT_TOKEN_ERROR, 503);
+  if (!token || !botUserId) return botTokenError();
   try { return NextResponse.json(await resourceCache.get(guildId)); }
   catch { return jsonError("Не удалось получить данные сервера. Убедитесь, что бот всё ещё на сервере.", 502); }
 });

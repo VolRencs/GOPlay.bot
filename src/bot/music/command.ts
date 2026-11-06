@@ -1,14 +1,14 @@
-import { MessageFlags, PermissionFlagsBits, type Interaction } from "discord.js";
+import { MessageFlags, type Interaction } from "discord.js";
 import { count, time } from "../../lib/perf.ts";
 import { failInteraction } from "../../lib/errors.ts";
-import { channelRef } from "../../lib/mentions.ts";
+import { channelRef } from "../../lib/format.ts";
 import { musicSettingsFor } from "../../lib/music-settings.ts";
 import {
   MAX_QUEUE, connectToVoice, enqueueTrack, hasCurrent, hydrateTrackMeta,
   isSingleYouTubeVideoUrl, playNext, probeFfmpeg, probeOpus, probeYtDlp,
   queueSizeOf, resolveTracks, type Track,
 } from "../../lib/player/index.ts";
-import { isAdminInteraction, leaveIfIdle, memberHasAllowedRole, musicTFor } from "./shared.ts";
+import { canConnectAndSpeak, isAdminInteraction, leaveIfIdle, memberHasAllowedRole, musicTFor } from "./shared.ts";
 
 /** Обработка музыкальных слэш-команд. Возвращает false, если команда не музыкальная. */
 export async function handleMusicCommand(i: Interaction): Promise<boolean> {
@@ -40,12 +40,12 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       await i.editReply({ content: t("voiceNotAllowed", { channels: settings.voice_channel_ids.map(channelRef).join(", ") }) });
       return true;
     }
-    const botPerms = voiceChannel.permissionsFor(i.guild!.members.me ?? i.guild!.roles.everyone);
-    if (!botPerms?.has(PermissionFlagsBits.Connect)) {
+    const botPerms = canConnectAndSpeak(voiceChannel, i.guild!.members.me);
+    if (!botPerms.connect) {
       await i.editReply({ content: t("noConnectAccess", { channel: voiceChannel.id }) });
       return true;
     }
-    if (!botPerms.has(PermissionFlagsBits.Speak)) {
+    if (!botPerms.speak) {
       await i.editReply({ content: t("noSpeakAccess", { channel: voiceChannel.id }) });
       return true;
     }

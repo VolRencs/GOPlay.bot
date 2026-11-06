@@ -1,15 +1,12 @@
-import { NextResponse } from "next/server.js";
-import { guildRoute, jsonError } from "#lib/guild-access.ts";
+import { jsonError } from "#lib/guild-access.ts";
 import { guildLang, invalidateGuildLang } from "#lib/i18n/bot.ts";
-import { settingsPutRoute } from "#lib/settings-route.ts";
+import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { langState, langView } from "#lib/settings-views.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { langQueries } from "#db/queries.ts";
-import { fromDto as fromLangDto, toDto as toLangDto, type LangDto } from "#contracts/lang.ts";
+import { fromLangDto, toLangDto, type LangDto } from "#contracts/dashboard.ts";
 
-export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<LangDto>(toLangDto(guildLang(guildId)));
-});
+export const GET = settingsGetRoute(guildId => toLangDto(guildLang(guildId)));
 
 export const PUT = settingsPutRoute<string>({
   load: guildId => langState(guildId),

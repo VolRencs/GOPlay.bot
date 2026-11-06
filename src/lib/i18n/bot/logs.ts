@@ -1,7 +1,6 @@
-import { makeTr, commonMessages } from "../bot.ts";
+import { makeTr } from "../bot.ts";
 
 export const logTr = makeTr({
-  ...commonMessages,
   joinDetails: { ru: "Новый участник присоединился к серверу.", en: "A new member joined the server." },
   leaveDetails: { ru: "Участник покинул сервер.", en: "A member left the server." },
   reason: { ru: "Причина: {reason}", en: "Reason: {reason}" },

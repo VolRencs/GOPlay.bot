@@ -8,12 +8,10 @@ import { parseImageConfig } from "#lib/welcome.ts";
 import { deleteWelcomeBackgrounds, rejectOversized, WELCOME_IMAGE_EXTENSIONS, WELCOME_UPLOAD_PREFIX, welcomeUploadsDir } from "#lib/uploads.ts";
 import { recordDashboardChange } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
-import { settingsPutRoute } from "#lib/settings-route.ts";
+import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { welcomeState, welcomeView } from "#lib/settings-views.ts";
 
-export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<WelcomeDto>(welcomeState(guildId).state);
-});
+export const GET = settingsGetRoute(guildId => welcomeState(guildId).state);
 
 export const PUT = settingsPutRoute<WelcomeDto>({
   load: guildId => welcomeState(guildId),

@@ -6,7 +6,7 @@ import { stmt } from "../db/statements.ts";
 import { resolveChannel } from "./logging/index.ts";
 import { logger } from "../lib/logger.ts";
 import { time } from "../lib/perf.ts";
-import { userRef } from "../lib/mentions.ts";
+import { userRef } from "../lib/format.ts";
 
 function memberTemplate(template: string, member: GuildMember) {
   return renderWelcomeTemplate(template.replace(/\r\n?/g, "\n"), {

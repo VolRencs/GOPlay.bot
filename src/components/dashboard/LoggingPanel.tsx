@@ -4,12 +4,11 @@ import { logGroups, logKeys } from "#lib/labels.ts";
 import { fromDto, loggingDefaults, toDto, type LoggingDto } from "#contracts/logging.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
-import { CardHeader, SaveButton, SectionLoading, channelOptions, Select, useAsyncAction } from "./ui.tsx";
+import { CardHeader, SaveButton, SectionLoading, channelOptions, Select } from "./ui.tsx";
 
 export function LoggingSettings() {
-  const { guildId, resources, notify, fail } = useDashboard();
-  const { value, setValue, loading, save } = useSettingsTab<LoggingDto, LoggingDto>({
-    endpoint: `/api/guilds/${guildId}/logging`,
+  const { resources } = useDashboard();
+  const { value, setValue, loading, saving, saveNow } = useSettingsTab<LoggingDto, LoggingDto>({
     initial: loggingDefaults,
     fromGet: fromDto,
     toBody: toDto,
@@ -18,10 +17,7 @@ export function LoggingSettings() {
     saveError: "Не удалось сохранить настройки логов.",
     savedMessage: "Настройки логов сохранены.",
     registerKey: "logging",
-    onDone: notify,
-    onError: fail,
   });
-  const { busy: saving, run } = useAsyncAction();
   if (loading) return <SectionLoading/>;
   const channels = resources?.channels ?? [];
   const channelId = value.channelId;
@@ -31,7 +27,7 @@ export function LoggingSettings() {
     <section className="panel-stack">
       <article className="card settings-card">
         <CardHeader title="Журнал событий" note={`включено ${enabledCount} из ${logKeys.length}`} muted="Каждое событие отправляется отдельным читаемым embed-сообщением."
-          action={<SaveButton saving={saving} onClick={() => run(save)} label="Сохранить логи"/>}/>
+          action={<SaveButton saving={saving} onClick={saveNow} label="Сохранить логи"/>}/>
         <label>
           Канал
           <Select value={channelId ?? ""} onChange={v => setValue({ ...value, channelId: v || null })} ariaLabel="Канал журнала"

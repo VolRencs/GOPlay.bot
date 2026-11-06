@@ -1,7 +1,6 @@
-import { makeTr, commonMessages } from "../bot.ts";
+import { makeTr } from "../bot.ts";
 
 export const trAppeals = makeTr({
-  ...commonMessages,
   appealModalTitle: { ru: "Апелляция на наказание", en: "Appeal a punishment" },
   modalReasonLabel: { ru: "Почему наказание стоит отменить?", en: "Why should this punishment be reversed?" },
   modalReasonPh: { ru: "Опишите обстоятельства...", en: "Describe the circumstances..." },

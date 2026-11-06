@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Image, Trash2, User } from "lucide-react";
-import { CardHeader, channelOptions, ColorRow, confirmAction, FieldsEditor, MediaField, SaveButton, Select, TemplateLibrary, formatTime, asFields, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
-import { apiGet, apiMutate, apiSend } from "./api.ts";
+import { Trash2, User } from "lucide-react";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmbedFields, EmbedMediaFields, MediaField, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { apiGet, apiJsonMutate, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type EmbedPayload } from "./types.ts";
@@ -144,11 +144,7 @@ export function EmbedsPanel() {
     const targetChannel = channel || item.channelId;
     if (!targetChannel) return onError("Выберите канал для первого отправления шаблона.");
     await run(
-      () => apiMutate(`/api/guilds/${guildId}/embeds`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: item.id, name: item.name, channelId: targetChannel, mode: item.mode, payload: item.payload }),
-      }, "Не удалось отправить шаблон."),
+      () => apiJsonMutate(`/api/guilds/${guildId}/embeds`, "POST", { id: item.id, name: item.name, channelId: targetChannel, mode: item.mode, payload: item.payload }, "Не удалось отправить шаблон."),
       () => ({ message: "Шаблон отправлен." }),
       reload,
     );
@@ -200,30 +196,27 @@ export function EmbedsPanel() {
             {items.map(item => {
               const itemSendings = sendings.filter(s => s.embedId === item.id);
               return (
-                <article className="template-item" key={item.id}>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <p className="muted">{item.messageId ? "Опубликовано — можно обновить" : "Черновик"}{itemSendings.length > 0 ? ` · Отправлено раз: ${itemSendings.length}` : ""}</p>
-                    {itemSendings.length > 0 && (
-                      <div className="sending-list">
-                        {itemSendings.map(s => {
-                          const ch = channels.find(c => c.id === s.channelId);
-                          return (
-                            <span key={s.id} className="sending-item">#{ch?.name ?? s.channelId} — {formatTime(s.sentAt)}
-                              {" "}
-                              <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${formatTime(s.sentAt)}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                  <div className="template-actions">
-                    <button className="btn secondary" type="button" onClick={() => editTemplate(item)}>Изменить</button>
-                    <button className="btn" type="button" disabled={busy} onClick={() => void resend(item)}>{item.messageId ? "Отправить ещё раз" : "Отправить"}</button>
-                    <button className="btn danger" type="button" disabled={busy} onClick={() => void remove(item)} aria-label={`Удалить ${item.name}`}><Trash2 size={16}/>Удалить</button>
-                  </div>
-                </article>
+                <TemplateRow key={item.id} actions={<>
+                  <button className="btn secondary" type="button" onClick={() => editTemplate(item)}>Изменить</button>
+                  <button className="btn" type="button" disabled={busy} onClick={() => void resend(item)}>{item.messageId ? "Отправить ещё раз" : "Отправить"}</button>
+                  <button className="btn danger" type="button" disabled={busy} onClick={() => void remove(item)} aria-label={`Удалить ${item.name}`}><Trash2 size={16}/>Удалить</button>
+                </>}>
+                  <strong>{item.name}</strong>
+                  <p className="muted">{item.messageId ? "Опубликовано — можно обновить" : "Черновик"}{itemSendings.length > 0 ? ` · Отправлено раз: ${itemSendings.length}` : ""}</p>
+                  {itemSendings.length > 0 && (
+                    <div className="sending-list">
+                      {itemSendings.map(s => {
+                        const ch = channels.find(c => c.id === s.channelId);
+                        return (
+                          <span key={s.id} className="sending-item">#{ch?.name ?? s.channelId} — {formatTime(s.sentAt)}
+                            {" "}
+                            <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${formatTime(s.sentAt)}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </TemplateRow>
               );
             })}
           </div>
@@ -253,14 +246,11 @@ export function EmbedsPanel() {
                   </>
                 )}
               </div>
-              <input className="embed-title-input" value={form.title} maxLength={256} placeholder="Заголовок" onChange={e => setForm({ title: e.target.value })}/>
-              <textarea className="embed-description-input" rows={6} value={form.description} maxLength={4096} placeholder="Описание" onChange={e => setForm({ description: e.target.value })}/>
-              <FieldsEditor fields={form.fields} onChange={fields => setForm({ fields })}/>
-              <input className="embed-footer-input" value={form.footer} maxLength={2048} placeholder="Футер" onChange={e => setForm({ footer: e.target.value })}/>
-              <div className="embed-bottom">
-                <MediaField icon={<Image size={18}/>} label="Основное изображение" file={imageFile} previewUrl={imagePreview} saved={Boolean(form.image)} onPick={setImageFile} onClear={clearImage} ref={imageInput} clearLabel="Удалить изображение"/>
-                <MediaField icon={<Image size={18}/>} label="Миниатюра" file={thumbnailFile} previewUrl={thumbnailPreview} saved={Boolean(form.thumbnail)} onPick={setThumbnailFile} onClear={clearThumbnail} ref={thumbnailInput} clearLabel="Удалить миниатюру"/>
-              </div>
+              <EmbedFields value={form} onChange={patch => setForm(patch)} titlePlaceholder="Заголовок" descriptionPlaceholder="Описание"/>
+              <EmbedMediaFields
+                image={{ file: imageFile, preview: imagePreview, saved: Boolean(form.image), inputRef: imageInput, onPick: setImageFile, onClear: clearImage }}
+                thumbnail={{ file: thumbnailFile, preview: thumbnailPreview, saved: Boolean(form.thumbnail), inputRef: thumbnailInput, onPick: setThumbnailFile, onClear: clearThumbnail }}
+              />
             </div>
           ) : (
             <label>Текст<textarea rows={7} value={form.description} maxLength={2000} onChange={e => setForm({ description: e.target.value })}/></label>

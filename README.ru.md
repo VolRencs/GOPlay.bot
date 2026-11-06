@@ -4,13 +4,13 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.17.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.18.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord-бот и веб-панель управления сервером в одном репозитории, но в двух
 процессах под общим supervisor (Next.js + бот), с одной SQLite-базой. Стек
 (версии в `package.json`, зафиксированы в `pnpm-lock.yaml`): Node **≥ 26**,
-pnpm **12.17.0**, Next.js **16.4.3**, React **19.3.1**, TypeScript **7.0.2**,
+pnpm **12.18.0**, Next.js **16.4.5**, React **19.3.1**, TypeScript **7.0.2**,
 нативное снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
 
 > Полная английская версия: [README.md](README.md).
@@ -50,7 +50,7 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Быстрый старт (локально)
 
-Требования: **Node ≥ 26**, **pnpm 12.17.0**, **ffmpeg с libopus**,
+Требования: **Node ≥ 26**, **pnpm 12.18.0**, **ffmpeg с libopus**,
 **yt-dlp** в PATH.
 
 ```bash
@@ -125,12 +125,13 @@ app/                  Next.js App Router: лендинг, /dashboard, /admin,
                       /login, API (/api/guilds, /api/admin, /api/auth),
                       раздача загрузок (/uploads/...); styles/ — токены и CSS
 src/bot/              Точка входа бота (index.ts) + модули:
-                      commands, moderation, automod, appeals, logging,
-                      tempchannels, music (panel/command/shared), events, levels, utils
+                      commands, moderation, automod, appeals, logging, tempchannels, music
+                      (panel/command/shared), events, levels, welcome, self-roles,
+                      onboarding, interactions, config-cache, metrics, heartbeat, shutdown
 src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
-src/lib/              Общая логика: auth, guild-access, automod, welcome,
-                      colors/format/mentions/limits,
-                      appeals, levels, uploads, player/* (yt-dlp/ffmpeg стек), i18n
+src/lib/              Общая логика: auth, guild-access, settings-route/views, automod, welcome,
+                      colors/format, appeals, levels, events, uploads,
+                      player/* (yt-dlp/ffmpeg стек), i18n
 src/components/       React: user-menu + dashboard/* (панели вкладок)
 scripts/              migrate-auth.ts, run-both.ts (супервизор бота и веба)
 deploy/               nginx-ip-https.conf (пример reverse-proxy)

@@ -5,7 +5,7 @@ import { ttlCacheAsync } from "#lib/cache.ts";
 import { DAY_MS } from "#lib/constants.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { AdminDataDto } from "#contracts/admin.ts";
+import type { AdminDataDto } from "#contracts/dashboard.ts";
 
 async function botStatus(): Promise<{ online: boolean; uptimeMs: number | null }> {
   try {

@@ -206,6 +206,7 @@
   gap: 1rem;
 }
 
+.page-heading h1,
 .server-heading h1 { margin: 0; font-size: clamp(1.7rem, 4vw, 2.35rem); }
 
 .server-heading-icon {

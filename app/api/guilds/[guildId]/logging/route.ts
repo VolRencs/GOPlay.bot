@@ -1,15 +1,12 @@
-import { NextResponse } from "next/server.js";
-import { guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { isSnowflakeOrNull, jsonError } from "#lib/guild-access.ts";
 import { loggingQueries } from "#db/queries.ts";
 import { logKeys } from "#lib/labels.ts";
 import { fromDto as fromLoggingDto, type LoggingDto } from "#contracts/logging.ts";
-import { settingsPutRoute } from "#lib/settings-route.ts";
+import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { loggingState, loggingView } from "#lib/settings-views.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 
-export const GET = guildRoute(async (_, { guildId }) => {
-  return NextResponse.json<LoggingDto>(loggingState(guildId).state);
-});
+export const GET = settingsGetRoute(guildId => loggingState(guildId).state);
 
 export const PUT = settingsPutRoute<LoggingDto>({
   load: guildId => loggingState(guildId),
@@ -17,7 +14,7 @@ export const PUT = settingsPutRoute<LoggingDto>({
     const value = body as Partial<LoggingDto> | null;
     // Snowflake-валидация: опечатка иначе молча отключила бы доставку логов —
     // бот не разрешил бы канал и терял записи без ошибок.
-    if (!value || typeof value !== "object" || (value.channelId !== null && (typeof value.channelId !== "string" || !isSnowflake(value.channelId)))) {
+    if (!value || typeof value !== "object" || !isSnowflakeOrNull(value.channelId)) {
       return { ok: false, response: jsonError("Некорректный канал") };
     }
     // Не-объект categories раньше молча выключал все категории (Boolean("x"[key]) === false).

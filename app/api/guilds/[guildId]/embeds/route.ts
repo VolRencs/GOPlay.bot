@@ -1,21 +1,19 @@
 import { after, NextResponse } from "next/server.js";
-import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { botTokenError, DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { withTransaction } from "#db/database.ts";
 import { deleteEmbedSendings, embedsQueries } from "#db/queries.ts";
 import { safeJson, stableJson } from "#lib/json.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
-import { channelRef } from "#lib/mentions.ts";
+import { channelRef } from "#lib/format.ts";
 import { cleanupUnusedUploads, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
 import { logger } from "#lib/logger.ts";
-import { BOT_TOKEN_ERROR } from "#lib/constants.ts";
-import { colorNumberToHex, DEFAULT_EMBED_COLOR } from "#lib/colors.ts";
+import { BRAND_COLOR, colorNumberToHex } from "#lib/colors.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
-import type { EmbedPayload } from "#contracts/dashboard.ts";
-import { sendingToDto, toDto as toEmbedDto, type EmbedsGetDto } from "#contracts/embeds.ts";
+import { embedCharacterCount, EMBED_LIMITS, normalizeEmbedContent, sendingToDto, toDiscordEmbed, toDto as toEmbedDto, type EmbedContent, type EmbedsGetDto } from "#contracts/embeds.ts";
 
-type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedPayload };
+type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedContent };
 
 
 function draftImageNames(payloadJson:string,guildId:string) {
@@ -86,24 +84,17 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     return jsonError("Не удалось прочитать данные сообщения. Попробуйте выбрать изображение заново.");
   }
   if(!data||typeof data!=="object")return jsonError("Некорректные данные сообщения.");
-  if(!data.payload||typeof data.payload!=="object")return jsonError("Некорректные данные сообщения.");
+  if(!data.payload||typeof data.payload!=="object"||Array.isArray(data.payload))return jsonError("Некорректные данные сообщения.");
   // id приходит из JSON: без проверки строка/дробное число создали бы дубликат шаблона.
   if(data.id!==undefined&&(!Number.isInteger(data.id)||data.id<1))return jsonError("Некорректный идентификатор шаблона.");
   if(typeof data.name!=="string"||!data.name.trim()||(!data.saveOnly&&!data.updateMessage&&!data.channelId)) return jsonError(data.saveOnly?"Укажите название шаблона":"Укажите название и канал");
   // channelId интерполируется в путь Discord REST — только snowflake.
   if(data.channelId&&!isSnowflake(data.channelId))return jsonError("Некорректный канал.");
   if(data.name.trim().length>100)return jsonError("Название шаблона не должно превышать 100 символов.");
-  const rawPayload=data.payload as Record<string,unknown>;
-  const text=(v:unknown):string|undefined=>typeof v==="string"?v:undefined;
-  const fieldsRaw=Array.isArray(rawPayload.fields)?rawPayload.fields.filter((f):f is Record<string,unknown>=>Boolean(f)&&typeof f==="object"):[];
-  const enteredFields=fieldsRaw.map(f=>({name:text(f.name)??"",value:text(f.value)??"",inline:Boolean(f.inline)}));
-  if(enteredFields.some(f=>Boolean(f.name.trim())!==Boolean(f.value.trim())))return jsonError("Заполните и заголовок, и текст каждого поля или очистите поле полностью.");
-  const clean=(value?:string)=>value?.trim()||undefined;
-  const footerText=text((rawPayload.footer as {text?:unknown}|undefined)?.text);
-  const authorName=text((rawPayload.author as {name?:unknown}|undefined)?.name);
-  const thumbUrl=text((rawPayload.thumbnail as {url?:unknown}|undefined)?.url);
-  const imageUrl=text((rawPayload.image as {url?:unknown}|undefined)?.url);
-  const payload={title:text(rawPayload.title)?.slice(0,256)||undefined,description:text(rawPayload.description)?.slice(0,4096)||undefined,color:Number.isInteger(rawPayload.color)?rawPayload.color as number:DEFAULT_EMBED_COLOR,footer:footerText?{text:footerText.slice(0,2048)}:undefined,author:authorName?{name:authorName.slice(0,256),url:clean(text((rawPayload.author as {url?:unknown}|undefined)?.url)),iconUrl:clean(text((rawPayload.author as {iconUrl?:unknown}|undefined)?.iconUrl))}:undefined,thumbnail:thumbUrl?{url:thumbUrl.trim().slice(0,2048)}:undefined,image:imageUrl?{url:imageUrl.trim().slice(0,2048)}:undefined,fields:enteredFields.filter(f=>f.name.trim()&&f.value.trim()).slice(0,25).map(f=>({name:f.name.slice(0,256),value:f.value.slice(0,1024),inline:f.inline}))};
+  const normalized=normalizeEmbedContent(data.payload);
+  if(normalized.halfFilled)return jsonError("Заполните и заголовок, и текст каждого поля или очистите поле полностью.");
+  const payload: EmbedContent={...normalized.content,color:normalized.content.color??BRAND_COLOR};
+  if(embedCharacterCount(payload)>EMBED_LIMITS.total)return jsonError("Сообщение слишком большое для Discord: сократите текст или количество полей.");
   type EmbedTarget = "author" | "thumbnail" | "image";
   const setAsset=(target:EmbedTarget,url:string)=>{if(target==="author"&&payload.author)payload.author.iconUrl=url;if(target==="thumbnail")payload.thumbnail={url};if(target==="image")payload.image={url};};
   let assets: StoredAsset<EmbedTarget>[];
@@ -146,10 +137,10 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   const current=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
   if(data.updateMessage&&(!current?.channel_id||!current.message_id))return jsonError("Сначала отправьте шаблон в канал — обновлять пока нечего.");
-  const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return jsonError(BOT_TOKEN_ERROR, 503);
+  const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return botTokenError();
   // allowed_mentions: панель публикует от имени бота — упоминания в тексте
   // не должны пинговать никого (в т.ч. @everyone).
-  const discordPayload={...payload,author:payload.author?{name:payload.author.name,url:payload.author.url,icon_url:payload.author.iconUrl}:undefined};
+  const discordPayload=toDiscordEmbed(payload);
   const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[discordPayload],allowed_mentions:{parse:[]}}; let body:BodyInit=JSON.stringify(bodyData), headers:Record<string,string>={"content-type":"application/json"};
   if(assets.length) { const multipart=new FormData(); multipart.set("payload_json",JSON.stringify(bodyData)); assets.forEach((asset,i)=>multipart.append(`files[${i}]`,asset.file,asset.filename)); body=multipart; headers={}; }
   const endpoint=`/channels/${channelId}/messages${data.updateMessage?`/${current!.message_id}`:""}`;
@@ -180,7 +171,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   if(!Number.isInteger(id)||id<1)return jsonError("Некорректный идентификатор сообщения.");
   const item=embedsQueries.byId.get(id,guildId);
   if(!item)return jsonError("Сообщение не найдено.", 404);
-  if(item.channel_id&&item.message_id){const token=process.env.DISCORD_TOKEN;if(!token)return jsonError(BOT_TOKEN_ERROR, 503);let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
+  if(item.channel_id&&item.message_id){const token=process.env.DISCORD_TOKEN;if(!token)return botTokenError();let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
   embedsQueries.sendingsByEmbedDelete.run(id,guildId);
   embedsQueries.delete.run(id,guildId);
   after(() => cleanupUnusedDraftImages(guildId));

@@ -1,7 +1,6 @@
-import { makeTr, commonMessages } from "../bot.ts";
+import { makeTr } from "../bot.ts";
 
 export const trModeration = makeTr({
-  ...commonMessages,
   noPermsTarget: { ru: "❌ Нельзя управлять этим пользователем: проверьте иерархию ролей.", en: "❌ Cannot moderate this user: check role hierarchy." },
   noPermsSelf: { ru: "❌ Недостаточно прав для этой команды.", en: "❌ You don't have permission to use this command." },
   noPermsGeneric: { ru: "❌ У бота недостаточно прав или ресурс был удалён.", en: "❌ The bot lacks permissions or the resource was deleted." },

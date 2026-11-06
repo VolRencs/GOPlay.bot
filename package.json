@@ -1,6 +1,7 @@
 {
   "name": "goplaybot",
   "private": true,
+  "license": "GPL-3.0-only",
   "type": "module",
   "imports": {
     "#lib/*": "./src/lib/*",

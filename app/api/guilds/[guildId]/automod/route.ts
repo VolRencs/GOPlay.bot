@@ -9,7 +9,7 @@ import { MAX_TIMEOUT_SECONDS, DEFAULT_TIMEOUT_SECONDS } from "#lib/constants.ts"
 import { stmt } from "#db/statements.ts";
 import { recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
-import { channelRef, roleRef } from "#lib/mentions.ts";
+import { channelRef, roleRef } from "#lib/format.ts";
 
 const thresholdLabels: Record<string, string> = {
   messages: "Сообщений", repeatCount: "Повторов", minimumCharacters: "Минимум букв",

@@ -1,7 +1,7 @@
 import { ApplicationCommandOptionType, ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
 import { commandsTr, guildLang, trFor } from "../lib/i18n/bot.ts";
 import { BRAND_COLOR } from "../lib/colors.ts";
-import { roleRef, userRef } from "../lib/mentions.ts";
+import { roleRef, userRef } from "../lib/format.ts";
 import { trModeration } from "../lib/i18n/bot/moderation.ts";
 import { moderate } from "./moderation/index.ts";
 

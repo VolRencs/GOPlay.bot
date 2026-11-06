@@ -6,6 +6,7 @@ import { ConfirmHost, ModalShell, SectionLoading } from "#components/dashboard/u
 import { DashboardProvider, useDashboard } from "#components/dashboard/DashboardContext.tsx";
 import { TAB_DEFS, TAB_GROUPS, isTabKey, type TabKey } from "#components/dashboard/tabs.tsx";
 import { SERVER_FALLBACK_NAME } from "#lib/constants.ts";
+import { guildIconUrl } from "#lib/format.ts";
 
 type PendingNav = { tab: TabKey } | { href: string };
 
@@ -118,7 +119,7 @@ function DashboardShell() {
       <header className="settings-top">
         <a className="back-link" href="/dashboard">← Все серверы</a>
         <div className="server-heading">
-          <div className="server-heading-icon">{server.icon ? <img src={`https://cdn.discordapp.com/icons/${guildId}/${server.icon}.png?size=128`} alt=""/> : <Bot size={24}/>}</div>
+          <div className="server-heading-icon">{guildIconUrl(guildId, server.icon) ? <img src={guildIconUrl(guildId, server.icon)!} alt=""/> : <Bot size={24}/>}</div>
           <div className="server-heading-copy">
             <p className="eyebrow">GOPLAY · {server.name}</p>
             <h1>{TAB_DEFS[tab].title}</h1>

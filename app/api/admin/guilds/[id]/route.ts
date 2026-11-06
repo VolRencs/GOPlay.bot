@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server.js";
-import { adminRoute, discordFetch, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
+import { adminRoute, discordFetch, isSnowflake, jsonError, readJsonRecord } from "#lib/guild-access.ts";
 import { wipeGuildData } from "#lib/server-cleanup.ts";
 import { deleteGuildFiles } from "#lib/uploads.ts";
 
 export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) => {
   if (!isSnowflake(guildId)) return jsonError("Некорректный идентификатор сервера.");
-  const body = await readJson<{ wipe?: unknown }>(request);
+  const body = await readJsonRecord(request);
   const wipe = Boolean(body?.wipe);
 
   let leftOnDiscord = true;

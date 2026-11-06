@@ -6,6 +6,9 @@ next-env.d.ts
 cookies.txt
 *.pem
 *.key
+*.sqlite*
+*.log
+.DS_Store
 data/*
 !data/.gitkeep
 public/uploads/*

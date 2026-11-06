@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fromDto as fromAutomod, toDto as toAutomod } from "../src/contracts/automod.ts";
 import { toDto as toAppeal } from "../src/contracts/appeals.ts";
-import { toDto as toAudit } from "../src/contracts/audit.ts";
+import { toAuditDto as toAudit } from "../src/contracts/dashboard.ts";
 import { toDto as toEmbed, sendingToDto } from "../src/contracts/embeds.ts";
 import { fromDto as fromLevels, toDto as toLevels } from "../src/contracts/levels.ts";
 import { fromDto as fromMusic, toDto as toMusic } from "../src/contracts/music.ts";

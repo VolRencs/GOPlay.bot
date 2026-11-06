@@ -1,18 +1,19 @@
 import { after, NextResponse } from "next/server.js";
-import { discordFetch, guildMemberNames, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { botTokenError, discordFetch, guildMemberNames, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
-import { channelRef, roleRef, userRef } from "#lib/mentions.ts";
+import { channelRef, roleRef, userRef } from "#lib/format.ts";
 import { formatTime } from "#lib/format.ts";
 import { safeJson, stableJson } from "#lib/json.ts";
 import { eventStatusMetaM } from "#lib/labels.ts";
 import { guildLang } from "#lib/i18n/bot.ts";
-import { BOT_TOKEN_ERROR, buttonStyleId } from "#lib/constants.ts";
+import { buttonStyleId } from "#lib/constants.ts";
 import { eventQueries } from "#db/queries.ts";
 import { cleanupUnusedUploads, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
 import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
 import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "#lib/events.ts";
 import type { EventListDto } from "#contracts/events.ts";
+import { embedCharacterCount, EMBED_LIMITS } from "#contracts/embeds.ts";
 
 type EventImageTarget = "thumbnail" | "image";
 
@@ -88,7 +89,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const current = id ? getEventInGuild(guildId, id) : undefined;
   if (id && !current) return jsonError("Событие не найдено.", 404);
   const token = process.env.DISCORD_TOKEN;
-  if (!token) return jsonError(BOT_TOKEN_ERROR, 503);
+  if (!token) return botTokenError();
 
   const embed = input.embed;
   const setAsset = (target: EventImageTarget, url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
@@ -120,6 +121,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const counts = current ? eventCounts(current.id) : { joined: 0, waitlist: 0 };
   const renderable: RenderableEvent = { status: input.status, scheduledAt: input.scheduledAt, maxParticipants: input.maxParticipants, registrationEnabled: input.registrationEnabled, waitlistEnabled: input.waitlistEnabled };
   const rendered = renderEventEmbed(lang, renderable, embed, counts);
+  if (embedCharacterCount(rendered) > EMBED_LIMITS.total) return jsonError("Сообщение события слишком большое для Discord: сократите описание или поля.");
   const buttons = renderEventButtons(renderable, input.buttons, counts);
   if (current) {
     const sync = await syncDiscord(current, input.channelId, rendered, buttons, assets);
