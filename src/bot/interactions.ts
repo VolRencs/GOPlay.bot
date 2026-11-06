@@ -17,9 +17,6 @@ export function registerInteractions(client: Client): void {
 async function handleRoleInteraction(i: ButtonInteraction | StringSelectMenuInteraction, panelId: number, roleIds: string[]): Promise<void> {
   const member = i.guild ? await fetchMember(i.guild, i.user.id) : null;
   if (!member || !Number.isInteger(panelId) || panelId < 1) return;
-  // Ответ подтверждаем ДО выдачи роли: операция идёт через REST и может
-  // занять больше 3 секунд, после которых Discord считает интеракцию
-  // просроченной и сообщение не показывается вовсе.
   if (panelNotifies(i.guildId!, panelId)) await i.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => null);
   else await i.deferUpdate().catch(() => null);
   const results = await Promise.all(roleIds.map(roleId => applyPanelRoleSafe(i.guildId!, panelId, roleId, member)));
@@ -29,15 +26,11 @@ async function handleRoleInteraction(i: ButtonInteraction | StringSelectMenuInte
 
 async function routeInteraction(i: Interaction) {
   try {
-    // guildLang читает БД — внутри try, иначе ошибка оставляла бы интеракцию
-    // без ответа (пользователь видит «думает…»).
     const cmdLang = guildLang(i.guildId ?? "");
     count("events.interaction");
     if (await handleMusicCommand(i)) return;
     if (await handleLevelCommand(i)) return;
     if (i.isChatInputCommand()) {
-      // Неизвестная команда (её нельзя вызвать из Discord, но подстраховка):
-      // отвечаем явно, а не уводим в обработчик модерации.
       if (!await handleChatCommand(i)) await i.reply({ content: trModeration(cmdLang, "genericError"), flags: MessageFlags.Ephemeral }).catch(() => null);
     }
     if (i.isButton() && i.customId.startsWith("role:")) {

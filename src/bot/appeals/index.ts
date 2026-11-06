@@ -21,8 +21,6 @@ async function handleInteraction(i: Interaction) {
 
 type AppealContext = { guildId: string; punishmentId: number; appealType: AppealPunishmentType };
 
-// custom_id: appeal:offer:<action>:<guild>:<punishmentId>:<type> или
-// appeal:modal:<guild>:<punishmentId>:<type>; offset — позиция guildId.
 function parseAppealId(customId: string, offset: number): AppealContext | null {
   const parts = customId.split(":");
   const guildId = parts[offset];
@@ -45,7 +43,6 @@ async function handleOffer(i: ButtonInteraction) {
   }
   const result = declineAppeal({ guildId: context.guildId, userId: i.user.id, punishmentId: context.punishmentId });
   await i.reply({ content: result.ok ? trAppeals(guildLang(context.guildId), "declinedOk") : `❌ ${result.error}`, flags: MessageFlags.Ephemeral });
-  // Кнопки снимаем только при успехе: иначе пользователь не сможет повторить отказ.
   if (result.ok) await i.message?.edit({ components: [] }).catch(() => null);
 }
 
@@ -61,13 +58,9 @@ async function handleModal(i: ModalSubmitInteraction) {
   await i.message?.edit({ components: [] }).catch(() => null);
 }
 
-// Отправляется сразу после записи наказания (команды, автомод): юзер ещё в
-// гильдии, DM доставаем; сбой (закрытые DM) проглатывается — наказание в силе.
 export function offerAppeal(client: Client, input: { punishmentId: number; guildId: string; guildName: string; userId: string; reason: string | null; appealType: AppealPunishmentType }) {
   const lang = guildLang(input.guildId);
   const t = trFor(trAppeals, lang);
-  // Тип наказания, а не источник ("automod"): иначе юзер видит «Автомодерация»
-  // вместо «Бан»/«Таймаут».
   const typeLabel = punishmentLabel(lang, input.appealType);
   const content = t("offerTitle", { server: input.guildName, type: typeLabel }) + (input.reason ? t("offerReason", { reason: input.reason }) : "") + t("offerBody");
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(

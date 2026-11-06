@@ -17,8 +17,6 @@ function reportRoleHierarchy(guild: Guild) {
 export function onboardGuild(guild: Guild): void {
   const isNew = stmt.guildInsert.run(guild.id, guild.name, guild.iconURL(), Date.now()).changes > 0;
   if (isNew) stmt.guildLangUpdate.run(localeFromDiscord(guild.preferredLocale), guild.id);
-  // Существующие строки не обновлялись с момента добавления бота — имя/иконка
-  // в админке и DM-фолбэках оставались устаревшими после переименования сервера.
   else stmt.guildRefresh.run(guild.name, guild.iconURL(), Date.now(), guild.id);
   cachedRules(guild.id);
   reportRoleHierarchy(guild);

@@ -17,7 +17,7 @@ export default function UserMenu({ access }: { access: AccountAccess }) {
   }
 
   async function signOut() {
-    await run(async () => { try { await authClient.signOut(); } catch { /* session may already be gone */ } });
+    await run(async () => { try { await authClient.signOut(); } catch {  } });
     window.location.assign("/");
   }
 

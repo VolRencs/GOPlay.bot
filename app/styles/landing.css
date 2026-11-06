@@ -14,16 +14,16 @@
 
 .hero h1 {
   margin: 0;
-  background: linear-gradient(100deg, #e6bcff 0%, #b06bff 30%, #ff6fce 62%, #c88bff 100%);
-  background-size: 220% 100%;
+  background: linear-gradient(110deg, #f0e7ff 0%, #bca8ff 26%, #7c5cff 52%, #22d3ee 78%, #f0e7ff 100%);
+  background-size: 230% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-fill-color: transparent;
-  font-size: clamp(2.6rem, 6vw, 4.5rem);
-  letter-spacing: -.045em;
-  line-height: 1.04;
-  animation: hero-gradient 6s ease-in-out infinite alternate;
+  font-size: clamp(2.7rem, 6.4vw, 5rem);
+  letter-spacing: -.055em;
+  line-height: 1;
+  animation: hero-gradient 8s ease-in-out infinite alternate;
 }
 
 @keyframes hero-gradient {
@@ -32,18 +32,18 @@
 }
 
 .hero .lead {
-  max-width: 32rem;
-  margin: .6rem 0 0;
+  max-width: 34rem;
+  margin: .8rem 0 0;
   color: var(--soft);
-  font-size: 1.04rem;
-  line-height: 1.6;
+  font-size: 1.05rem;
+  line-height: 1.65;
 }
 
 .hero-cta {
   display: flex;
   flex-wrap: wrap;
   gap: .7rem;
-  margin-top: .9rem;
+  margin-top: 1rem;
 }
 
 .hero-art {
@@ -51,16 +51,16 @@
   display: grid;
   place-items: center;
   justify-self: center;
-  perspective: 1400px;
+  perspective: 1600px;
 }
 
 .hero-art::before {
   content: "";
   position: absolute;
-  width: 88%;
+  width: 90%;
   aspect-ratio: 1;
-  background: radial-gradient(circle, rgba(255, 44, 189, .28), transparent 65%);
-  filter: blur(14px);
+  background: radial-gradient(circle, rgba(124, 92, 255, .3), rgba(34, 211, 238, .08) 48%, transparent 70%);
+  filter: blur(18px);
 }
 
 .hero-panel {
@@ -70,13 +70,14 @@
   width: 420px;
   aspect-ratio: 800 / 740;
   overflow: hidden;
-  border-radius: 20px;
   background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 22px;
   box-shadow:
-    0 30px 80px rgba(4, 2, 16, .6),
-    0 0 70px rgba(135, 44, 255, .16),
+    0 38px 90px rgba(4, 2, 16, .65),
+    0 0 80px rgba(124, 92, 255, .2),
     -18px 26px 50px rgba(4, 2, 16, .35);
-  transform: rotateY(-10deg) rotateX(5deg) rotateZ(-.8deg);
+  transform: rotateY(-9deg) rotateX(4deg) rotateZ(-.6deg);
   transform-style: preserve-3d;
   pointer-events: none;
   user-select: none;
@@ -88,17 +89,7 @@
   inset: 0;
   z-index: 3;
   border-radius: inherit;
-  background: linear-gradient(115deg, rgba(255, 255, 255, .09) 0%, rgba(255, 255, 255, .02) 24%, transparent 42%);
-  pointer-events: none;
-}
-
-.hero-panel::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  border: 1px solid var(--line);
-  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(255, 255, 255, .1), transparent 38%);
   pointer-events: none;
 }
 
@@ -109,11 +100,9 @@
   transform-origin: top left;
 }
 
-/* Превью всегда остаётся в десктопной раскладке панели,
-   даже когда сама страница открыта с мобильной шириной. */
 .hero-panel .settings-shell {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-columns: 280px minmax(0, 1fr);
   height: 740px;
   min-height: 0;
 }
@@ -121,46 +110,18 @@
 .hero-panel .sidebar {
   position: static;
   height: 100%;
-  padding: 1rem .75rem;
+  padding: 1rem .8rem;
   overflow: hidden;
   border-right: 1px solid var(--line);
   border-bottom: 0;
 }
 
-.hero-panel .sidebar .brand {
-  margin: 0 .4rem 1.35rem;
-}
-
-.hero-panel .sidebar-groups {
-  display: grid;
-  gap: .55rem;
-  overflow: visible;
-  padding-bottom: 0;
-}
-
-.hero-panel .sidebar-group {
-  display: grid;
-  gap: .2rem;
-}
-
-.hero-panel .sidebar-group-label {
-  display: block;
-  margin: .12rem .8rem .05rem;
-}
-
-.hero-panel .sidebar-group-items {
-  display: grid;
-  gap: .12rem;
-}
-
-.hero-panel .nav-item {
-  flex: none;
-  min-height: 36px;
-  padding: .48rem .8rem;
-  gap: .6rem;
-  font-size: .86rem;
-  white-space: normal;
-}
+.hero-panel .sidebar .brand { margin: 0 .4rem 1.3rem; }
+.hero-panel .sidebar-groups { display: grid; gap: .55rem; padding-bottom: 0; }
+.hero-panel .sidebar-group { display: grid; gap: .2rem; }
+.hero-panel .sidebar-group-label { display: block; margin: .12rem .8rem .05rem; }
+.hero-panel .sidebar-group-items { display: grid; gap: .12rem; }
+.hero-panel .nav-item { flex: none; min-height: 36px; padding: .48rem .8rem; gap: .6rem; font-size: .86rem; white-space: normal; }
 
 .hero-panel .settings-content {
   width: 100%;
@@ -170,41 +131,17 @@
   padding: 1.2rem 2rem 1.1rem;
   overflow: hidden;
   background:
-    linear-gradient(rgba(255, 255, 255, .018) 1px, transparent 1px) 0 0 / 40px 40px,
-    linear-gradient(90deg, rgba(255, 255, 255, .018) 1px, transparent 1px) 0 0 / 40px 40px,
-    radial-gradient(circle at 85% -8%, rgba(69, 17, 111, .55), transparent 30rem),
+    radial-gradient(circle at 85% -8%, rgba(124, 92, 255, .18), transparent 28rem),
     var(--ink);
 }
 
-.hero-panel .settings-top {
-  margin-bottom: 1rem;
-  padding-bottom: .8rem;
-}
-
-.hero-panel .panel-stack {
-  gap: .65rem;
-}
-
-.hero-panel .server-heading h1 {
-  font-size: 2.1rem;
-}
-
-.hero-panel .stat-cards {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .75rem;
-}
-
-.hero-panel .stat-card {
-  padding: .9rem .7rem;
-}
-
-.hero-panel .stat-card strong {
-  font-size: 1.5rem;
-}
-
-.hero-panel .activity-chart {
-  height: 180px;
-}
+.hero-panel .settings-top { position: static; margin-bottom: 1rem; padding: 0 0 .8rem; background: none; backdrop-filter: none; }
+.hero-panel .panel-stack { gap: .65rem; }
+.hero-panel .server-heading h1 { font-size: 2rem; }
+.hero-panel .stat-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.hero-panel .stat-card { padding: .9rem .7rem; }
+.hero-panel .stat-card strong { font-size: 1.5rem; }
+.hero-panel .activity-chart { height: 180px; }
 
 @media (max-width: 1200px) {
   .hero-panel { width: 390px; --hero-panel-scale: .4875; }
@@ -227,30 +164,13 @@
 }
 
 .feature-card {
-  padding: 1rem;
+  padding: 1.1rem;
   transition: border-color var(--t), transform var(--t), box-shadow var(--t);
 }
 
 .feature-card .tile { width: 38px; height: 38px; }
-
-.feature-card h2 { margin: .65rem 0 .25rem; font-size: .95rem; }
-
-.feature-card p {
-  margin: 0;
-  color: var(--muted);
-  font-size: .86rem;
-  line-height: 1.5;
-}
-
-.empty-state {
-  display: grid;
-  justify-items: center;
-  gap: .8rem;
-  padding: 2.6rem 1.5rem;
-  text-align: center;
-}
-
-.empty-state p { margin: 0; color: var(--muted); }
+.feature-card h2 { margin: .7rem 0 .25rem; font-size: .95rem; }
+.feature-card p { margin: 0; color: var(--muted); font-size: .86rem; line-height: 1.55; }
 
 .landing-footer {
   display: flex;
@@ -262,43 +182,14 @@
   padding: .9rem 0 1.2rem;
   border-top: 1px solid var(--line);
   color: var(--muted);
-  font-size: .88rem;
+  font-size: .86rem;
 }
 
 .landing-footer p { margin: 0; }
-
-.landing-footer a {
-  display: inline-flex;
-  align-items: center;
-  gap: .35rem;
-  color: #edbcff;
-  font-weight: 700;
-  text-decoration: none;
-}
-
+.landing-footer a { display: inline-flex; align-items: center; gap: .35rem; color: #d8ccff; font-weight: 700; text-decoration: none; }
 .landing-footer a:hover { color: #fff; text-decoration: underline; }
-
 .landing-footer-links { display: flex; flex-wrap: wrap; gap: .5rem 1.1rem; }
-
 .landing-footer-links svg { flex: none; }
-
-.auth-page {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  padding: 1.5rem;
-}
-
-.auth-card {
-  display: grid;
-  gap: 1.15rem;
-  width: min(440px, 100%);
-  padding: 2rem;
-}
-
-.auth-card .brand { justify-content: center; margin-bottom: .6rem; }
-.auth-card h1 { margin: 0; }
-.auth-card .btn { width: 100%; }
 
 .hero-modules {
   display: flex;
@@ -322,12 +213,14 @@
   font-weight: 600;
 }
 
-.hero-modules svg {
-  color: var(--glow);
-}
+.hero-modules svg { color: var(--glow); }
 
 @media (max-width: 768px) {
-  .hero-modules {
-    justify-content: center;
-  }
+  .hero { grid-template-columns: 1fr; gap: 1.4rem; text-align: center; }
+  .hero .lead { margin-inline: auto; }
+  .hero-cta { justify-content: center; }
+  .hero-art { order: -1; }
+  .hero-art::before { width: 100%; }
+  .hero-modules { justify-content: center; }
+  .landing-footer { justify-content: center; text-align: center; }
 }

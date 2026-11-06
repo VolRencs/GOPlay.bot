@@ -15,7 +15,7 @@ export function AutoroleSettings() {
     loadError: "Не удалось загрузить автороль.",
     saveError: "Не удалось сохранить автороль.",
     savedMessage: "Автороль при входе сохранена.",
-    registerKey: "autorole",
+    settingsKey: "autorole",
   });
   if (loading) return <SectionLoading/>;
   const roles = resources?.roles ?? [];

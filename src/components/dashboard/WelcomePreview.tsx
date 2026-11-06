@@ -59,14 +59,11 @@ export function WelcomePreview({ message, config: committed, background, enabled
   };
 
   useEffect(() => { if (!gesture) setLive(committed); }, [committed, gesture]);
-  // Незавершённый debounce не должен терять последний сдвиг при размонтировании.
   useEffect(() => () => {
     if (commitTimer.current !== null) { clearTimeout(commitTimer.current); commitTimer.current = null; }
     flushPending();
   }, []);
 
-  // Канва равна реальному размеру фона: фото показывается целиком и сжатым
-  // предпросмотре, без растяжения и обрезки.
   useEffect(() => {
     if (!background) { setSize({ width: DESIGN_W, height: DESIGN_H }); return; }
     let cancelled = false;
@@ -95,8 +92,6 @@ export function WelcomePreview({ message, config: committed, background, enabled
     event.stopPropagation();
     const rect = event.currentTarget.closest(".welcome-canvas")?.getBoundingClientRect();
     if (!rect) return;
-    // Экранные координаты центра аватара и стартового расстояния до курсора:
-    // дальше масштаб считается в пикселях, без пересчёта через оси канвы.
     const centerX = rect.left + (live.avatarX / DESIGN_W) * rect.width;
     const centerY = rect.top + (live.avatarY / DESIGN_H) * rect.height;
     setGesture({
@@ -115,8 +110,6 @@ export function WelcomePreview({ message, config: committed, background, enabled
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!gesture) return;
 
-    // Ресайз — в экранных пикселях от центра: дизайн-координаты растягиваются
-    // по осям канвы, и пересчёт через них «дёргал» аватар при захвате.
     if (gesture.kind === "resize") {
       const scale = Math.max(Math.abs(event.clientX - gesture.centerX) / gesture.startDX, Math.abs(event.clientY - gesture.centerY) / gesture.startDY);
       const low = Math.max(48, Math.round(48 * gesture.ratio));
@@ -174,8 +167,6 @@ export function WelcomePreview({ message, config: committed, background, enabled
     return { ...base, ...map[dir] };
   };
 
-  // Позиции — процент от канвы, размеры — один коэффициент по ширине (как в SVG):
-  // так хит-зоны совпадают с отрисовкой на фоне любой пропорции.
   const scaleX = size.width / DESIGN_W, scaleY = size.height / DESIGN_H;
 
   return (
@@ -192,8 +183,8 @@ export function WelcomePreview({ message, config: committed, background, enabled
           <div className="canvas-svg" dangerouslySetInnerHTML={{ __html: svg }}/>
           {snap.x && <i className="drag-guide guide-v"/>}
           {snap.y && <i className="drag-guide guide-h"/>}
-          {/* Прозрачные хит-зоны поверх точного SVG: двигают/меняют размер,
-              визуальную правду рисует сам вектор. */}
+          {
+}
           <div
             className={`preview-hit hit-avatar${gesture?.kind === "move" && gesture.target === "avatar" ? " grabbed" : ""}${gesture?.kind === "resize" ? " grabbed" : ""}`}
             onPointerDown={e => startMove(e, "avatar")}

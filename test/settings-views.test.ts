@@ -32,7 +32,6 @@ test("background upload keeps code defaults for a new welcome row", async () => 
   assert.equal(state.message, welcomeDefaults.message);
   assert.equal(state.goodbyeMessage, welcomeDefaults.goodbyeMessage);
 
-  // Повторная загрузка фона обновляет только путь, не настройки.
   welcomeQueries.upsert.run({ ...fromDto({ ...state, message: "Custom" }), guild_id: "g1", updated_at: Date.now() });
   welcomeQueries.backgroundUpsert.run({
     ...fromDto(welcomeDefaults),

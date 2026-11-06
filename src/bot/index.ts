@@ -46,8 +46,6 @@ once(client, Events.ClientReady, "CLIENT_READY", async c => {
   } catch (error) {
     logger.error("Не удалось зарегистрировать slash-команды:", error);
   }
-  // Ошибка одной гильдии не должна прерывать онбординг остальных и очистку
-  // временных каналов.
   for (const guild of c.guilds.cache.values()) {
     try { onboardGuild(guild); } catch (error) { logger.error("[GUILD] Не удалось зарегистрировать гильдию", guild.id, error); }
   }
@@ -63,8 +61,6 @@ on(client, Events.GuildCreate, "GUILD_CREATE", g => {
 on(client, Events.GuildMemberAdd, "MEMBER_JOIN", member => {
   count("events.member_join");
   addMetric(member.guild.id, "joins");
-  // Ботам не здороваемся и не выдаём автороль; метрики joins/leaves остаются
-  // симметричными (уход ботов тоже считается).
   if (!member.user.bot) {
     guard("WELCOME", () => sendMemberEvent(member, "welcome"));
     const autorole = autoroleSettingsFor(member.guild.id);
@@ -95,8 +91,6 @@ on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
     const t = guildTr(automodTr, message.guild.id);
     let banned = false;
     if (member?.bannable) {
-      // Метку ставим ДО запроса: иначе gateway-событие успевает обогнать её и
-      // в журнале появляется вторая запись о бане без причины.
       markBotAction(message.guild.id, "member_ban", message.author.id);
       banned = await member.ban({ reason: t("protectedAdminOnly") }).then(() => true, () => false);
       if (!banned) logger.warn("[AUTOMOD] Бан в защищённом канале не применён", message.guild.id, message.author.id);
@@ -108,8 +102,6 @@ on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
   const data: MessageData = { id: message.id, guildId: message.guild.id, userId: message.author.id, channelId: message.channel.id, content: message.content, roleIds: member?.roles.cache.map(r => r.id) ?? [], mentionCount: message.mentions.users.size + message.mentions.roles.size, everyone: message.mentions.everyone, attachments: [...message.attachments.values()].map(a => ({ contentType: a.contentType })), at: Date.now() };
   const ignored = isIgnored(data, cache.ignoredRoles);
   if (ignored) return;
-  // Каждое правило получает сообщение: счётчики окон не должны зависеть от
-  // того, какое правило совпало раньше. Наказание применяется максимум одно.
   let matched: { row: (typeof cache.rules)[number]; threshold: Record<string, unknown> } | null = null;
   for (const row of cache.rules) {
     const threshold = row.threshold;
@@ -133,8 +125,6 @@ registerEvents(client);
 on(client, Events.GuildDelete, "GUILD_DELETE", guild => {
   stopAndLeave(guild.id);
   purgeConfigCaches(guild.id);
-  // Успех логируется только после реальной очистки: раньше падение wipe
-  // (SQLITE_BUSY) оставляло данные гильдии, а лог утверждал обратное.
   let wiped = false;
   try { wipeGuildData(guild.id); wiped = true; }
   catch (error) { logger.error("[GUILD] Не удалось стереть данные сервера", guild.id, error); }

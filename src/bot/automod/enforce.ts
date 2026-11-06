@@ -33,13 +33,9 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
   const ruleName = automodRuleTitles[lang][row.kind]?.title ?? row.kind, reason = tAuto("reason", { rule: ruleName });
   const rule: Rule = { kind: row.kind, threshold, window: row.window_seconds };
   const burstKind = isBurstKind(row.kind);
-  // Окно наказания захватывается СИНХРОННО, до первого await: иначе следующее
-  // сообщение того же пользователя успевало бы пройти проверку и получить
-  // второе наказание за то же окно.
   const firstInBurst = burstKind ? shouldWarn(rule, data) : true;
+  // Claim the burst window synchronously before the first await to prevent duplicate actions.
   if (burstKind && firstInBurst) markWarned(rule, data);
-  // Сообщение в уже обработанном burst-окне: удаляем, но не выдаём наказание
-  // повторно (timeout/kick/ban/warn — один раз на окно).
   const repeatBurst = burstKind && !firstInBurst;
   let burst: { id: string; channelId: string }[] = [];
   let deletedCount = 0;
@@ -57,7 +53,6 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
   }
   if (actions.includes("kick") && member?.kickable && !repeatBurst) { markBotAction(guild.id, "member_kick", author.id); if (await member.kick(reason).then(() => true, () => false)) applied.push("kick"); }
   if (actions.includes("ban") && member?.bannable && !repeatBurst) { markBotAction(guild.id, "member_ban", author.id); if (await member.ban({ reason }).then(() => true, () => false)) applied.push("ban"); }
-  // Предупреждение видно в /warnings: строка type='warn', как у ручного /warn.
   let warnPunishmentId: number | null = null;
   if (actions.includes("warn") && !repeatBurst) {
     try {
@@ -66,10 +61,6 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
       applied.push("warn");
     } catch (error) { logger.warn("Не удалось записать предупреждение автомодерации", guild.id, error); }
   }
-  // Строка type='automod' — для наказаний (timeout/kick/ban). Апелляция
-  // предлагается при warn/timeout/ban: warn использует строку из /warnings,
-  // kick необратим, delete — не наказание. Конкретное действие передаётся в
-  // апелляцию (appealType), иначе reversalFor('automod') не снял бы ничего.
   let punishmentId: number | null = null;
   if (applied.some(action => action === "timeout" || action === "kick" || action === "ban")) {
     try {
@@ -85,8 +76,6 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
     const appealTarget = appealType === "warn" ? warnPunishmentId : punishmentId;
     if (appealTarget !== null) void offerAppeal(client, { punishmentId: appealTarget, guildId: guild.id, guildName: guild.name, userId: author.id, appealType, reason });
   }
-  // Наказание не применилось (только delete или отказ Discord) — снимаем
-  // claim окна, иначе следующее сообщение в окне уже не получит наказания.
   const punished = banApplied || timeoutApplied || applied.includes("kick") || applied.includes("warn");
   if (burstKind && !punished) clearWarned(rule, data);
   logAction({ guildId: guild.id, type: "automod", targetId: author.id, moderatorId: "automod", details: `${t("reason", { reason: ruleName })}\n${applied.length ? t("actionsLine", { list: applied.join(", ") }) : t("actionsFailedLine")}${deletedCount > 0 ? t("deletedFromBurst", { n: String(deletedCount) }) : ""}` });

@@ -9,8 +9,6 @@ const children: ChildProcess[] = [
   spawn(process.execPath, ["--env-file=.env", "src/bot/index.ts"], { stdio: "inherit" }),
 ];
 
-// Весь сигнал получает группа процессов; дублирование безвредно — бот
-// завершается синхронно с process.exit, Next гаснет сам.
 let stopping = false;
 const stop = (signal: NodeJS.Signals) => {
   if (stopping) return;
@@ -27,10 +25,8 @@ const failPeer = (child: ChildProcess) => {
 };
 
 for (const child of children) {
-  // spawn ENOENT: 'error' без 'exit' — иначе uncaught-исключение и бот-сирота.
   child.on("error", error => { console.error("[run-both]", error); failPeer(child); process.exitCode = 1; });
   child.on("exit", (code, signal) => {
-    // Один процесс упал — гасим второй и завершаемся с его кодом/сигналом.
     failPeer(child);
     if (code || signal) process.exitCode = code ?? 1;
   });

@@ -1,5 +1,5 @@
 import { safeJson } from "../json.ts";
-import { normalizeEmbedContent, parseEmbedJson, toDiscordEmbed } from "../../contracts/embeds.ts";
+import { fitEmbed, normalizeEmbedContent, parseEmbedJson, toDiscordEmbed } from "../../contracts/embeds.ts";
 import { eventStatusMetaM } from "../labels.ts";
 import type { Locale } from "../i18n/core.ts";
 import { eventsTr, trFor } from "../i18n/bot.ts";
@@ -42,6 +42,7 @@ export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: Ev
   const tr = trFor(eventsTr, lang);
   const userFields: { name: string; value: string; inline: boolean }[] = (embed.fields ?? []).map(f => ({ name: f.name, value: f.value, inline: Boolean(f.inline) }));
   const added: typeof userFields = [];
+  // Event date is rendered as a normal field; Discord's native timestamp is not used.
   if (embed.timestamp) {
     const unix = Math.floor(event.scheduledAt / 1000);
     added.push({ name: tr("fldDate"), value: `<t:${unix}:d> (<t:${unix}:R>)`, inline: true });
@@ -50,7 +51,7 @@ export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: Ev
   if (event.registrationEnabled || counts.joined > 0) added.push({ name: tr("fldParticipants"), value: event.maxParticipants > 0 ? tr("joinedOf", { a: String(counts.joined), b: String(event.maxParticipants) }) : String(counts.joined), inline: true });
   if (counts.waitlist > 0) added.push({ name: tr("fldWaitlist"), value: String(counts.waitlist), inline: true });
   const fields = [...userFields.slice(0, Math.max(0, 25 - added.length)), ...added];
-  return toDiscordEmbed({
+  const content = {
     ...(embed.title ? { title: embed.title } : {}),
     ...(embed.description ? { description: embed.description } : {}),
     ...(Number.isInteger(embed.color) ? { color: embed.color } : {}),
@@ -59,7 +60,9 @@ export function renderEventEmbed(lang: Locale, event: RenderableEvent, embed: Ev
     ...(embed.thumbnail?.url ? { thumbnail: { url: embed.thumbnail.url } } : {}),
     ...(embed.image?.url ? { image: { url: embed.image.url } } : {}),
     ...(fields.length ? { fields } : {}),
-  });
+  };
+  // Generated fields win; user fields are trimmed first to stay under 6000.
+  return toDiscordEmbed(fitEmbed(content, added.length));
 }
 
 export function renderEventButtons(event: RenderableEvent, buttons: EventButton[], counts: EventCounts): RenderedEventButton[] {

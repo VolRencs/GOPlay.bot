@@ -22,8 +22,6 @@ function draftImageNames(payloadJson:string,guildId:string) {
 }
 
 async function cleanupUnusedDraftImages(guildId:string) {
-  // Тот же часовой minAge, что у events: файл мог быть записан параллельным
-  // сохранением, которое ещё не закоммитило ссылку в БД.
   await cleanupUnusedUploads(embedUploadsDir(guildId), embedsQueries.payloads.all(guildId), row => draftImageNames(row.payload_json, guildId), 60 * 60_000);
 }
 
@@ -85,10 +83,8 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   if(!data||typeof data!=="object")return jsonError("Некорректные данные сообщения.");
   if(!data.payload||typeof data.payload!=="object"||Array.isArray(data.payload))return jsonError("Некорректные данные сообщения.");
-  // id приходит из JSON: без проверки строка/дробное число создали бы дубликат шаблона.
   if(data.id!==undefined&&(!Number.isInteger(data.id)||data.id<1))return jsonError("Некорректный идентификатор шаблона.");
   if(typeof data.name!=="string"||!data.name.trim()||(!data.saveOnly&&!data.updateMessage&&!data.channelId)) return jsonError(data.saveOnly?"Укажите название шаблона":"Укажите название и канал");
-  // channelId интерполируется в путь Discord REST — только snowflake.
   if(data.channelId&&!isSnowflake(data.channelId))return jsonError("Некорректный канал.");
   if(data.name.trim().length>100)return jsonError("Название шаблона не должно превышать 100 символов.");
   const normalized=normalizeEmbedContent(data.payload);
@@ -101,7 +97,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   let originals: { target: EmbedTarget; url: string }[];
   try {
     assets=await collectNewUploads<EmbedTarget>(form,[{formKey:"authorFile",target:"author"},{formKey:"thumbnailFile",target:"thumbnail"},{formKey:"imageFile",target:"image"}],setAsset);
-    // Переотправка сохранённых локальных картинок, чтобы правка их не ломала.
     const stored=await reattachStoredAssets<EmbedTarget>({
       targets:["author","image","thumbnail"],
       urlOf:target=>target==="author"?payload.author?.iconUrl:target==="image"?payload.image?.url:payload.thumbnail?.url,
@@ -125,7 +120,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     const saved=JSON.stringify(payload), result=data.id
       ? embedsQueries.saveUpdate.run(data.name.trim(),saved,mode,data.channelId??"",Date.now(),data.id,guildId)
       : embedsQueries.saveInsert.run(guildId,data.name.trim(),saved,data.channelId||null,mode,Date.now());
-    // Шаблон мог быть удалён в другой вкладке: не рапортуем успех и не пишем аудит впустую.
     if (data.id && result.changes === 0) return jsonError("Шаблон не найден.", 404);
     after(() => cleanupUnusedDraftImages(guildId));
     if(before) recordDashboardDiff(guildId,user,AUDIT_SECTION.embeds,`Шаблон «${data.name.trim()}»: `,
@@ -138,18 +132,14 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const current=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
   if(data.updateMessage&&(!current?.channel_id||!current.message_id))return jsonError("Сначала отправьте шаблон в канал — обновлять пока нечего.");
   const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return botTokenError();
-  // allowed_mentions: панель публикует от имени бота — упоминания в тексте
-  // не должны пинговать никого (в т.ч. @everyone).
   const discordPayload=toDiscordEmbed(payload);
   const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[discordPayload],allowed_mentions:{parse:[]}}; let body:BodyInit=JSON.stringify(bodyData), headers:Record<string,string>={"content-type":"application/json"};
   if(assets.length) { const multipart=new FormData(); multipart.set("payload_json",JSON.stringify(bodyData)); assets.forEach((asset,i)=>multipart.append(`files[${i}]`,asset.file,asset.filename)); body=multipart; headers={}; }
   const endpoint=`/channels/${channelId}/messages${data.updateMessage?`/${current!.message_id}`:""}`;
-  let sent: Response | null = null; try { sent=await discordFetch(endpoint,{method:data.updateMessage?"PATCH":"POST",headers,body}); } catch { /* единый ответ ниже */ }
+  let sent: Response | null = null; try { sent=await discordFetch(endpoint,{method:data.updateMessage?"PATCH":"POST",headers,body}); } catch {  }
   if(!sent?.ok)return jsonError(data.updateMessage?"Не удалось обновить опубликованное сообщение":"Не удалось отправить сообщение в выбранный канал", 502); const message=await sent.json() as {id:string};
   await persistAssets();
   const persisted=JSON.stringify(payload);
-  // Атомарно: шаблон и история отправки не должны расходиться при сбое между
-  // записями (иначе «Отправки» показывают сообщение, которого нет в истории).
   withTransaction(() => {
     const result=data.id
       ? embedsQueries.publishUpdate.run(data.name.trim(),persisted,channelId,message.id,mode,Date.now(),data.id,guildId)

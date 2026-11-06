@@ -16,7 +16,6 @@ export function AppealsPanel() {
   const [refresh, setRefresh] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const loadGen = useRef(0);
-  // Дебаунс текстовых фильтров: каждый кейстрок не должен DDoSить собственный API.
   const [debouncedFilters, setDebouncedFilters] = useState(filters);
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedFilters(filters), 300);
@@ -27,8 +26,6 @@ export function AppealsPanel() {
   const query=(nextOffset:number, f = debouncedFilters)=>{const params=new URLSearchParams({status:f.status,limit:"100",offset:String(nextOffset)});if(f.userId.trim())params.set("userId",f.userId.trim());if(f.moderatorId.trim())params.set("moderatorId",f.moderatorId.trim());if(f.from)params.set("from",String(new Date(`${f.from}T00:00:00`).getTime()));if(f.to)params.set("to",String(new Date(`${f.to}T23:59:59`).getTime()));return params;};
   const loadPage=(nextOffset:number)=>apiGet<AppealsListDto>(`/api/guilds/${guildId}/appeals?${query(nextOffset)}`,{appeals:[]});
   useEffect(()=>{if(!guildId)return;let active=true;const gen=++loadGen.current;setAppeals(null);setExpanded(null);setComment("");setHasMore(false);void loadPage(0).then(data=>{if(!active||gen!==loadGen.current)return;const rows=data.appeals;setAppeals(rows);setHasMore(rows.length>=100);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
-  // Пагинация защищена от повторного клика и от смены фильтров в полёте:
-  // иначе устаревшая страница дописывается в уже перезагруженный список.
   const more=()=>{const gen=loadGen.current;void runMore(async()=>{const data=await loadPage(appeals?.length ?? 0);if(gen!==loadGen.current)return;const rows=data.appeals;if(!rows.length){setHasMore(false);return;}setAppeals(value=>[...(value??[]),...rows]);setHasMore(rows.length>=100);});};
   const review=(row:AppealDto,action:string)=>run(
     () => apiJson<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,"POST",{action,comment:comment.trim()||undefined},"Не удалось изменить статус апелляции."),

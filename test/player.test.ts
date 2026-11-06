@@ -1,7 +1,6 @@
 import test from "node:test"; import assert from "node:assert/strict";
 import { useTempDb } from "./helpers.ts";
 
-// Ядро плеера тянет i18n → базу: изолируем во временную.
 useTempDb("goplay-player-");
 const {
   parseYtDlpMeta, pickAudioUrl, safeYtDlpTarget,
@@ -11,7 +10,6 @@ const {
   ffmpegArgs, ytdlpArgsFor,
 } = await import("../src/lib/player/index.ts");
 
-// --- Резолвер yt-dlp -----------------------------------------------------------
 
 const entry = (i: number) => `{"_type":"url","id":"v${i}","url":"https://www.youtube.com/watch?v=v${i}","title":"трек ${i} — портреты"}`;
 const playlist = `{"_type":"playlist","title":"Mix - портреты","entries":[${Array.from({ length: 50 }, (_, i) => entry(i)).join(",")}]}`;
@@ -19,15 +17,13 @@ const single = `{"id":"bWDu7-jNMbo","title":"портреты (Acoustic)","durat
 
 test("parseYtDlpMeta: полный -J как есть, обрезанный капом восстанавливается, мусор — null", () => {
   assert.deepEqual(parseYtDlpMeta(single, false), JSON.parse(single));
-  assert.deepEqual(parseYtDlpMeta(`${playlist}\n`, false), JSON.parse(playlist)); // хвостовой \n не мешает
-  // срез внутри последней записи (кириллица рядом) и сразу после висячей запятой
+  assert.deepEqual(parseYtDlpMeta(`${playlist}\n`, false), JSON.parse(playlist));
   const midCut = parseYtDlpMeta(playlist.slice(0, playlist.indexOf(entry(49)) + 20), true);
   const entries = midCut?.entries as { url: string }[] | undefined;
   assert.ok(entries && entries.length >= 45 && entries.length < 50);
   assert.match(entries[0]!.url, /^https:\/\/www\.youtube\.com\/watch\?v=v\d+$/);
   const commaCut = parseYtDlpMeta(playlist.slice(0, playlist.indexOf(entry(49))), true);
   assert.equal((commaCut?.entries as unknown[]).length, 49);
-  // обрыв без шансов на восстановление
   assert.equal(parseYtDlpMeta("not json at all", false), null);
   assert.equal(parseYtDlpMeta('{"_type":"playli', true), null);
 });
@@ -51,8 +47,8 @@ test("pickAudioUrl: opus → лучший audio-only по битрейту → b
 test("SSRF-гейт и классификация bot-проверки", () => {
   assert.equal(safeYtDlpTarget("https://www.youtube.com/watch?v=x"), "https://www.youtube.com/watch?v=x");
   assert.equal(safeYtDlpTarget("http://m.youtube.com/shorts/x"), "http://m.youtube.com/shorts/x");
-  assert.equal(safeYtDlpTarget("крутая песня"), null); // без ytsearch
-  assert.equal(safeYtDlpTarget("https://evil.example.com/video"), null); // чужой хост
+  assert.equal(safeYtDlpTarget("крутая песня"), null);
+  assert.equal(safeYtDlpTarget("https://evil.example.com/video"), null);
   assert.equal(safeYtDlpTarget("http://localhost:8080/x"), null);
   assert.equal(safeYtDlpTarget("ftp://youtube.com/x"), null);
   assert.equal(isBotcheckError("Sign in to confirm you're not a bot"), true);
@@ -66,7 +62,7 @@ test("fast-path: одиночное видео доверенного хоста
   assert.equal(isSingleYouTubeVideoUrl("https://youtu.be/bWDu7-jNMbo?t=1"), true);
   assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/watch?v=x&list=PL123"), false);
   assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/playlist?list=PL123"), false);
-  assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/watch"), false); // без id
+  assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/watch"), false);
   assert.equal(isSingleYouTubeVideoUrl("https://music.youtube.com/watch?v=x"), false);
   assert.equal(isSingleYouTubeVideoUrl("https://evil.example.com/watch?v=x"), false);
   assert.equal(isSingleYouTubeVideoUrl("крутая песня"), false);
@@ -74,19 +70,18 @@ test("fast-path: одиночное видео доверенного хоста
 
 test("переход к автору трека: только другой канал из whitelist", () => {
   assert.equal(pickFollowTarget("vcA", "vcB", []), "vcB");
-  assert.equal(pickFollowTarget(null, "vcB", []), "vcB"); // бот вне каналов
-  assert.equal(pickFollowTarget("vcA", "vcA", []), null); // уже там
-  assert.equal(pickFollowTarget("vcA", null, []), null); // автор не в войсе
-  assert.equal(pickFollowTarget("vcA", "vcC", ["vcB"]), null); // whitelist запрещает
+  assert.equal(pickFollowTarget(null, "vcB", []), "vcB");
+  assert.equal(pickFollowTarget("vcA", "vcA", []), null);
+  assert.equal(pickFollowTarget("vcA", null, []), null);
+  assert.equal(pickFollowTarget("vcA", "vcC", ["vcB"]), null);
   assert.equal(pickFollowTarget("vcA", "vcB", ["vcB", "vcA"]), "vcB");
 });
 
-// --- Аргументы стрима ------------------------------------------------------------
 
 test("аргументы стрима: -ss до -i у прямого URL, труба без -ss, seek через --download-sections", () => {
   const resumed = ffmpegArgs("https://rX---sn.googlevideo.com/videoplayback?id=x", 95);
   const ss = resumed.indexOf("-ss");
-  assert.ok(ss !== -1 && ss < resumed.indexOf("-i")); // HTTP Range-seek до входа
+  assert.ok(ss !== -1 && ss < resumed.indexOf("-i"));
   assert.equal(resumed[ss + 1], "95");
   assert.deepEqual(resumed.slice(-18), ["-map", "0:a:0", "-vn", "-threads", "1", "-ac", "2", "-ar", "48000", "-c:a", "libopus", "-b:a", "96k", "-application", "audio", "-f", "ogg", "pipe:1"]);
   const piped = ffmpegArgs(null, 0);
@@ -100,11 +95,8 @@ test("аргументы стрима: -ss до -i у прямого URL, тру
   assert.equal(ytdlpArgsFor(0, "q").includes("--download-sections"), false);
 });
 
-// --- Чистые операции очереди и утилиты --------------------------------------------
 
 test("конец трека и цикл повтора off → track → queue → off", () => {
-  // обрыв задолго до конца — не естественный; хвост с запасом 15 c и
-  // неизвестная длительность (верим exit=0) — естественный.
   assert.equal(isNaturalEnd(60, 240), false);
   assert.equal(isNaturalEnd(236, 240), true);
   assert.equal(isNaturalEnd(90, undefined), true);
@@ -114,17 +106,15 @@ test("конец трека и цикл повтора off → track → queue �
 
 test("утилиты очереди: время, удаление по индексам, перемещение, шаффл", () => {
   assert.equal(fmtTime(60), "1:00");
-  assert.equal(fmtTime(212.08), "3:32"); // дробные секунды округляются
+  assert.equal(fmtTime(212.08), "3:32");
   assert.equal(fmtTime(7325), "2:02:05");
-  assert.equal(fmtTime(-5), "0:00"); // мусор из сети не ломает рендер
+  assert.equal(fmtTime(-5), "0:00");
 
   const list = ["a", "b", "c", "d"];
   assert.deepEqual(partitionByIndices(list, [1, 3]), [["a", "c"], ["b", "d"]]);
-  // невалидные индексы и дубликаты молча игнорируются; список не мутируется
   assert.deepEqual(partitionByIndices(list, [4, -1, 2.5, 2, 2]), [["a", "b", "d"], ["c"]]);
   assert.deepEqual(list, ["a", "b", "c", "d"]);
 
-  // слот вставки в исходной нумерации: в конец со сдвигом, в начало, невалидные
   assert.equal(moveWithinList(["a", "b", "c", "d"], 1, 4), 3);
   const moved = ["a", "b", "c", "d"];
   moveWithinList(moved, 3, 0);

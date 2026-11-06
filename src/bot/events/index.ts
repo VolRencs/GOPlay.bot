@@ -52,8 +52,6 @@ async function handleInteraction(i: Interaction) {
   const result = key === "join" ? joinEvent(eventId, i.user.id, event.guild_id) : leaveEvent(eventId, i.user.id, event.guild_id);
   if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral }).catch(() => null);
   if (key === "join") {
-    // Отвечаем сразу: применение роли — REST-вызов, который на медленном
-    // соединении превысил бы 3-секундное окно interaction и дал «Interaction failed».
     await i.reply({ content: result.action === "waitlisted" ? tr("waitlisted") : result.action === "already_joined" ? tr("alreadyJoined") : tr("joined"), flags: MessageFlags.Ephemeral }).catch(() => null);
     await applyEventRole(event.guild_id, i.user.id, event.event_role_id, true);
   } else {
@@ -97,19 +95,13 @@ async function refreshMessageNow(guildId: string, eventId: string) {
   const event = getEventInGuild(guildId, eventId);
   if (!event) return;
   if (!event.message_id) {
-    // Сообщение события удалили: публикуем заново, иначе кнопки записи
-    // исчезают до конца события.
     if (event.status === "scheduled" || event.status === "live") await publishEventMessage(event);
     return;
   }
-  // Недоступный канал (негативный кэш, старт) НЕ отвязывает ссылку: следующее
-  // обновление повторит правку. Отвязка — только на реальный 404.
   const channel = await resolveChannel(event.channel_id);
   if (!channel) return;
   const { embed, components, files } = await buildEventMessage(event);
   try {
-    // PATCH напрямую по id: fetch полного сообщения перед edit — лишний GET
-    // на каждое нажатие кнопки (MessageManager.edit принимает snowflake).
     await channel.messages.edit(event.message_id, { embeds: [embed], components, files });
   } catch (error) {
     if (isMissingDiscordResource(error)) detachEventMessage(event.message_id);
@@ -117,8 +109,6 @@ async function refreshMessageNow(guildId: string, eventId: string) {
 }
 
 const REMINDER_CONCURRENCY = 5;
-// Напоминания не держат глобальный ticking: DM-рассылка вынесена из цикла и
-// идёт ограниченными пачками (один зависший fetch не блокирует переходы событий).
 async function sendReminders(event: EventRow): Promise<void> {
   const participants = eventParticipants(event.id);
   for (let i = 0; i < participants.length; i += REMINDER_CONCURRENCY) {
@@ -135,8 +125,6 @@ async function tick() {
     for (const reminder of dueReminders(now)) {
       if (!claimReminder(reminder.id, now)) continue;
       const event = getEvent(reminder.event_id);
-      // Статус-гейт: после простоя напоминания по уже начавшемуся/завершённому
-      // событию ушли бы как «начнётся через…» с датой в прошлом.
       if (!event || event.status !== "scheduled") continue;
       guard("EVENTS:REMIND", () => sendReminders(event));
     }

@@ -18,20 +18,15 @@ import {
 } from "../../lib/player/index.ts";
 
 export { handleMusicCommand } from "./command.ts";
-/** Debounce перерисовки: серия notify (плейлист = десяток изменений за раз)
- *  даёт ОДНУ правку сообщения через 500 мс — один edit вместо ~50 fetch+edit
- *  и риска упереться в rate limit прямо во время /play. */
 const PANEL_DEBOUNCE_MS = 500;
 const PANEL_PROGRESS_MS = 20_000;
 const PENDING_MOVE_TTL_MS = 5 * 60_000;
 
 let registered = false;
-/** Регистрация обработчиков. Вызывается один раз из src/bot/index.ts. */
 export function registerMusic(client: Client): void {
   if (registered) return;
   registered = true;
   setOnMusicChange(refreshPanel);
-  // Прогресс-бар обновляем редко: панель живёт без риска rate limit.
   setInterval(() => {
     for (const guildId of panels.keys()) {
       const state = playbackStateOf(guildId);
@@ -42,8 +37,6 @@ export function registerMusic(client: Client): void {
     const now = Date.now();
     for (const [key, pending] of pendingMoves) if (now - pending.at > PENDING_MOVE_TTL_MS) pendingMoves.delete(key);
   }, 60_000).unref();
-  // Данные присутствия для таймера бездействия: сколько людей в канале, где
-  // стоит бот. Только gateway-кэш — без REST на голосовых событиях.
   setPlayerEnvironment({
     humansInBotChannel: guildId => {
       const guild = client.guilds.cache.get(guildId);
@@ -52,15 +45,12 @@ export function registerMusic(client: Client): void {
       return channel?.isVoiceBased() ? channel.members.filter(m => !m.user.bot).size : 0;
     },
   });
-  // Новый трек: автор в другом разрешённом канале — переезжаем к нему.
-  // Нельзя (вышел, нет прав, канал не в whitelist) — молча играем где стоим.
   setOnTrackStart((guildId, requestedBy) => {
     const guild = client.guilds.cache.get(guildId);
     if (!guild) return;
     const requesterVc = guild.members.cache.get(requestedBy)?.voice.channelId ?? null;
     const target = pickFollowTarget(guild.members.me?.voice.channelId ?? null, requesterVc, musicSettingsFor(guildId).voice_channel_ids);
     if (!target) return;
-    // Права и тип проверяем по кэшу; нет данных — остаёмся на месте.
     const channel = guild.channels.cache.get(target);
     if (!channel?.isVoiceBased()) {
       logger.info("[MUSIC] Не переехал к автору: канал недоступен или нет прав", guildId, target);
@@ -73,9 +63,6 @@ export function registerMusic(client: Client): void {
     }
     moveToVoice(guildId, target);
   });
-  // Голосовые события: пересчёт единого таймера бездействия (пусто/тишина/пауза
-  // решает сама сессия). Свои переходы бота событиями не считаем — иначе первый
-  // же rejoin из пустеющего канала убил бы живую сессию.
   client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("MUSIC_VOICE", () => {
     if (oldState.id === client.user!.id) {
       if (oldState.channelId !== newState.channelId) refreshSessionActivity(newState.guild.id);
@@ -138,7 +125,7 @@ function refreshPanel(guildId: string): void {
 
 async function runPanelRefresh(guildId: string): Promise<void> {
   panelBusy.add(guildId);
-  try { await refreshPanelNow(guildId); } catch { /* ошибки внутри залогированы */ }
+  try { await refreshPanelNow(guildId); } catch {  }
   finally {
     panelBusy.delete(guildId);
     if (panelPending.has(guildId)) { panelPending.delete(guildId); refreshPanel(guildId); }
@@ -161,20 +148,15 @@ async function refreshPanelNow(guildId: string): Promise<void> {
   }
   const channelId = ref?.channelId ?? getSessionTextChannelId(guildId);
   if (!channelId) return;
-  // Недоступный канал (негативный кэш, старт) НЕ отвязывает ссылку: следующее
-  // обновление повторит правку. Отвязка — только на реальный 404.
   const channel = await resolveChannel(channelId);
   if (!channel) return;
   const payload = renderMusicPanel(state, guildLang(guildId));
   if (ref) {
-    // Прямой PATCH по id — один REST-запрос без fetch сообщения.
     try {
       count("music.panel_edit");
       await channel.messages.edit(ref.messageId, payload);
       return;
     } catch (error) {
-      // Пересоздаём только когда сообщение/канал реально исчезли; остальное
-      // (rate limit, transient) — оставляем ссылку на следующий тик.
       if (!isMissingDiscordResource(error)) {
         logger.warn("[MUSIC] Панель не обновлена", guildId, error);
         return;
@@ -234,7 +216,7 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
       return;
     }
     switch (i.customId.slice("music:".length)) {
-      case "toggle": togglePause(guildId); break;          // notify перерисует панель
+      case "toggle": togglePause(guildId); break;
       case "skip": skipCurrent(guildId); break;
       case "shuffle": shuffleQueue(guildId); break;
       case "loop": cycleLoop(guildId); break;
@@ -255,9 +237,7 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
 }
 
 type PendingMove = { from: number; at: number; id: string };
-const pendingMoves = new Map<string, PendingMove>(); // ключ `${guildId}:${userId}`
-/** Идентичность трека в очереди: перенос работает по ней, а не по индексу —
- *  индекс устаревает, если очередь изменилась между двумя шагами меню. */
+const pendingMoves = new Map<string, PendingMove>();
 const trackIdentity = (track: Track): string => `${track.query}\u0000${track.title}`;
 
 function queuePageButtons(prefix: string, page: number, pages: number, t: ReturnType<typeof musicTFor>): ButtonBuilder[] {
@@ -275,7 +255,6 @@ function queuePageButtons(prefix: string, page: number, pages: number, t: Return
   ];
 }
 
-/** Экран очереди: удаление или выбор трека для перемещения, с пагинацией по 25. */
 async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", requestedPage: number, update: boolean): Promise<void> {
   const t = musicTFor(i.guildId ?? "");
   const removing = action === "remove";
@@ -364,10 +343,9 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
     if (action === "mvadst") {
       const key = `${guildId}:${i.user.id}`;
       const pending = pendingMoves.get(key);
-      pendingMoves.delete(key); // шаг одноразовый: повтор — только через кнопку
+      pendingMoves.delete(key);
       const to = Number(i.values[0]);
       if (!pending || Date.now() - pending.at > PENDING_MOVE_TTL_MS || !Number.isInteger(to)) { await deny(t("queueChanged")); return; }
-      // Очередь могла измениться между шагами: переносим только тот же трек.
       const current = queue[pending.from];
       if (!current || trackIdentity(current) !== pending.id) { await deny(t("queueChanged")); return; }
       const moved = current;

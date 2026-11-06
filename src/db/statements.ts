@@ -15,8 +15,6 @@ import type { TempPresetRow } from "../lib/tempchannels.ts";
 import type { LevelReward } from "../lib/levels.ts";
 import type { EventRow, ParticipantRow } from "../lib/events/types.ts";
 
-// Все statements готовятся один раз на старте: SQLite не парсит SQL внутри
-// обработчиков событий.
 export const stmt = {
   guildInsert: write("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)"),
   guildName: read<GuildNameRow>("SELECT name FROM guilds WHERE id=?"),
@@ -116,14 +114,12 @@ export const stmt = {
   levelRewardsAll: read<LevelReward>("SELECT level,role_id FROM level_rewards WHERE guild_id=? ORDER BY level"),
   levelRewardsDelete: write("DELETE FROM level_rewards WHERE guild_id=?"),
   levelRewardsInsert: write("INSERT INTO level_rewards(guild_id,level,role_id) VALUES(?,?,?)"),
-  // Апелляции
   appealPunishment: read<AppealPunishmentRow>("SELECT id,guild_id,user_id,type,reason,created_at FROM moderation_actions WHERE id=?"),
   appealById: read<AppealRow>("SELECT * FROM appeals WHERE id=? AND guild_id=?"),
   appealExisting: read<AppealExistingRow>("SELECT id,number,status FROM appeals WHERE punishment_id=?"),
   appealInsert: write("INSERT INTO appeals(guild_id,user_id,punishment_id,type,reason,status,number,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)"),
   appealUpdate: write("UPDATE appeals SET status=?,moderator_comment=?,updated_at=?,reviewed_by=?,reviewed_at=? WHERE id=? AND guild_id=? AND status IN ('pending','reviewing')"),
   appealNextNumber: read<AppealCounterRow>("UPDATE guilds SET appeal_counter = appeal_counter + 1 WHERE id = ? RETURNING appeal_counter"),
-  // События
   eventGet: read<EventRow>("SELECT * FROM events WHERE id=?"),
   eventGetInGuild: read<EventRow>("SELECT * FROM events WHERE id=? AND guild_id=?"),
   eventInsert: write("INSERT INTO events(id,guild_id,channel_id,message_id,series_id,embed_json,buttons_json,scheduled_at,max_participants,registration_enabled,waitlist_enabled,status,event_role_id,reminders_json,recurrence_json,created_at,updated_at,started_at,completed_at,cancelled_at,stats_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"),
@@ -151,7 +147,6 @@ export const stmt = {
   remindersDue: read<ReminderDueRow>("SELECT id,event_id FROM event_reminders WHERE due_at<=? AND sent_at IS NULL"),
   eventCountsByGuild: read<EventGuildCountRow>("SELECT p.event_id AS eventId, SUM(p.waitlist=0) AS joined, SUM(p.waitlist=1) AS waitlist FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? GROUP BY p.event_id"),
   eventParticipantsByGuild: read<EventGuildParticipantRow>("SELECT p.event_id AS eventId, p.user_id AS userId, p.joined_at AS joinedAt, p.waitlist FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? ORDER BY p.waitlist, p.joined_at"),
-  // Очистка данных сервера
   cleanupAudit: write("DELETE FROM dashboard_audit WHERE guild_id=?"),
   cleanupAppeals: write("DELETE FROM appeals WHERE guild_id=?"),
   cleanupAppealCounter: write("UPDATE guilds SET appeal_counter=0 WHERE id=?"),
@@ -169,7 +164,6 @@ export function isForeignKeyError(error: unknown): boolean {
   return Error.isError(error) && /FOREIGN KEY/i.test(error.message);
 }
 
-/** Гильдии, присутствующие в таблице guilds; null — БД недоступна. */
 export function aliveGuildIds(): Set<string> | null {
   try { return new Set(stmt.guildIds.all().map(row => row.id)); }
   catch { return null; }

@@ -29,7 +29,7 @@ export function LevelsPanel() {
     loadError: "Не удалось загрузить настройки уровней.",
     saveError: "Не удалось сохранить настройки уровней.",
     savedMessage: "Настройки уровней сохранены.",
-    registerKey: "levels",
+    settingsKey: "levels",
   });
   if (loading) return <SectionLoading/>;
   const channels = resources?.channels ?? [];

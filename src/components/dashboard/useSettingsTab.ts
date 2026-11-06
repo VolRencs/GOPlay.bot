@@ -5,10 +5,10 @@ import { apiJson, apiSend } from "./api.ts";
 import { useConfigDraft } from "./hooks.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
 import { useAsyncAction } from "./ui.tsx";
+import { settingsEndpoint, type SettingsKey } from "#contracts/dashboard.ts";
 
 type SettingsTabOptions<TGet, TValue> = {
-  /** По умолчанию endpoint совпадает с registerKey: /api/guilds/{guildId}/{registerKey}. */
-  endpoint?: string;
+  settingsKey: SettingsKey;
   initial: TValue;
   fromGet: (data: TGet) => TValue;
   toBody: (value: TValue) => unknown;
@@ -17,7 +17,6 @@ type SettingsTabOptions<TGet, TValue> = {
   loadError: string;
   saveError: string;
   savedMessage: string;
-  registerKey: string;
 };
 
 export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, TValue>) {
@@ -29,12 +28,14 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
-  const endpoint = options.endpoint ?? `/api/guilds/${guildId}/${options.registerKey}`;
+  // Settings endpoints live in SETTINGS_ENDPOINTS; never derive API paths ad hoc.
+  const endpoint = settingsEndpoint(guildId, options.settingsKey);
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     setLoading(true);
-    void apiSend<TGet>(endpoint, {}, options.loadError).then(result => {
+    void apiSend<TGet>(endpoint, { signal: controller.signal }, options.loadError).then(result => {
       if (!active) return;
       if (result.ok) draftRef.current.commit(optionsRef.current.fromGet(result.data));
       else {
@@ -43,7 +44,7 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
       }
       setLoading(false);
     });
-    return () => { active = false; };
+    return () => { active = false; controller.abort(); };
   }, [endpoint, options.loadError, fail]);
 
   const save = useCallback(async (report = true): Promise<boolean> => {
@@ -63,7 +64,7 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
   const { busy: saving, run } = useAsyncAction();
   const saveNow = useCallback(() => run(save), [run, save]);
 
-  useRegisterChanges(options.registerKey, { dirty: draft.dirty, save, discard: () => draftRef.current.reset() });
+  useRegisterChanges(options.settingsKey, { dirty: draft.dirty, save, discard: () => draftRef.current.reset() });
 
   return { ...draft, loading, save, saving, saveNow };
 }

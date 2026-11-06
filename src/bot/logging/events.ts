@@ -59,7 +59,6 @@ export function registerLoggingEvents(client: Client) {
     if (!isBotAction(fullNew.guild.id, "member_timeout", fullNew.id) && fullOld?.communicationDisabledUntilTimestamp !== fullNew.communicationDisabledUntilTimestamp) {
       const isSet = Boolean(fullNew.communicationDisabledUntilTimestamp);
       const logTimeout = (actor?: string) => logAction({ guildId: fullNew.guild.id, type: "member_timeout", targetId: fullNew.id, moderatorId: actor, details: isSet ? t("timeoutSet") : t("timeoutCleared") });
-      // Один REST-запрос на тайм-аут: тот же entry используется и для лога, и для апелляции.
       void auditFind(fullNew.guild, AuditLogEvent.MemberUpdate, fullNew.id, { priority: isSet, retries: 1, retryDelay: 800 }).then(entry => {
         logTimeout(entry?.executor?.id);
         if (isSet && entry) recordPunishmentAndOffer(client, { guildId: fullNew.guild.id, guildName: fullNew.guild.name, userId: fullNew.id, type: "timeout", reason: entry.reason ?? t("noReason"), moderatorId: entry.executor?.id ?? null });

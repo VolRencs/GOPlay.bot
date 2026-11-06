@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, guildMemberNames, guildRoute } from "#lib/guild-access.ts";
+import { discordFetch, guildMemberNamesFor, guildRoute } from "#lib/guild-access.ts";
 import { statsQueries } from "#db/queries.ts";
 import { ttlCacheAsync } from "#lib/cache.ts";
 import { moderationLabel } from "#lib/labels.ts";
@@ -51,18 +51,17 @@ export const GET = guildRoute(async (request, { guildId }) => {
   const moderation = statsQueries.moderation.all(guildId, nowMs - windowDays * DAY_MS).map(row => ({ type: row.type, label: moderationLabel(lang, row.type), count: row.count }));
 
   if (period === "24h") {
-    // Скользящие 24 часа, а не сумма двух календарных дней:
-    // сообщения — из почасовых бакетов, модерация — по точному cutoff выше.
     totals.messages = points.reduce((sum, point) => sum + point.messages, 0);
     totals.moderation = moderation.reduce((sum, row) => sum + row.count, 0);
   }
 
+  const topUserRows = statsQueries.topUsers.all(guildId, cutoff);
   const [names, memberNames] = await Promise.all([
     channelNames.get(guildId).catch(() => ({} as Record<string, string>)),
-    guildMemberNames(guildId).catch(() => new Map<string, string>()),
+    guildMemberNamesFor(guildId, topUserRows.map(row => row.id)).catch(() => new Map<string, string>()),
   ]);
   const topChannels = statsQueries.topChannels.all(guildId, cutoff).map(row => ({ ...row, name: names[row.id] ?? "Неизвестный канал" }));
-  const topUsers = statsQueries.topUsers.all(guildId, cutoff).map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" }));
+  const topUsers = topUserRows.map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" }));
 
   const peakHour = statsQueries.peakHour.get(guildId, cutoff) ?? null;
 

@@ -76,7 +76,6 @@ function promoteFromWaitlist(event: EventRow): string | null {
   return next.user_id;
 }
 
-// Удаление участника со стороны панели — та же семантика продвижения, что у leave.
 export function removeParticipant(eventId: string, userId: string, guildId?: string): { action: "removed" | "promoted"; promotedUserId: string | null } | null {
   return withTransaction(() => {
     const event = stmt.eventGet.get(eventId);
@@ -110,7 +109,6 @@ function recomputeReminders(event: EventRow) {
   }
 }
 
-// Идемпотентный claim: ровно один вызвавший получает changes=1 и шлёт напоминание.
 export function claimReminder(reminderId: number, at: number): boolean {
   return stmt.reminderClaim.run(at, reminderId).changes === 1;
 }
@@ -157,7 +155,6 @@ export function insertEvent(guildId: string, input: EventInputDto): EventRow {
   const id = input.id ?? crypto.randomUUID();
   const now = Date.now();
   const startedAt = input.status === "live" ? now : null;
-  // Повторяющееся событие — корень своей серии, так находятся последователи.
   const seriesId = input.recurrence.freq !== "none" ? id : null;
   return withTransaction(() => {
     stmt.eventInsert.run(id, guildId, input.channelId, input.messageId, seriesId, JSON.stringify(input.embed), JSON.stringify(input.buttons), input.scheduledAt, input.maxParticipants, input.registrationEnabled ? 1 : 0, input.waitlistEnabled ? 1 : 0, input.status, input.eventRoleId, JSON.stringify(input.reminders), JSON.stringify(input.recurrence), now, now, startedAt, null, null, null);
@@ -222,8 +219,6 @@ export function updateEventMessage(eventId: string, messageId: string) {
   stmt.eventUpdateMessage.run(messageId, Date.now(), eventId);
 }
 
-// Бот увидел удаление сообщения: ссылка отвязывается, чтобы следующее
-// обновление создало сообщение заново, а не редактировало призрак.
 export function detachEventMessage(messageId: string) {
   stmt.eventDetachByMessage.run(Date.now(), messageId);
 }
@@ -245,7 +240,6 @@ function toEventViewBase(row: EventRow): Omit<EventViewDto, "counts" | "particip
 export function listEvents(guildId: string): EventViewDto[] {
   const rows = stmt.eventList.all(guildId);
   if (!rows.length) return [];
-  // Пакетная сборка: два запроса на гильдию вместо трёх на событие.
   const counts = new Map<string, EventCounts>();
   for (const row of stmt.eventCountsByGuild.all(guildId)) {
     counts.set(row.eventId, { joined: Number(row.joined), waitlist: Number(row.waitlist) });
@@ -266,12 +260,9 @@ export function listEvents(guildId: string): EventViewDto[] {
 export async function applyEventRole(guildId: string, userId: string, roleId: string | null, add: boolean): Promise<void> {
   if (!roleId) return;
   try {
-    // discordFetch не бросает на 4xx/5xx — статус проверяем вручную, иначе
-    // отказ Discord (нет прав, участник вышел) остался бы незамеченным.
     const response = await discordFetch(`/guilds/${guildId}/members/${userId}/roles/${roleId}`, { method: add ? "PUT" : "DELETE" });
     if (!response.ok) logger.warn("[EVENTS] Не удалось изменить роль события", guildId, userId, add, response.status);
   } catch (error) {
-    // Участник останется без роли события молча — фиксируем хотя бы в лог.
     logger.warn("[EVENTS] Не удалось изменить роль события", guildId, userId, add, error);
   }
 }

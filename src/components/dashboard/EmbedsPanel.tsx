@@ -2,9 +2,9 @@
 
 import { useRef, useState } from "react";
 import { Trash2, User } from "lucide-react";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmbedFields, EmbedMediaFields, MediaField, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmbedFields, EmbedMediaFields, EmbedUsage, MediaField, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiJsonMutate, apiMutate, apiSend } from "./api.ts";
-import { useApiResource, usePanelAction } from "./hooks.ts";
+import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type EmbedPayload } from "./types.ts";
 import type { EmbedDto, EmbedSendingDto, EmbedsGetDto } from "#contracts/embeds.ts";
@@ -41,19 +41,13 @@ export function EmbedsPanel() {
   const { embeds: items, sendings } = data;
   const [channel, setChannel] = useState("");
   const [form, setFormState] = useState<EmbedForm>(emptyEmbedForm);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
-  const [authorFile, setAuthorFile] = useState<File | null>(null);
   const setForm = (patch: Partial<EmbedForm>) => setFormState(current => ({ ...current, ...patch }));
   const { busy, run } = usePanelAction({ onDone, onError });
   const { busy: verifying, run: runVerify } = usePanelAction({ onDone, onError });
   const composerRef = useRef<HTMLDivElement>(null);
-  const imageInput = useRef<HTMLInputElement>(null);
-  const thumbnailInput = useRef<HTMLInputElement>(null);
-  const authorInput = useRef<HTMLInputElement>(null);
-  const imagePreview = useObjectUrl(imageFile) || form.image;
-  const thumbnailPreview = useObjectUrl(thumbnailFile) || form.thumbnail;
-  const authorIconPreview = useObjectUrl(authorFile) || form.authorIcon;
+  const image = useMediaField(form.image);
+  const thumbnail = useMediaField(form.thumbnail);
+  const authorIcon = useMediaField(form.authorIcon);
 
   const draftKey = `goplay-draft-embeds-${guildId}`;
   useSessionDraft(draftKey, Boolean(guildId), [form], () => form);
@@ -105,30 +99,27 @@ export function EmbedsPanel() {
       image: p.image?.url ?? "",
       thumbnail: p.thumbnail?.url ?? "",
     });
-    setImageFile(null); setThumbnailFile(null); setAuthorFile(null);
+    image.clear(); thumbnail.clear(); authorIcon.clear();
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function reset() {
     setFormState(emptyEmbedForm());
-    setImageFile(null); setThumbnailFile(null); setAuthorFile(null);
+    image.clear(); thumbnail.clear(); authorIcon.clear();
     try { sessionStorage.removeItem(draftKey); } catch {}
-    if (imageInput.current) imageInput.current.value = "";
-    if (thumbnailInput.current) thumbnailInput.current.value = "";
-    if (authorInput.current) authorInput.current.value = "";
   }
 
-  const clearImage = () => { setForm({ image: "" }); setImageFile(null); if (imageInput.current) imageInput.current.value = ""; };
-  const clearThumbnail = () => { setForm({ thumbnail: "" }); setThumbnailFile(null); if (thumbnailInput.current) thumbnailInput.current.value = ""; };
-  const clearAuthor = () => { setForm({ authorIcon: "" }); setAuthorFile(null); if (authorInput.current) authorInput.current.value = ""; };
+  const clearImage = () => { setForm({ image: "" }); image.clear(); };
+  const clearThumbnail = () => { setForm({ thumbnail: "" }); thumbnail.clear(); };
+  const clearAuthor = () => { setForm({ authorIcon: "" }); authorIcon.clear(); };
 
   async function submit(action: "save" | "update") {
     if (!form.name.trim()) return onError("Укажите название шаблона.");
     const upload = new FormData();
     upload.set("data", JSON.stringify({ id: form.id, name: form.name, mode: form.mode, saveOnly: action === "save", updateMessage: action === "update", payload }));
-    if (imageFile) upload.set("imageFile", imageFile);
-    if (thumbnailFile) upload.set("thumbnailFile", thumbnailFile);
-    if (authorFile) upload.set("authorFile", authorFile);
+    if (image.file) upload.set("imageFile", image.file);
+    if (thumbnail.file) upload.set("thumbnailFile", thumbnail.file);
+    if (authorIcon.file) upload.set("authorFile", authorIcon.file);
     await run(
       () => apiSend<{ id?: number }>(`/api/guilds/${guildId}/embeds`, { method: "POST", body: upload }, "Не удалось сохранить сообщение."),
       data => {
@@ -242,15 +233,16 @@ export function EmbedsPanel() {
                 {form.author && (
                   <>
                     <input value={form.authorUrl} maxLength={256} placeholder="Ссылка автора https://…" onChange={e => setForm({ authorUrl: e.target.value })}/>
-                    <MediaField icon={<User size={18}/>} label="Иконка автора" file={authorFile} previewUrl={authorIconPreview} saved={Boolean(form.authorIcon)} onPick={setAuthorFile} onClear={clearAuthor} ref={authorInput}/>
+                    <MediaField icon={<User size={18}/>} label="Иконка автора" file={authorIcon.file} previewUrl={authorIcon.preview} saved={Boolean(form.authorIcon)} onPick={authorIcon.setFile} onClear={clearAuthor} ref={authorIcon.inputRef}/>
                   </>
                 )}
               </div>
               <EmbedFields value={form} onChange={patch => setForm(patch)} titlePlaceholder="Заголовок" descriptionPlaceholder="Описание"/>
               <EmbedMediaFields
-                image={{ file: imageFile, preview: imagePreview, saved: Boolean(form.image), inputRef: imageInput, onPick: setImageFile, onClear: clearImage }}
-                thumbnail={{ file: thumbnailFile, preview: thumbnailPreview, saved: Boolean(form.thumbnail), inputRef: thumbnailInput, onPick: setThumbnailFile, onClear: clearThumbnail }}
+                image={{ file: image.file, preview: image.preview, saved: Boolean(form.image), inputRef: image.inputRef, onPick: image.setFile, onClear: clearImage }}
+                thumbnail={{ file: thumbnail.file, preview: thumbnail.preview, saved: Boolean(form.thumbnail), inputRef: thumbnail.inputRef, onPick: thumbnail.setFile, onClear: clearThumbnail }}
               />
+              <EmbedUsage content={{ title: form.title, description: form.description, footer: { text: form.footer }, ...(form.author.trim() ? { author: { name: form.author } } : {}), fields: form.fields }}/>
             </div>
           ) : (
             <label>Текст<textarea rows={7} value={form.description} maxLength={2000} onChange={e => setForm({ description: e.target.value })}/></label>

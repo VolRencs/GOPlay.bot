@@ -24,8 +24,6 @@ export const PUT = settingsPutRoute<WelcomeDto>({
     if ((value.channelId && (typeof value.channelId !== "string" || !isSnowflake(value.channelId))) || (value.goodbyeChannelId && (typeof value.goodbyeChannelId !== "string" || !isSnowflake(value.goodbyeChannelId)))) {
       return { ok: false, response: jsonError("Некорректный канал.") };
     }
-    // Пустая строка — «канал не выбран»: без нормализации в БД попадал "" и
-    // сравнение с null не срабатывало (лишний upsert + мусор в channel_id).
     const channelId = value.channelId || null, goodbyeChannelId = value.goodbyeChannelId || null;
     return {
       ok: true,

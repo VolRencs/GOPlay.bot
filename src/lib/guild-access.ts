@@ -10,35 +10,28 @@ import { DiscordRateLimitError, discordFetch, withRateLimitRetry } from "./disco
 export { DiscordRateLimitError, discordFetch } from "./discord-api.ts";
 type DiscordGuild = { id:string; permissions:string; owner:boolean; name:string; icon:string|null };
 const manage=0x20n, admin=0x8n;
-// Единственный источник allowlist: все серверные точки входа применяют одни правила.
+// Single source of truth for dashboard access; every entry point uses this predicate.
 function allowedDiscordIds(): string[] {
   return (process.env.DASHBOARD_ALLOWED_DISCORD_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
 }
-// ID владельца бота: единственные, кому открыта админ-панель.
 export function allowedAdminIds(): string[] {
   return (process.env.ADMIN_DISCORD_IDS ?? "").split(",").map(id => id.trim()).filter(Boolean);
 }
-// Один предикат доступа для всех точек входа: requireUser и accountAccess
-// обязаны оставаться логически обратными друг другу.
 export function isAllowedAccount(discordAccount: { accountId: string } | undefined | null): boolean {
   const allowedIds = allowedDiscordIds();
   return !allowedIds.length || Boolean(discordAccount && allowedIds.includes(discordAccount.accountId));
 }
+// Keyed by access-token hash: a relogin naturally replaces the cache entry.
 type GuildCache = { guilds?: DiscordGuild[]; expiresAt: number; staleUntil: number; pending: Promise<DiscordGuild[]> | undefined; lastError?: unknown; errorExpiresAt?: number };
 const guildCache = new Map<string, GuildCache>();
 const cacheKey = (token: string) => hash("sha256", token, "hex");
-// Горячий путь всех API-роутов: prepared один раз на модуль.
 const guildExists = read<Record<string, unknown>>("SELECT 1 FROM guilds WHERE id=?");
-// Таблица account создаётся миграциями better-auth (не нашими), поэтому
-// statement готовится лениво при первом использовании, а не на импорте.
 let discordAccountStmt: ReadStatement<{ id: string; accountId: string }> | null = null;
 export function discordAccountOf(userId: string) {
   discordAccountStmt ??= read<{ id: string; accountId: string }>("SELECT id, accountId FROM account WHERE userId=? AND providerId='discord'");
   return discordAccountStmt.get(userId);
 }
 
-// Discord-токен связанного аккаунта не выдался (истёк/отозван): нужен
-// повторный вход, а не 502 «обновите страницу».
 class DiscordAuthError extends Error {}
 
 function guildsRequest(accessToken: string): Promise<Response> {
@@ -56,8 +49,6 @@ async function requestGuilds(accessToken: string, retry = true): Promise<Discord
     () => requestGuilds(accessToken, false),
   );
 }
-// Внутренний Better Auth id связанного Discord-аккаунта: читается из SQLite,
-// браузерный account-cookie никогда не используется.
 async function discordAccountId(headers: Headers) {
   const session = await auth.api.getSession({ headers });
   const account = session?.user ? discordAccountOf(session.user.id) : undefined;
@@ -67,14 +58,10 @@ async function discordAccountId(headers: Headers) {
 async function discordAccessToken(requestHeaders: Headers, accountId?: string) {
   return auth.api.getAccessToken({ body: { accountId: accountId ?? await discordAccountId(requestHeaders) }, headers: requestHeaders });
 }
-// accountId (внутренний id Better Auth) можно передать уже разрезолвленным:
-// гейт requireUser уже валидировал сессию — второй getSession не нужен.
 export async function discordGuilds(requestHeaders: Headers, accountId?: string) {
   const token = await discordAccessToken(requestHeaders, accountId);
   if (!token.accessToken) throw new DiscordAuthError("Discord access token missing");
   const key = cacheKey(token.accessToken), now = Date.now();
-  // Ключ — хеш access-token, который меняется при каждом перелогине: без
-  // подчистки истёкших записей map рос бы бесконечно за время аптайма.
   for (const [k, e] of guildCache) if (k !== key && !e.pending && e.staleUntil < now) guildCache.delete(k);
   const existing = guildCache.get(key);
   if (existing?.guilds && existing.expiresAt > now) return existing.guilds;
@@ -86,8 +73,7 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
       let guilds: DiscordGuild[];
       try { guilds = await requestGuilds(token.accessToken); }
       catch (error) {
-        // Старые аккаунты без expiry: токен возвращается как есть и Discord даёт
-        // 401 — обновляем один раз.
+        // Old accounts may have no token expiry; refresh once on 401.
         if (!Error.isError(error) || !error.message.includes("(401)")) throw error;
         const refreshed = await auth.api.refreshToken({ body: { accountId: accountId ?? await discordAccountId(requestHeaders) }, headers: requestHeaders });
         if (!refreshed.accessToken) throw new Error("Discord refresh did not return an access token");
@@ -97,8 +83,6 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
       delete entry.lastError; delete entry.errorExpiresAt;
       return guilds;
     } catch (error) {
-      // Уже проверенный список безопасно отдать на время бэккоффа Discord —
-      // настройки страницы не ломаются на 429.
       if (entry.guilds && entry.staleUntil > Date.now() && error instanceof DiscordRateLimitError) return entry.guilds;
       entry.lastError = error;
       entry.errorExpiresAt = Date.now() + 5_000 + Math.random() * 10_000;
@@ -108,8 +92,6 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
   entry.pending = load(); guildCache.set(key, entry);
   return entry.pending;
 }
-// Связанный Discord-аккаунт пользователя панели; разом авторизует guild-роут
-// и резолвит аккаунт сессии. canManageGuild — есть ли «Управление сервером».
 export function canManageGuild(guild: DiscordGuild) { return guild.owner || (BigInt(guild.permissions) & (manage | admin)) !== 0n; }
 
 export type DashboardGuild = { id: string; name: string; icon: string | null };
@@ -119,8 +101,6 @@ const configuredGuildsStmt = read<{ id: string }>("SELECT id FROM guilds WHERE i
 export async function configuredGuilds(requestHeaders: Headers, accountId?: string): Promise<DashboardGuild[]> {
   const allowed = (await discordGuilds(requestHeaders, accountId)).filter(canManageGuild);
   if (!allowed.length) return [];
-  // Параметр json_each растёт вместе со списком серверов пользователя —
-  // ограничиваем выборку разумным числом.
   const ids = allowed.slice(0, 200).map(guild => guild.id);
   const configured = new Set(configuredGuildsStmt.all(JSON.stringify(ids)).map(row => row.id));
   return allowed.filter(guild => configured.has(guild.id)).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, icon }) => ({ id, name, icon }));
@@ -133,8 +113,6 @@ async function withGuild(guildId: string) {
 
 type SessionUser = NonNullable<Awaited<ReturnType<typeof resolveSession>>>["user"];
 
-// Общая обёртка guild-роутов: резолвит guildId из сегментов, применяет withGuild
-// и передаёт user/guildId/params в хендлер — вместо копии гейта в каждом хендлере.
 export function guildRoute<P extends { guildId: string } = { guildId: string }>(
   handler: (request: Request, ctx: { guildId: string; user: SessionUser; params: Omit<P, "guildId"> }) => Response | Promise<Response>,
 ) {
@@ -146,7 +124,6 @@ export function guildRoute<P extends { guildId: string } = { guildId: string }>(
   };
 }
 
-// Обёртка admin-API: requireAdmin возвращает готовый Response при отказе.
 export function adminRoute<P extends Record<string, string> = Record<string, never>>(
   handler: (request: Request, params: P) => Response | Promise<Response>,
 ) {
@@ -157,8 +134,6 @@ export function adminRoute<P extends Record<string, string> = Record<string, nev
   };
 }
 
-// Общий резолв сессии + Discord-аккаунта. API-роуты пробрасывают сбой
-// getSession, лендинг терпит — решает вызывающий.
 export async function resolveSession() {
   const requestHeaders = await headers();
   const session = await auth.api.getSession({ headers: requestHeaders });
@@ -166,20 +141,14 @@ export async function resolveSession() {
   return { requestHeaders, user: session.user, discordAccount: discordAccountOf(session.user.id) };
 }
 
-// Общий гейт сессии + allowlist для списка серверов и всех guild-роутов:
-// ни одна точка входа не открывает панель без логина и allowlist.
 async function requireUser() {
   const resolved = await resolveSession();
   if (!resolved) return { ok: false as const, error: "Unauthorized", status: 401 };
-  // resolved.user.id — внутренний id Better Auth, а allowlist хранит
-  // Discord-snowflake: сначала резолвим связанный аккаунт.
   const { user, discordAccount, requestHeaders } = resolved;
   if (!isAllowedAccount(discordAccount)) return { ok: false as const, error: "У этого аккаунта нет доступа к панели.", status: 403 };
   return { ok: true as const, user, discordAccount, requestHeaders };
 }
 
-// Гейт всех админ-API: сессия должна принадлежать Discord-аккаунту из списка
-// владельца бота.
 async function requireAdmin(): Promise<{ ok: true } | Response> {
   const resolved = await resolveSession();
   if (!resolved) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -188,7 +157,6 @@ async function requireAdmin(): Promise<{ ok: true } | Response> {
   return { ok: true };
 }
 
-// Ошибка доступа к Discord: разные причины — разные сообщения и статусы.
 function accessError(error: unknown) {
   if (error instanceof DiscordAuthError) return { ok: false as const, error: "Сессия Discord истекла. Войдите через Discord снова.", status: 403 };
   if (error instanceof DiscordRateLimitError) return { ok: false as const, error: "Discord временно ограничил запросы. Подождите несколько секунд и обновите страницу.", status: 429 };
@@ -213,14 +181,11 @@ async function authorize(guildId: string) {
 
 export { isSnowflake, isSnowflakeArray, isSnowflakeOrNull } from "./ids.ts";
 
-// Единый формат ошибок API: `{ error }` с нужным статусом.
 export const jsonError = (message: string, status = 400) => Response.json({ error: message }, { status });
 
 export const botTokenError = () => jsonError(BOT_TOKEN_ERROR, 503);
 
-// Чтение JSON-тела: битый/пустой JSON → null, дальше роут проверяет форму.
-// Тело читается вручную с лимитом: request.json() буферизует в памяти всё,
-// что прислал клиент (chunked body обходит проверку content-length).
+// Content-Length is untrusted; read manually so chunked bodies cannot bypass the cap.
 const MAX_JSON_BYTES = 1024 * 1024;
 export async function readJsonRecord(request: Request): Promise<Record<string, unknown> | null> {
   const body = await readJson<unknown>(request);
@@ -246,9 +211,6 @@ export async function readJson<T>(request: Request): Promise<T | null> {
   } catch { return null; }
 }
 
-// Имена участников гильдии: полная пагинация списка (одна страница — не более
-// 1000), кэш на сутки со stale-fallback при ошибке Discord. Один общий
-// источник для вкладок «Статистика» и «События», чтобы имена не расходились.
 const memberNamesCache = ttlCacheAsync<string, Map<string, string>>(async guildId => {
   const names = new Map<string, string>();
   let after = "0";
@@ -261,7 +223,6 @@ const memberNamesCache = ttlCacheAsync<string, Map<string, string>>(async guildI
       const user = member.user;
       if (!user?.id) continue;
       names.set(user.id, member.nick ?? user.global_name ?? user.username ?? user.id);
-      // Snowflake сортируются лексикографически — это курсор следующей страницы.
       if (user.id > after) after = user.id;
     }
     if (batch.length < 1000) break;
@@ -269,3 +230,22 @@ const memberNamesCache = ttlCacheAsync<string, Map<string, string>>(async guildI
   return names;
 }, DAY_MS, true);
 export const guildMemberNames = (guildId: string): Promise<Map<string, string>> => memberNamesCache.get(guildId);
+
+// Small ID sets use per-member lookups; large sets fall back to full pagination.
+const memberNameCache = ttlCacheAsync<string, string | null>(async key => {
+  const [guildId, userId] = key.split(":");
+  try {
+    const response = await discordFetch(`/guilds/${guildId}/members/${userId}`, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) return null;
+    const member = await response.json() as { nick?: string | null; user?: { username?: string; global_name?: string | null } };
+    return member.user ? member.nick ?? member.user.global_name ?? member.user.username ?? userId! : null;
+  } catch { return null; }
+}, DAY_MS, true);
+
+export async function guildMemberNamesFor(guildId: string, ids: readonly string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return new Map();
+  if (unique.length > 50) return guildMemberNames(guildId);
+  const entries = await Promise.all(unique.map(async id => [id, await memberNameCache.get(`${guildId}:${id}`)] as const));
+  return new Map(entries.filter((entry): entry is readonly [string, string] => entry[1] !== null));
+}

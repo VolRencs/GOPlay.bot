@@ -12,12 +12,9 @@ export const PUT = settingsPutRoute<LoggingDto>({
   load: guildId => loggingState(guildId),
   parse: body => {
     const value = body as Partial<LoggingDto> | null;
-    // Snowflake-валидация: опечатка иначе молча отключила бы доставку логов —
-    // бот не разрешил бы канал и терял записи без ошибок.
     if (!value || typeof value !== "object" || !isSnowflakeOrNull(value.channelId)) {
       return { ok: false, response: jsonError("Некорректный канал") };
     }
-    // Не-объект categories раньше молча выключал все категории (Boolean("x"[key]) === false).
     if (typeof value.categories !== "object" || value.categories === null || Array.isArray(value.categories)) {
       return { ok: false, response: jsonError("Некорректные категории") };
     }

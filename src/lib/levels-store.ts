@@ -4,12 +4,9 @@ import { parseStringArray } from "./json.ts";
 import { levelDefaults, levelRanges, notifyModes, type LevelReward, type LevelSettings } from "./levels.ts";
 import type { LevelSettingsRow } from "../db/rows.ts";
 
-// Доступ к БД системы уровней: только серверная сторона (бот и API-роут).
-// Клиентская панель импортирует чистый levels.ts без node:sqlite.
 
 const clampInt = (value: unknown, fallback: number, range: { min: number; max: number }): number => clampNumber(value, fallback, range.min, range.max, "integer");
 
-/** Единый парсер настроек для бота и API: клампы те же, что и при записи. */
 export function levelSettingsFromRow(row: LevelSettingsRow | undefined): LevelSettings {
   if (!row) return { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] };
   return {

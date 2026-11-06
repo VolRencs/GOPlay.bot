@@ -12,13 +12,10 @@ export const UPLOAD_CONTENT_TYPES: Record<string, string> = { png: "image/png", 
 export const WELCOME_CONTENT_TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", webp: "image/webp" };
 export const WELCOME_IMAGE_EXTENSIONS: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
-// Имя файла из локального URL: null, если URL не из этого каталога или содержит
-// разделители путей. Единая проверка для uploads/assets/бот-переотправки.
 export function filenameFromUrl(prefix: string, url: string | null | undefined): string | null {
   if (!url?.startsWith(prefix)) return null;
   const filename = url.slice(prefix.length);
   if (!filename || filename.includes("/") || filename.includes("\\")) return null;
-  // «.» и «..» не являются именами файлов: join() с ними уводит за каталог.
   if (filename === "." || filename === "..") return null;
   return filename;
 }
@@ -30,7 +27,7 @@ export function extractFilenames(prefix: string, urls: (string | null | undefine
   }))];
 }
 
-/** Отдача файла из каталога загрузок с защитой от выхода за его пределы. */
+// Serve only a bare filename inside dir; reject path traversal.
 export async function serveUploadFile(dir: string, filename: string, contentType: string, cacheControl: string, headers: Record<string, string> = {}): Promise<Response> {
   try {
     const path = join(dir, filename);
@@ -53,8 +50,6 @@ async function cleanupOrphanedFiles(dir: string, referenced: Set<string>, minAge
     const now = Date.now();
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       if ((entry.isFile() || entry.isSymbolicLink()) && !referenced.has(entry.name)) {
-        // minAgeMs защищает от гонки: файл мог быть записан параллельным
-        // запросом, который ещё не сохранил ссылку в БД.
         if (minAgeMs > 0) {
           const info = await stat(join(dir, entry.name)).catch(() => null);
           if (info && now - info.mtimeMs < minAgeMs) continue;
@@ -62,7 +57,7 @@ async function cleanupOrphanedFiles(dir: string, referenced: Set<string>, minAge
         await unlink(join(dir, entry.name)).catch(() => null);
       }
     }
-  } catch { /* directory may not exist */ }
+  } catch {  }
 }
 
 export async function deleteWelcomeBackgrounds(guildId: string, keep?: string) {
@@ -71,21 +66,15 @@ export async function deleteWelcomeBackgrounds(guildId: string, keep?: string) {
   await Promise.all(files.filter(name => name.startsWith(`${guildId}-welcome.`) && name !== keep).map(name => unlink(join(dir, name)).catch(() => null)));
 }
 
-// Локальные файлы сервера: вложения embeds/events и фон приветствия.
 export async function deleteGuildFiles(guildId: string) {
   await rm(embedUploadsDir(guildId), { recursive: true, force: true }).catch(() => null);
   await rm(eventUploadsDir(guildId), { recursive: true, force: true }).catch(() => null);
   await deleteWelcomeBackgrounds(guildId);
 }
 
-/** Ранний отказ по размеру запроса: formData()/json() буферизуют всё тело в
- *  памяти ДО per-file проверки лимита, поэтому без этой проверки аутентифицированный
- *  пользователь мог выкачать гигабайты в RAM процесса (параллельные запросы = OOM).
- *  nginx в проде режет на 8 MB — это защита прямого доступа к Next. */
+// formData()/json() buffer the whole body before per-file limits, so reject early.
 export function rejectOversized(request: Request, limitBytes = 32 * 1024 * 1024): Response | null {
   const raw = request.headers.get("content-length");
-  // Тело без content-length (chunked) буферизуется formData()/json() безлимитно:
-  // заголовок не проверить, поэтому отказываем для любого типа контента.
   if (raw === null) {
     return new Response(JSON.stringify({ error: "Не удалось определить размер запроса." }), { status: 411, headers: { "content-type": "application/json" } });
   }

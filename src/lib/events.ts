@@ -1,5 +1,3 @@
-// События: типы, разбор/рендер и работа с БД разнесены по модулям,
-// этот файл — единственная точка входа для остального кода.
 export {
   applyEventRole, claimReminder, clampEventInput, deleteEvent, deleteEventsByGuild, detachEventMessage,
   dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, insertEvent, joinEvent, leaveEvent,

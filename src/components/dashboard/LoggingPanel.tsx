@@ -16,7 +16,7 @@ export function LoggingSettings() {
     loadError: "Не удалось загрузить настройки логов.",
     saveError: "Не удалось сохранить настройки логов.",
     savedMessage: "Настройки логов сохранены.",
-    registerKey: "logging",
+    settingsKey: "logging",
   });
   if (loading) return <SectionLoading/>;
   const channels = resources?.channels ?? [];

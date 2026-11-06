@@ -8,7 +8,7 @@ function write() {
   try {
     mkdirSync(dirname(FILE), { recursive: true });
     writeFileSync(FILE, JSON.stringify({ startedAt, ts: Date.now() }));
-  } catch { /* диск недоступен — не критично */ }
+  } catch {  }
 }
 
 export function startHeartbeat() {

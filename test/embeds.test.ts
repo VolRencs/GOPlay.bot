@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { embedCharacterCount, EMBED_LIMITS, normalizeEmbedContent, toDiscordEmbed } from "../src/contracts/embeds.ts";
+import { embedCharacterCount, EMBED_LIMITS, fitEmbed, normalizeEmbedContent, toDiscordEmbed } from "../src/contracts/embeds.ts";
 
 test("normalizeEmbedContent accepts legacy string media and drops empty values", () => {
   const { content, halfFilled } = normalizeEmbedContent({
@@ -59,4 +59,17 @@ test("toDiscordEmbed maps author iconUrl to icon_url and normalizes fields", () 
   assert.deepEqual(embed.image, { url: "https://example.com/i.png" });
   assert.deepEqual(embed.thumbnail, { url: "https://example.com/t.png" });
   assert.deepEqual(embed.fields, [{ name: "N", value: "V", inline: false }]);
+});
+
+test("fitEmbed trims user fields and text to the Discord limit", () => {
+  const content = {
+    title: "t".repeat(256),
+    description: "x".repeat(4096),
+    footer: { text: "f".repeat(2048) },
+    author: { name: "a".repeat(256) },
+    fields: [{ name: "user", value: "y".repeat(200) }, { name: "generated", value: "z" }],
+  };
+  const trimmed = fitEmbed(content, 1);
+  assert.deepEqual(trimmed.fields, [{ name: "generated", value: "z" }]);
+  assert.ok(embedCharacterCount(trimmed) <= EMBED_LIMITS.total);
 });

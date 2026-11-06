@@ -1,7 +1,3 @@
-// Общий пайплайн картинок для роутов, публикующих в Discord (embeds, events):
-// свежие загрузки валидируются и становятся attachment://, сохранённые файлы
-// переприкрепляются при правках; в БД после успешной отправки пишутся только
-// локальные /uploads пути — attachment:// там не живёт.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { filenameFromUrl } from "./uploads.ts";
@@ -9,13 +5,11 @@ import { filenameFromUrl } from "./uploads.ts";
 const imageMimeTypes: readonly string[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
-// Расширение → MIME для переотправленных файлов: сравнивать "jpg" с MIME нельзя.
 function extMime(filename: string): string {
   const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
   return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
 }
 
-// Несёт готовое сообщение пользователю; роуты мапят в 400.
 export class AssetError extends Error {}
 
 export type StoredAsset<T extends string> = { target: T; filename: string; file: File; bytes: Buffer };
@@ -23,8 +17,6 @@ type OriginalAsset<T extends string> = { target: T; url: string };
 
 const safeName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "image";
 
-// Расширение должно соответствовать заявленному MIME: File.type контролирует
-// клиент, имя — тоже, но расхождение — явный мусор вместо 500 на writeFile.
 function extMatchesMime(filename: string, mime: string): boolean {
   const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
   if (mime === "image/png") return ext === "png";
@@ -34,8 +26,6 @@ function extMatchesMime(filename: string, mime: string): boolean {
   return false;
 }
 
-// Читает свежие файлы из формы, валидирует MIME/размер, регистрирует
-// attachment:// через setAsset и буферизует байты.
 export async function collectNewUploads<T extends string>(form: FormData | null, specs: readonly { formKey: string; target: T }[], setAsset: (target: T, url: string) => void): Promise<StoredAsset<T>[]> {
   const assets: StoredAsset<T>[] = [];
   for (const { formKey, target } of specs) {
@@ -50,8 +40,6 @@ export async function collectNewUploads<T extends string>(form: FormData | null,
   return assets;
 }
 
-// Переотправка сохранённых локальных картинок для таргетов без новой загрузки.
-// AssetError, если файл пропал или вылезает за пределы своего каталога.
 export async function reattachStoredAssets<T extends string>(opts: {
   targets: readonly T[];
   urlOf: (target: T) => string | undefined;
@@ -59,7 +47,6 @@ export async function reattachStoredAssets<T extends string>(opts: {
   prefix: string;
   dir: string;
   setAsset: (target: T, url: string) => void;
-  /** Тихий режим для бота: пропавший файл оставляет исходный URL без картинки. */
   optional?: boolean;
 }): Promise<{ assets: StoredAsset<T>[]; originals: OriginalAsset<T>[] }> {
   const assets: StoredAsset<T>[] = [];
@@ -84,8 +71,6 @@ export async function reattachStoredAssets<T extends string>(opts: {
   return { assets, originals };
 }
 
-// Пишет новые загрузки рядом с сохранёнными и восстанавливает локальные пути
-// в payload. Таргеты с оригиналом сохраняют свой файл.
 export async function persistUploadedAssets<T extends string>(dir: string, prefix: string, assets: readonly StoredAsset<T>[], originals: readonly OriginalAsset<T>[], setAsset: (target: T, url: string) => void): Promise<void> {
   if (!assets.length) return;
   await mkdir(dir, { recursive: true });

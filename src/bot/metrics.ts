@@ -57,8 +57,6 @@ function noteFlushFailure(error: unknown, started: number): void {
 type FlushRow = { guildId: string; day: string; key: string; counts: Counts };
 
 export function flushMetrics() {
-  // Пустой буфер: не открываем BEGIN IMMEDIATE каждые 5 c — соседний
-  // flushMessageCache делает так же. Все буферы наполняются только через countsFor.
   if (!pending.size) return;
   const started = performance.now();
   const rows: FlushRow[] = [];
@@ -72,8 +70,6 @@ export function flushMetrics() {
     logger.warn("Метрики содержали данные стёртой гильдии — ключи выкинуты, повторяю флеш");
     const alive = evictDeadGuildKeys();
     if (!alive) { noteFlushFailure(error, started); return; }
-    // Буферы уже очищены evict'ом, но посчитанные rows ещё содержат мёртвую
-    // гильдию — без фильтра повторный commit упал бы тем же FK.
     for (let i = rows.length - 1; i >= 0; i--) if (!alive.has(rows[i]!.guildId)) rows.splice(i, 1);
     try { commitWindow(rows); } catch (retryError) { noteFlushFailure(retryError, started); return; }
   }
@@ -101,8 +97,6 @@ function commitWindow(rows: FlushRow[]): void {
 
 const guildIdOfKey = (key: string): string => key.slice(0, key.indexOf(":"));
 
-/** Выкидывает из буферов дельты гильдий, которых уже нет в БД.
- *  Возвращает множество живых гильдий (null — БД недоступна). */
 function evictDeadGuildKeys(): Set<string> | null {
   const alive = aliveGuildIds();
   if (!alive) return null;
@@ -113,8 +107,6 @@ function evictDeadGuildKeys(): Set<string> | null {
   return alive;
 }
 
-// Ретеншн агрегатов: детальные таблицы не растут бесконечно
-// (дни — 31, модерация — 90, завершённые события — 90).
 setInterval(() => {
   try {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);

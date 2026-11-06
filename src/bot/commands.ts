@@ -5,45 +5,39 @@ import { roleRef, userRef } from "../lib/format.ts";
 import { trModeration } from "../lib/i18n/bot/moderation.ts";
 import { moderate } from "./moderation/index.ts";
 
-const commandDescriptionsEn: Record<string, string> = {
-  play: "Play music from YouTube in a voice channel",
-  ping: "Show bot latency", help: "Show command list", user: "User info", server: "Server info",
-  avatar: "Show user's avatar", ban: "Ban a user", kick: "Kick a user", timeout: "Timeout a user",
-  untimeout: "Remove timeout", warn: "Warn a user", warnings: "Show warnings", clearwarn: "Clear warnings",
-  purge: "Delete recent channel messages", slowmode: "Set channel slowmode", lock: "Lock channel", unlock: "Unlock channel",
-  lvl: "Show a member's level", top: "Show the XP leaderboard",
-};
+type CommandOption = { name: string; description: string; type: ApplicationCommandOptionType; required?: boolean; min_value?: number; max_value?: number };
+type CommandSpec = { name: string; description: string; descriptionEn: string; admin?: boolean; options?: CommandOption[] };
 
-export const commands = [
-  { name: "play", description: "Включить музыку с YouTube в голосовом канале", options: [{ name: "link", description: "Ссылка YouTube (видео или плейлист)", type: ApplicationCommandOptionType.String, required: true }] },
-  { name: "ping", description: "Показать задержку бота до Discord" },
-  { name: "help", description: "Показать список команд и их описание" },
-  { name: "user", description: "Информация о пользователе", options: [{ name: "user", description: "Кого посмотреть (по умолчанию — вы)", type: ApplicationCommandOptionType.User }] },
-  { name: "server", description: "Информация о сервере" },
-  { name: "avatar", description: "Показать аватар пользователя", options: [{ name: "user", description: "Чей аватар (по умолчанию — ваш)", type: ApplicationCommandOptionType.User }] },
-  { name: "lvl", description: "Показать уровень участника", options: [{ name: "user", description: "Чей уровень (по умолчанию — вы)", type: ApplicationCommandOptionType.User }] },
-  { name: "top", description: "Топ участников сервера по уровню" },
-  { name: "ban", description: "Забанить пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
-  { name: "kick", description: "Исключить пользователя с сервера", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
-  { name: "timeout", description: "Выдать тайм-аут (заглушить) пользователю", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "minutes", description: "Минуты (по умолчанию 10)", type: ApplicationCommandOptionType.Integer, min_value: 1, max_value: 40320 }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
-  { name: "untimeout", description: "Снять тайм-аут с пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
-  { name: "warn", description: "Выдать предупреждение пользователю", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
-  { name: "warnings", description: "Показать предупреждения пользователя", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }] },
-  { name: "clearwarn", description: "Снять предупреждения: у пользователя или все на сервере", admin: true, options: [{ name: "user", description: "Пользователь, которому снять предупреждения", type: ApplicationCommandOptionType.User }, { name: "all", description: "Снять все предупреждения на сервере", type: ApplicationCommandOptionType.Boolean }] },
-  { name: "purge", description: "Удалить последние сообщения канала", admin: true, options: [{ name: "amount", description: "Количество (1-100)", type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }] },
-  { name: "slowmode", description: "Установить медленный режим канала", admin: true, options: [{ name: "seconds", description: "Секунды между сообщениями (0 — выключить)", type: ApplicationCommandOptionType.Integer, required: true, min_value: 0, max_value: 21600 }] },
-  { name: "lock", description: "Закрыть канал для отправки сообщений", admin: true },
-  { name: "unlock", description: "Открыть канал для отправки сообщений", admin: true },
-].map(({ admin, ...command }) => {
-  return { ...command,
-    ...(admin ? { default_member_permissions: String(PermissionFlagsBits.Administrator) } : {}),
-    ...(commandDescriptionsEn[command.name] ? { description_localizations: { "en-US": commandDescriptionsEn[command.name], "en-GB": commandDescriptionsEn[command.name] } } : {}),
-  };
-});
+const COMMAND_SPECS: CommandSpec[] = [
+  { name: "play", description: "Включить музыку с YouTube в голосовом канале", descriptionEn: "Play music from YouTube in a voice channel", options: [{ name: "link", description: "Ссылка YouTube (видео или плейлист)", type: ApplicationCommandOptionType.String, required: true }] },
+  { name: "ping", description: "Показать задержку бота до Discord", descriptionEn: "Show bot latency" },
+  { name: "help", description: "Показать список команд и их описание", descriptionEn: "Show command list" },
+  { name: "user", description: "Информация о пользователе", descriptionEn: "User info", options: [{ name: "user", description: "Кого посмотреть (по умолчанию — вы)", type: ApplicationCommandOptionType.User }] },
+  { name: "server", description: "Информация о сервере", descriptionEn: "Server info" },
+  { name: "avatar", description: "Показать аватар пользователя", descriptionEn: "Show user's avatar", options: [{ name: "user", description: "Чей аватар (по умолчанию — ваш)", type: ApplicationCommandOptionType.User }] },
+  { name: "lvl", description: "Показать уровень участника", descriptionEn: "Show a member's level", options: [{ name: "user", description: "Чей уровень (по умолчанию — вы)", type: ApplicationCommandOptionType.User }] },
+  { name: "top", description: "Топ участников сервера по уровню", descriptionEn: "Show the XP leaderboard" },
+  { name: "ban", description: "Забанить пользователя", descriptionEn: "Ban a user", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "kick", description: "Исключить пользователя с сервера", descriptionEn: "Kick a user", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "timeout", description: "Выдать тайм-аут (заглушить) пользователю", descriptionEn: "Timeout a user", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "minutes", description: "Минуты (по умолчанию 10)", type: ApplicationCommandOptionType.Integer, min_value: 1, max_value: 40320 }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "untimeout", description: "Снять тайм-аут с пользователя", descriptionEn: "Remove timeout", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "warn", description: "Выдать предупреждение пользователю", descriptionEn: "Warn a user", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }, { name: "reason", description: "Причина", type: ApplicationCommandOptionType.String }] },
+  { name: "warnings", description: "Показать предупреждения пользователя", descriptionEn: "Show warnings", admin: true, options: [{ name: "user", description: "Пользователь", type: ApplicationCommandOptionType.User, required: true }] },
+  { name: "clearwarn", description: "Снять предупреждения: у пользователя или все на сервере", descriptionEn: "Clear warnings", admin: true, options: [{ name: "user", description: "Пользователь, которому снять предупреждения", type: ApplicationCommandOptionType.User }, { name: "all", description: "Снять все предупреждения на сервере", type: ApplicationCommandOptionType.Boolean }] },
+  { name: "purge", description: "Удалить последние сообщения канала", descriptionEn: "Delete recent channel messages", admin: true, options: [{ name: "amount", description: "Количество (1-100)", type: ApplicationCommandOptionType.Integer, required: true, min_value: 1, max_value: 100 }] },
+  { name: "slowmode", description: "Установить медленный режим канала", descriptionEn: "Set channel slowmode", admin: true, options: [{ name: "seconds", description: "Секунды между сообщениями (0 — выключить)", type: ApplicationCommandOptionType.Integer, required: true, min_value: 0, max_value: 21600 }] },
+  { name: "lock", description: "Закрыть канал для отправки сообщений", descriptionEn: "Lock channel", admin: true },
+  { name: "unlock", description: "Открыть канал для отправки сообщений", descriptionEn: "Unlock channel", admin: true },
+];
 
-// Команды модерации обрабатывает отдельный модуль: не-админ получает
-// «недостаточно прав», а не «команда доступна только на сервере».
-const moderationCommands = new Set(["ban", "kick", "timeout", "untimeout", "warn", "warnings", "clearwarn", "purge", "slowmode", "lock", "unlock"]);
+export const commands = COMMAND_SPECS.map(({ admin, descriptionEn, ...command }) => ({
+  ...command,
+  ...(admin ? { default_member_permissions: String(PermissionFlagsBits.Administrator) } : {}),
+  description_localizations: { "en-US": descriptionEn, "en-GB": descriptionEn },
+}));
+
+const commandDescriptionsEn = Object.fromEntries(COMMAND_SPECS.map(spec => [spec.name, spec.descriptionEn]));
+const moderationCommands = new Set(COMMAND_SPECS.filter(spec => spec.admin).map(spec => spec.name));
 
 type CommandHandler = (i: ChatInputCommandInteraction) => Promise<void>;
 
@@ -86,7 +80,6 @@ const handlers: Record<string, CommandHandler> = {
   },
 };
 
-/** Обработка slash-команд; true — команда обработана. */
 export async function handleChatCommand(i: ChatInputCommandInteraction): Promise<boolean> {
   const handler = handlers[i.commandName];
   if (handler) { await handler(i); return true; }

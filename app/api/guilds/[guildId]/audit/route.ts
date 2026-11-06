@@ -3,7 +3,6 @@ import { guildRoute } from "#lib/guild-access.ts";
 import { auditQueries } from "#db/queries.ts";
 import { toAuditDto, type AuditListDto } from "#contracts/dashboard.ts";
 
-// Чистое чтение: retention выполняется на записи (recordDashboardChange).
 export const GET = guildRoute(async (request, { guildId }) => {
   const url = new URL(request.url);
   const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit")) || 50));

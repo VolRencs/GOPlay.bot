@@ -1,5 +1,3 @@
-// Подписи панели в одном месте (роуты + страница): сервер и клиент физически
-// не могут разойтись в названиях правил, событий, целей очистки и статусов.
 
 import type { Bi, Locale } from "./i18n/core.ts";
 import { MAX_MUSIC_LEAVE_SECONDS, MIN_MUSIC_LEAVE_SECONDS } from "./constants.ts";
@@ -59,7 +57,6 @@ export const automodRulesM: Record<string, { title: Bi; description: Bi }> = {
 };
 export const automodRulesFor = (lang: Locale): Record<string, { title: string; description: string }> =>
   Object.fromEntries(Object.entries(automodRulesM).map(([k, v]) => [k, { title: v.title[lang], description: v.description[lang] }]));
-// Русский словарь — алиас над общей сборкой, не ручная копия.
 export const automodRules: Record<string, { title: string; description: string }> = automodRulesFor("ru");
 
 type LogGroup = { title: string; items: readonly (readonly [string, string, string, string])[] };

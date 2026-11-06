@@ -10,9 +10,8 @@ import {
 } from "../../lib/player/index.ts";
 import { canConnectAndSpeak, isAdminInteraction, leaveIfIdle, memberHasAllowedRole, musicTFor } from "./shared.ts";
 
-/** Обработка музыкальных слэш-команд. Возвращает false, если команда не музыкальная. */
 export async function handleMusicCommand(i: Interaction): Promise<boolean> {
-  if (!i.isChatInputCommand() || i.commandName !== "play") return false; // управление — кнопками панели, не командами
+  if (!i.isChatInputCommand() || i.commandName !== "play") return false;
   const t = musicTFor(i.guildId ?? "");
 
   try {
@@ -60,7 +59,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     const playlistNotice = !settings.playlists_enabled ? "playlistLimitedOff" : "playlistLimitedRole";
     count("music.play");
     const t0 = performance.now();
-    // Подключаемся ДО проб: handshake идёт параллельно с проверками окружения.
     connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
     const [ytdlpOk, ffmpegOk, opusOk] = await Promise.all([probeYtDlp(), probeFfmpeg(), probeOpus()]);
     time("music.probes", performance.now() - t0);
@@ -111,7 +109,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       }
     }
     if (fastPath) {
-      // Fast-path — ровно один трек: гидрация подтянет название/длину в панель.
       hydrateTrackMeta(tracks[0]!, i.guildId!);
       await i.editReply(t("launching"));
       return true;

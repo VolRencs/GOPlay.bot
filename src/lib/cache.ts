@@ -1,7 +1,5 @@
 type Entry<V> = { value: V; expiresAt: number };
 
-// Без явного sweep истёкшие записи (хэши токенов, юзеры статистики) остаются в
-// map навсегда. Sweep не чаще раза за TTL; запас `ttlMs` даёт stale-fallback
 function sweepEntries<V>(entries: Map<unknown, Entry<V>>, ttlMs: number, sweptAt: { value: number }) {
   const now = Date.now();
   if (now - sweptAt.value < ttlMs) return;

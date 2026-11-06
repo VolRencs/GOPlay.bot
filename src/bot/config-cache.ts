@@ -9,7 +9,6 @@ import type { Rule } from "./automod/detectors.ts";
 export type CachedRule = {
   kind: Rule["kind"];
   action_json: string;
-  /** Пороги, распарсенные ОДИН раз при загрузке снапшота (горячий путь). */
   threshold: Record<string, unknown> | null;
   window_seconds: number;
   escalation: number;

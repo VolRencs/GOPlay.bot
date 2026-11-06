@@ -7,21 +7,15 @@ import { reactionPanel } from "./config-cache.ts";
 import { fetchMember } from "./utils/members.ts";
 import { automodTr, guildLang } from "../lib/i18n/bot.ts";
 
-// Блокировка выдачи роли на участника: два параллельных нажатия не должны
-// выдать/снять роль одновременно (иначе ломается лимит ролей панели).
 const roleLocks = new Map<string, Promise<void>>();
 const ROLE_LOCK_TIMEOUT_MS = 10_000;
-// unref-таймер: просрочка отклоняет гонку, но не держит процесс живым.
 const lockTimeout = () => delay(ROLE_LOCK_TIMEOUT_MS, undefined, { ref: false }).then<never>(() => { throw new Error("role lock timeout"); });
 async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = roleLocks.get(key) ?? Promise.resolve();
   const { promise: cur, resolve: release } = Promise.withResolvers<void>();
   roleLocks.set(key, cur);
-  // Зависший предшественник не должен держать очередь вечно.
   await Promise.race([prev, lockTimeout()]).catch(() => null);
   try {
-    // Саму операцию не прерываем: лок освобождается только по её завершению
-    // (у REST Discord свой таймаут в 10 с).
     return await fn();
   } finally {
     release();
@@ -34,7 +28,6 @@ async function applyPanelRole(guildId: string, panelId: number, roleId: string, 
     const panel = stmt.panel.get(panelId, guildId);
     const role = member.guild.roles.cache.get(roleId);
     if (!panel || !role || role.managed || !role.editable) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
-    // Роль обязана принадлежать панели: roleId приходит из custom_id кнопки.
     const options = stmt.panelOptionEmoji.all(panelId);
     if (!options.some(option => option.role_id === roleId)) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
     const has = member.roles.cache.has(roleId);
@@ -51,8 +44,6 @@ export function applyPanelRoleSafe(guildId: string, panelId: number, roleId: str
   return applyPanelRole(guildId, panelId, roleId, member).catch(() => ({ text: automodTr(guildLang(guildId), "roleUpdateFail"), notify: true }));
 }
 
-/** Включены ли уведомления панели: от этого зависит, подтверждать ли
- *  интеракцию ephemeral-ответом (видимое сообщение) или обычным defer. */
 export function panelNotifies(guildId: string, panelId: number): boolean {
   const panel = stmt.panel.get(panelId, guildId);
   return Boolean(panel?.notify_enabled);

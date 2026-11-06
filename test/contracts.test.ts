@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fromDto as fromAutomod, toDto as toAutomod } from "../src/contracts/automod.ts";
 import { toDto as toAppeal } from "../src/contracts/appeals.ts";
-import { toAuditDto as toAudit } from "../src/contracts/dashboard.ts";
+import { SETTINGS_ENDPOINTS, settingsEndpoint, toAuditDto as toAudit } from "../src/contracts/dashboard.ts";
 import { toDto as toEmbed, sendingToDto } from "../src/contracts/embeds.ts";
 import { fromDto as fromLevels, toDto as toLevels } from "../src/contracts/levels.ts";
 import { fromDto as fromMusic, toDto as toMusic } from "../src/contracts/music.ts";
@@ -79,4 +79,12 @@ test("role, appeal, audit and temp DTOs expose camelCase", () => {
   assert.equal(preset.triggerChannelIds[0], "2");
   assert.equal(preset.config.canRename, true);
   assert.equal(preset.config.canManageAccess, false);
+});
+
+test("settings registry maps every key to a unique endpoint", () => {
+  const endpoints = Object.values(SETTINGS_ENDPOINTS);
+  assert.equal(new Set(endpoints).size, endpoints.length);
+  for (const [key, segment] of Object.entries(SETTINGS_ENDPOINTS)) {
+    assert.equal(settingsEndpoint("g1", key as keyof typeof SETTINGS_ENDPOINTS), `/api/guilds/g1/${segment}`);
+  }
 });

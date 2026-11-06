@@ -102,7 +102,6 @@ test("XP удалённой гильдии выбрасывается из бу�
   });
   db.prepare("DELETE FROM guilds WHERE id=?").run(guildId);
   flushLevels();
-  // Если запись не выброшена, после воссоздания гильдии повторный флаш её запишет.
   db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES(?,?,NULL,?)").run(guildId, "G", Date.now());
   flushLevels();
   assert.equal(stmt.levelRow.get(guildId, "u1"), undefined);

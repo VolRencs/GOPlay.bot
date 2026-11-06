@@ -13,9 +13,6 @@ import { userRef } from "../../lib/format.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { fetchMember } from "../utils/members.ts";
 
-// XP-буфер: сообщения и голосовые минуты копятся в памяти и сливаются одной
-// транзакцией раз в 5 c (как метрики и кэш сообщений) — MessageCreate не
-// открывает запись в SQLite и не ловится на SQLITE_BUSY с дашбордом.
 type PendingXp = { guildId: string; userId: string; xp: number; messages: number; voiceSeconds: number };
 type LevelUp = { guildId: string; userId: string; level: number };
 
@@ -40,7 +37,6 @@ function addPending(guildId: string, userId: string, xp: number, messages: numbe
   else pending.set(key, { guildId, userId, xp, messages, voiceSeconds });
 }
 
-/** Сливает буфер в БД и возвращает достигнутые уровни. Публичен для shutdown. */
 export function flushLevels(): LevelUp[] {
   if (!pending.size) return [];
   const entries = [...pending.values()];
@@ -58,11 +54,8 @@ export function flushLevels(): LevelUp[] {
       }
     });
   } catch (error) {
-    // FK-ошибка означает гильдию, которой уже нет в guilds: такие строки
-    // выбрасываем, иначе флеш зациклится на них каждые 5 секунд.
     const missing = isForeignKeyError(error) ? missingGuilds(entries) : null;
     for (const entry of entries) if (!missing?.has(entry.guildId)) addPending(entry.guildId, entry.userId, entry.xp, entry.messages, entry.voiceSeconds);
-    // Флеш раз в 5 c: без warnEvery сбой БД давал бы 12 предупреждений в минуту.
     levelFlushFailures = logger.warnEvery(levelFlushFailures, 12, "[LEVELS] Не удалось слить XP — повторю позже", error);
     return [];
   }
@@ -70,7 +63,6 @@ export function flushLevels(): LevelUp[] {
   return levelUps;
 }
 
-/** Гильдии из буфера, отсутствующие в guilds; null — проверить не удалось. */
 function missingGuilds(entries: PendingXp[]): Set<string> | null {
   const alive = aliveGuildIds();
   if (!alive) return null;
@@ -100,7 +92,6 @@ function handleVoiceState(oldState: VoiceState, newState: VoiceState): void {
   else voiceSessions.set(key, { guildId: guild.id, userId: newState.id, channelId: newState.channelId });
 }
 
-// Анти-фарм: XP капает только при 2+ людях в канале, не в AFK и не заглушённым.
 function tickVoice(client: Client): void {
   const now = Date.now();
   for (const [key, at] of messageCooldowns) if (now - at > COOLDOWN_RETENTION_MS) messageCooldowns.delete(key);
@@ -108,8 +99,6 @@ function tickVoice(client: Client): void {
     const guild = client.guilds.cache.get(session.guildId);
     const channel = guild?.channels.cache.get(session.channelId);
     if (!guild || !channel?.isVoiceBased()) { voiceSessions.delete(key); continue; }
-    // Присутствие проверяем по каналу, а не по кэшу участников гильдии: участник
-    // мог быть вытеснен из кэша, и сессия молча теряла бы голосовой XP.
     const member = guild.members.cache.get(session.userId) ?? channel.members.get(session.userId);
     if (!member) { voiceSessions.delete(key); continue; }
     if (guild.afkChannelId === channel.id) continue;
@@ -128,8 +117,6 @@ function targetReward(rewards: LevelReward[], level: number): LevelReward | unde
   return target;
 }
 
-// Одна роль на уровень: роль высшей достигнутой награды выдаётся, награды
-// предыдущих уровней снимаются. Ошибки прав/иерархии не ломают level-up.
 async function applyRewards(guild: Guild, userId: string, level: number, rewards: LevelReward[]): Promise<void> {
   const member = await fetchMember(guild, userId);
   if (!member) return;
@@ -149,7 +136,7 @@ async function notifyLevelUp(client: Client, guild: Guild, settings: LevelSettin
   if (settings.notify_mode === "off") return;
   const text = levelsTr(guildLang(guild.id), "levelUp", { user: userRef(up.userId), level: String(up.level), server: guild.name });
   if (settings.notify_mode === "dm") {
-    void client.users.send(up.userId, text).catch(() => null); // закрытые ЛС — не ошибка
+    void client.users.send(up.userId, text).catch(() => null);
     return;
   }
   if (settings.notify_mode === "channel" && settings.notify_channel_id) {
@@ -177,9 +164,6 @@ function purgeLevelsGuild(guildId: string): void {
   settingsCache.delete(guildId);
 }
 
-// Уже сидящие в голосовых каналах на момент старта: без сидинга их XP ждал бы
-// следующего voice-события. GUILD_CREATE приносит voice_states, состав каналов
-// уже доступен в кэше.
 function seedVoiceSessions(client: Client): void {
   for (const guild of client.guilds.cache.values()) {
     for (const channel of guild.channels.cache.values()) {
@@ -227,7 +211,6 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
       const embed = new EmbedBuilder().setColor(BRAND_COLOR).setTitle(t("topTitle"));
       if (!rows.length) embed.setDescription(t("topEmpty"));
       else embed.setDescription(rows.map((row, index) => t("topLine", { rank: String(index + 1), user: userRef(row.user_id), level: String(levelFromXp(row.xp, settings.base_xp, settings.growth_percent)), xp: String(row.xp) })).join("\n"));
-      // Оба ответа видны только вызвавшему: топ и уровень — личная информация.
       await i.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       return true;
     }

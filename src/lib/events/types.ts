@@ -7,8 +7,6 @@ export type EventButtonStyle = (typeof eventButtonStyles)[number];
 export const recurrenceFrequencies = ["none", "daily", "weekly", "biweekly", "custom"] as const;
 export type RecurrenceFrequency = (typeof recurrenceFrequencies)[number];
 
-// Общие поля embed'а — из contracts/embeds.ts. timestamp здесь не нативный
-// Discord timestamp, а флаг «показать дату события отдельным полем».
 export type EventEmbed = EmbedContent & { timestamp?: boolean };
 export type EventEmbedPayload = DiscordEmbed;
 export type EventButton = { key: "join" | "leave"; label: string; emoji: string; style: EventButtonStyle; enabled: boolean; order: number };

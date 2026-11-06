@@ -29,8 +29,6 @@ function thresholdDisplay(threshold: Record<string, unknown>): Record<string, un
 }
 
 const kinds: readonly string[] = Object.keys(automodRulesM);
-// Числовые пороги: без клампов messages:1e12 = правило-пустышка, а
-// minimumCharacters:0 = ложные срабатывания. Проверяем только заданные ключи.
 function isValidThreshold(threshold: Record<string, unknown>): boolean {
   for (const [key, range] of Object.entries(automodThresholdRanges)) {
     const value = threshold[key];
@@ -54,8 +52,6 @@ export const GET = guildRoute(async (_, { guildId }) => {
 export const PUT = guildRoute(async (request, { guildId, user }) => {
   const r=await readJson<AutomodInput>(request);
   if(!r||typeof r!=="object")return jsonError("Некорректный запрос.");
-  // Security-исключения пишет только security-payload: сохранение одного
-  // правила никогда не перетирает молча гильдейские игноры.
   if (isSecurityInput(r)) {
     const roles = r.ignoredRoleIds ?? [], channel = r.protectedChannelId ?? null;
     if(!isSnowflakeArray(roles)||(channel!==null&&(typeof channel!=="string"||!isSnowflake(channel))))return jsonError("Некорректные роли или канал.");

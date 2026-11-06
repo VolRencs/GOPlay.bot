@@ -36,7 +36,7 @@ export function TemporaryChannelsSettings() {
     loadError: "Не удалось загрузить временные каналы.",
     saveError: "Не удалось сохранить временные каналы.",
     savedMessage: "Настройки временных каналов сохранены.",
-    registerKey: "tempchannels",
+    settingsKey: "tempchannels",
   });
   const [editingId, setEditingId] = useState<number | null>(null);
   if (loading) return <SectionLoading/>;

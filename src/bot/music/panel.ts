@@ -17,7 +17,6 @@ import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
 import { userRef } from "../../lib/format.ts";
 
-/** Компактная строка трека: панель не должна падать от длинного названия YouTube. */
 const QUEUE_PAGE_SIZE = 10;
 
 export const trackLabel = (title: string, limit = 180): string => {
@@ -63,7 +62,6 @@ export function queueView(guildId: string, lang: Locale, requestedPage = 0): Que
   };
 }
 
-/** Современная панель плеера на Components V2: один контейнер вместо embed + строк. */
 export function renderMusicPanel(state: MusicPanelState, lang: Locale) {
   const t = trFor(musicTr, lang);
   const loopLabel = state.loopMode === "track" ? t("panelLoopTrack") : state.loopMode === "queue" ? t("panelLoopQueue") : t("panelLoopOff");

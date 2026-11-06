@@ -12,8 +12,6 @@ import { tempTr, guildTr } from "../../lib/i18n/bot.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
 import { fetchMember } from "../utils/members.ts";
 
-// Короткий кэш: всплеск входящих в триггер-канал не бьёт по SQLite на каждый
-// voice-event. Мапит триггер-канал в настройки пресета, где он указан.
 const SETTINGS_TTL = 10_000;
 const configCache = ttlCacheSync<string, Map<string, TempConfig> | null>((guildId) => {
   const configs = new Map<string, TempConfig>();
@@ -44,11 +42,8 @@ export function renderName(template: string, member: { user: { username: string 
 export function registerTempChannels(client: Client) {
   client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("TEMP_VOICE", () => handleVoiceState(oldState, newState)));
   client.on(Events.InteractionCreate, (i) => guard("TEMP_INTERACTION", () => handleInteraction(i)));
-  // Вышедший владелец → канал передаётся первому оставшемуся участнику, а если
-  // он пуст — удаляется. Иначе строка навсегда остаётся с мёртвым owner_id.
   client.on(Events.GuildMemberRemove, (member) => guard("TEMP_OWNER_LEAVE", () => handleOwnerLeave(member.guild, member.id)));
   client.on(Events.GuildDelete, (guild) => {
-    // Строки каскадом удалит wipe гильдии; здесь только собственный кэш.
     configCache.delete(guild.id);
   });
 }
@@ -61,9 +56,6 @@ async function handleOwnerLeave(guild: Guild, userId: string) {
   if (!channel) { stmt.tempDelete.run(row.channel_id); return; }
   const nextOwner = channel.members.find(m => !m.user.bot && !stmt.tempByOwner.get(guild.id, m.id))?.id;
   if (!nextOwner) {
-    // Пустой канал удаляем; если все оставшиеся уже владеют своими каналами,
-    // передать владение нельзя (UNIQUE guild_id+owner_id) — канал дочистится,
-    // когда опустеет.
     if (channel.members.some(m => !m.user.bot)) {
       logger.warn("[TEMP] Владелец ушёл, свободного получателя владения нет", guild.id, channel.id);
       return;
@@ -92,9 +84,6 @@ async function handleVoiceState(oldState: VoiceState, newState: VoiceState) {
 }
 
 async function handleTriggerJoin(guild: Guild, member: GuildMember, triggerChannelId: string) {
-  // Второй канал владельцу не создаём. Проверка не атомарна — два быстрых
-  // voice-event оба могут её пройти — но UNIQUE (guild_id, owner_id) отвергнет
-  // проигравший insert, а дубликат канала удалится.
   const existing = stmt.tempByOwner.get(guild.id, member.id);
   if (existing) {
     const channel = guild.channels.cache.get(existing.channel_id) as VoiceChannel | undefined;
@@ -102,8 +91,6 @@ async function handleTriggerJoin(guild: Guild, member: GuildMember, triggerChann
       if (member.voice.channelId !== channel.id) await member.voice.setChannel(channel).catch(() => null);
       return;
     }
-    // Кэш может быть неполным после рестарта — проверяем REST-fetch'ем, прежде
-    // чем считать строку протухшей и удалять её.
     const fetched = await fetchTempChannel(guild, existing.channel_id);
     if (fetched === undefined) return;
     if (!fetched) stmt.tempDelete.run(existing.channel_id);
@@ -112,10 +99,7 @@ async function handleTriggerJoin(guild: Guild, member: GuildMember, triggerChann
   await createTempChannel(guild, member, getConfig(guild.id, triggerChannelId), triggerChannelId);
 }
 
-// 10003 = канал реально удалён; прочие сбои транзиентны (сеть, rate limit,
-// авария API) и обязаны сохранять строку БД — иначе живой канал осиротеет.
-// Служебный fetch голосового канала: null — канал удалён (строку БД снимаем),
-// undefined — транзиентный сбой (строку сохраняем до следующей попытки).
+// 10003 means the channel is really gone; other failures are transient and keep the DB row.
 async function fetchTempChannel(guild: Guild, channelId: string): Promise<VoiceChannel | null | undefined> {
   return guild.channels.fetch(channelId).then(
     (value) => value as VoiceChannel | null,
@@ -136,8 +120,6 @@ async function deleteTempChannel(guild: Guild, channel: VoiceChannel, failureMes
   await channel.delete().catch((error) => logger.warn(failureMessage, guild.id, error));
 }
 
-// Один таймер на канал: уход всей компании эмитит по voice-event на каждого,
-// коалесинг в одну проверку даёт ровно одно удаление канала (и его DB/REST).
 const emptinessTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function scheduleEmptinessCheck(guild: Guild, channelId: string) {
   const existing = emptinessTimers.get(channelId);
@@ -146,7 +128,7 @@ function scheduleEmptinessCheck(guild: Guild, channelId: string) {
     emptinessTimers.delete(channelId);
     try {
       const channel = await fetchTempChannel(guild, channelId);
-      if (channel === undefined) return; // транзиентный сбой — строка ждёт следующей проверки
+      if (channel === undefined) return;
       if (!channel) { stmt.tempDelete.run(channelId); return; }
       if (isTempEmpty(channel)) await deleteTempChannel(guild, channel, "[TEMP] Удаление пустого канала не удалось");
     } catch (error) {
@@ -163,10 +145,8 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
   const options: GuildChannelCreateOptions = { name: renderName(settings.name_template, member), type: ChannelType.GuildVoice };
   if (settings.category_id) options.parent = settings.category_id;
   if (settings.user_limit > 0) options.userLimit = settings.user_limit;
-  // Битрейт наследуется от триггер-канала: буст сервера сохраняет качество.
   const source = guild.channels.cache.get(triggerChannelId) as VoiceChannel | undefined;
   if (source?.bitrate) options.bitrate = source.bitrate;
-  // create() возвращает объединение каналов: убеждаемся, что это голосовой.
   const createVoiceChannel = async (opts: GuildChannelCreateOptions): Promise<VoiceChannel> => {
     const created = await guild.channels.create(opts);
     if (!created.isVoiceBased()) throw new Error(`Создан не голосовой канал (${created.type})`);
@@ -176,7 +156,6 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
   try {
     channel = await createVoiceChannel(options);
   } catch (error) {
-    // Настроенная категория могла быть удалена — ретрай без родителя.
     logger.warn("[TEMP] Создание канала не удалось, повтор без категории", guild.id, error);
     const retry = { ...options };
     delete retry.parent;
@@ -190,16 +169,14 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
   try {
     await member.voice.setChannel(channel);
   } catch (error) {
-    // Юзер не дошёл до канала — удаляем комнату, а не оставляем сироту.
     await channel.delete().catch((deleteError) => logger.warn("[TEMP] Не удалось удалить канал после провала переноса", guild.id, deleteError));
     logger.warn("[TEMP] Не удалось переместить пользователя, канал удалён", guild.id, error);
     return;
   }
+  // UNIQUE(guild_id, owner_id) makes concurrent room creation safe; the loser is deleted.
   try {
     stmt.tempInsert.run(guild.id, channel.id, member.id, null, triggerChannelId, Date.now());
   } catch (error) {
-    // Проигравший гонку владельца (UNIQUE guild_id+owner_id) или сбой БД:
-    // дубликат канала удаляется, юзера перекидывает в канал победителя.
     await channel.delete().catch((deleteError) => logger.warn("[TEMP] Не удалось удалить дубликат канала", guild.id, deleteError));
     const winner = stmt.tempByOwner.get(guild.id, member.id);
     if (winner) {
@@ -289,8 +266,6 @@ async function handlePanelButton(i: ButtonInteraction, action: string) {
     if (settings.can_close === 0) return i.reply({ content: t("closeDisabled"), flags: MessageFlags.Ephemeral });
     const everyone = guild.roles.everyone;
     const closed = Boolean(channel.permissionOverwrites.cache.get(everyone.id)?.deny.has(PermissionFlagsBits.Connect));
-    // Сначала отвечаем interaction'у: edit оверрайтов — REST-вызов и может
-    // не уложиться в 3-секундное окно Discord.
     await i.reply({ content: closed ? t("channelOpened") : t("channelClosed"), flags: MessageFlags.Ephemeral });
     await channel.permissionOverwrites.edit(everyone, { Connect: closed ? null : false }).catch((error) => logger.warn("[TEMP] Не удалось изменить доступ", guild.id, error));
   } else if (action === "delete") {
@@ -329,8 +304,6 @@ async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
   }
   if (action === "transfer") {
     if (targetId === row.owner_id) return i.reply({ content: t("alreadyOwner"), flags: MessageFlags.Ephemeral });
-    // UNIQUE(guild_id, owner_id): у цели может быть свой временный канал —
-    // проверяем заранее, иначе сработает ограничение БД и уйдёт generic-ошибка.
     const targetOwns = stmt.tempByOwner.get(guild.id, targetId);
     if (targetOwns) return i.reply({ content: t("targetHasOwnChannel"), flags: MessageFlags.Ephemeral });
     stmt.tempUpdateOwner.run(targetId, channel.id);
@@ -346,15 +319,11 @@ function textModal(customId: string, title: string, label: string, value = "") {
   );
 }
 
-// Запуск при старте: удаляем каналы без владельца внутри либо несуществующие,
-// восстанавливаем потерянные панели. Дублей нет — строки матчатся по channel_id.
 export async function cleanupTempChannels(client: Client) {
   const rows = stmt.tempAll.all();
   for (const row of rows) {
     const guild = client.guilds.cache.get(row.guild_id);
     if (!guild) { stmt.tempDelete.run(row.channel_id); continue; }
-    // Транзиентный сбой REST не должен терять строку: живой канал навсегда
-    // лишится учёта владельца. Запись удаляет только 10003 (канал удалён).
     const fetched = await fetchTempChannel(guild, row.channel_id);
     if (fetched === undefined) continue;
     if (!fetched) { stmt.tempDelete.run(row.channel_id); continue; }
@@ -363,7 +332,6 @@ export async function cleanupTempChannels(client: Client) {
       continue;
     }
     if (row.panel_message_id) {
-      // Транзиентный сбой сети/rate limit не должен порождать вторую панель.
       const message = await fetched.messages.fetch(row.panel_message_id).catch((error) => {
         if (isMissingDiscordResource(error, "message")) return null;
         logger.warn("[TEMP] Панель канала не проверена, повтор позже", row.guild_id, error);

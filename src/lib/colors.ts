@@ -1,4 +1,3 @@
-/** Брендовый цвет GOPlay: используется и в Discord-embed'ах, и в панели. */
 export const BRAND_COLOR = 0x8b3dff;
 export const BRAND_ACCENT = "#8b3dff";
 
@@ -14,7 +13,6 @@ export const COLOR_PRESETS = [
   "#313338",
 ] as const;
 
-/** Один конвертер чисел Discord-цвета и hex — общий для обоих композеров. */
 export const colorNumberToHex = (value: number | null | undefined): string =>
   `#${(value ?? BRAND_COLOR).toString(16).padStart(6, "0")}`;
 

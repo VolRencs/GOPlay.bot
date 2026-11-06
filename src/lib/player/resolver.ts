@@ -6,13 +6,11 @@ import { MAX_DURATION_SECONDS, MAX_PLAYLIST, type Track } from "./types.ts";
 export const YT_DLP = process.env.YT_DLP_PATH ?? "yt-dlp";
 export const FFMPEG = process.env.FFMPEG_PATH ?? "ffmpeg";
 
-// Страховки сети (быстрый фейл вместо зависаний) + env-флаги админа.
 const YT_DLP_EXTRA = (process.env.YT_DLP_EXTRA_ARGS ?? "").split(/\s+/).filter(Boolean);
 export function ytDlpArgs(...own: string[]): string[] {
   return ["--no-warnings", "--socket-timeout", "15", "--retries", "2", "--fragment-retries", "2", ...YT_DLP_EXTRA, ...own];
 }
 
-// SSRF: generic extractor ходит по любым хостам — ссылки только доверенные, до spawn.
 const ALLOWED_MEDIA_HOSTS = new Set([
   "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be",
 ]);
@@ -23,18 +21,16 @@ export function isAllowedMediaUrl(query: string): boolean {
   return (url.protocol === "https:" || url.protocol === "http:") && ALLOWED_MEDIA_HOSTS.has(url.hostname.toLowerCase());
 }
 
+// SSRF guard: only allowlisted YouTube hosts reach yt-dlp.
 export const safeYtDlpTarget = (query: string): string | null => (isAllowedMediaUrl(query) ? query : null);
 
 async function probeBinary(command: string, args: string[], capture: boolean, verdict: (code: number | null, stdout: string) => boolean): Promise<boolean> {
   const proc = spawn(command, args, { stdio: capture ? ["ignore", "pipe", "ignore"] : "ignore", windowsHide: true, signal: AbortSignal.timeout(5_000) });
   let stdout = "";
   if (capture) proc.stdout!.on("data", (chunk: Buffer) => { stdout += String(chunk); });
-  // events.once отклоняет промис при 'error' до 'close'.
   try { return verdict((await once(proc, "close"))[0] as number | null, stdout); } catch { return false; }
 }
 
-// Проба бинарника: успех кэшируется навсегда, неудача — на минуту, чтобы
-// разовый таймаут под нагрузкой не «выключал» музыку до рестарта бота.
 const PROBE_RETRY_MS = 60_000;
 function memoProbe(probe: () => Promise<boolean>): () => Promise<boolean> {
   let cached: Promise<boolean> | null = null;
@@ -44,8 +40,6 @@ function memoProbe(probe: () => Promise<boolean>): () => Promise<boolean> {
     if (Date.now() < retryAt) return Promise.resolve(false);
     const pending = probe();
     cached = pending;
-    // Отклонённая проба тоже сбрасывает кэш: иначе derived-промис остался бы
-    // без обработчика и дал unhandled rejection.
     void pending.then(ok => { if (!ok) { cached = null; retryAt = Date.now() + PROBE_RETRY_MS; } }, () => { cached = null; retryAt = Date.now() + PROBE_RETRY_MS; });
     return pending;
   };
@@ -53,16 +47,14 @@ function memoProbe(probe: () => Promise<boolean>): () => Promise<boolean> {
 
 export const probeYtDlp = memoProbe(() => probeBinary(YT_DLP, ytDlpArgs("--version"), false, code => code === 0));
 export const probeFfmpeg = memoProbe(() => probeBinary(FFMPEG, ["-version"], false, code => code === 0));
-// Сборка ffmpeg обязана содержать libopus: Opus кодирует сам ffmpeg.
 export const probeOpus = memoProbe(() => probeBinary(FFMPEG, ["-hide_banner", "-encoders"], true, (code, out) => code === 0 && /libopus/i.test(out)));
 
-// Кэш метаданных: стабильные поля; форматы не кэшируются (ротация YouTube).
 type SingleMeta = { at: number; title: string; duration: number; thumbnail?: string; mediaUrl?: string; mediaUrlExpiresAt?: number };
 const singleMeta = new Map<string, SingleMeta>();
 const listMeta = new Map<string, { at: number; tracks: Track[] }>();
 const SINGLE_META_TTL = 24 * 3_600_000;
 const LIST_META_TTL = 6 * 3_600_000;
-const MEDIA_URL_TTL_MS = 30 * 60_000; // подписанные ссылки googlevideo живут дольше, но консервативный кап страхует
+const MEDIA_URL_TTL_MS = 30 * 60_000;
 const META_CACHE_CAP = 500;
 
 function evictOldest<K, V>(map: Map<K, V>): void {
@@ -72,11 +64,8 @@ function evictOldest<K, V>(map: Map<K, V>): void {
   }
 }
 
-/** Канонический ключ на видео: host-префиксы срезаны, list/t/si/feature/pp
- *  отброшены, shorts/embed/youtu.be/music.youtube свёрнуты в watch?v=. */
 function normalizeTrackKey(query: string): string {
   const trimmed = query.trim();
-  // Гейт схемы обязателен: URL.canParse принимает ftp:/file:/data: и свернул бы их в https-ключ.
   if (!/^https?:\/\//i.test(trimmed) || !URL.canParse(trimmed)) return `q:${trimmed.toLowerCase()}`;
   const url = new URL(trimmed);
   url.hostname = url.hostname.replace(/^(?:www|m|music)\./i, "").toLowerCase();
@@ -88,8 +77,6 @@ function normalizeTrackKey(query: string): string {
   return `https://${url.hostname}${path}${url.search}`;
 }
 
-/** Выбор прямого аудио-URL из -J: зеркалирует лестницу форматов yt-dlp.
- *  Манифесты (m3u8/dash) пропускаем — медленный старт фрагментов у ffmpeg. */
 export function pickAudioUrl(meta: Record<string, unknown>): string | null {
   type Fmt = { url?: unknown; protocol?: unknown; vcodec?: unknown; acodec?: unknown; abr?: unknown; tbr?: unknown };
   const usable = (fmt: Fmt): fmt is Fmt & { url: string } =>
@@ -108,13 +95,12 @@ export function pickAudioUrl(meta: Record<string, unknown>): string | null {
   return best?.url ?? null;
 }
 
-/** Полный -J как есть; обрезанный капом чинится срезом до последней записи. */
 export function parseYtDlpMeta(raw: string, capped: boolean): Record<string, unknown> | null {
-  try { return JSON.parse(raw); } catch { /* ниже — восстановление */ }
+  try { return JSON.parse(raw); } catch {  }
   if (!capped) return null;
   const cut = raw.slice(0, Math.max(0, raw.lastIndexOf("}") + 1)).replace(/,\s*$/, "");
   for (const candidate of [`${cut}] }`, `${cut}}`]) {
-    try { return JSON.parse(candidate); } catch { /* следующая форма */ }
+    try { return JSON.parse(candidate); } catch {  }
   }
   return null;
 }
@@ -140,26 +126,22 @@ function runYtDlpJsonOnce(query: string, playlistLimit: number): Promise<{ meta:
   return new Promise(resolve => {
     const target = safeYtDlpTarget(query);
     if (!target) return resolve({ meta: null, error: "unsupported-url" });
-    // Кап плейлиста отдаём yt-dlp (--playlist-items): бесконечные Mix'ы иначе
-    // рвут JSON на RAM-капе и не парсятся. Watchdog против зависшего спавна.
     const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
     const proc = spawn(YT_DLP, ytDlpArgs("--skip-download", "--flat-playlist", "--playlist-items", `1-${limit}`, "-J", target), { windowsHide: true, signal: AbortSignal.timeout(60_000) });
     const chunks: Buffer[] = [];
     let size = 0, errTail = "", capped = false;
     proc.stdout.on("data", (chunk: Buffer) => {
-      chunks.push(chunk); // буферы, не строки: граница chunk'а может резать UTF-8
+      chunks.push(chunk);
       size += chunk.length;
+      // yt-dlp JSON can be huge; cap it at 8 MiB and retry with a smaller extract.
       if (size > 8 * 1024 * 1024 && !capped) { capped = true; proc.kill(); }
     });
     proc.stderr.on("data", chunk => { errTail = `${errTail}${chunk}`.slice(-400); });
     proc.once("error", (error: Error) => {
-      // Таймаут signal: close-путь ниже сформирует ту же ошибку, что и kill.
       if (error.name === "AbortError") return;
       resolve({ meta: null, error: "yt-dlp failed to spawn" });
     });
     proc.once("close", code => {
-      // Процесс, срезанный собственным капом, закрывается с code === null:
-      // это не ошибка — обрезанный вывод чинится в parseYtDlpMeta(out, capped).
       const cappedExit = capped && code === null;
       if (code !== 0 && !cappedExit) {
         logger.warn("[MUSIC] yt-dlp завершился с ошибкой", code, errTail.trim());
@@ -174,14 +156,11 @@ function runYtDlpJsonOnce(query: string, playlistLimit: number): Promise<{ meta:
   });
 }
 
-// Частая причина на серверных IP: «Sign in to confirm you're not a bot».
 const BOTCHECK_RE = /confirm|sign in|cookies/i;
 export const isBotcheckError = (text: string): boolean => BOTCHECK_RE.test(text);
 
 const SINGLE_VIDEO_HOSTS = new Set([...ALLOWED_MEDIA_HOSTS].filter(host => host !== "music.youtube.com"));
 
-/** Одиночное YouTube-видео (watch/shorts/youtu.be) без list=: достаточно одной
- *  -J экстракции, название и длительность доедут параллельной гидрацией. */
 export function isSingleYouTubeVideoUrl(query: string): boolean {
   if (!/^https?:\/\//i.test(query) || !URL.canParse(query)) return false;
   const url = new URL(query);
@@ -218,7 +197,6 @@ function trackFromFullMeta(meta: Record<string, unknown>, fallbackQuery: string,
   const { duration, thumbnail, mediaUrl } = metaFields(meta);
   if (duration > MAX_DURATION_SECONDS) return null;
   const track: Track = { query: String(meta.webpage_url ?? fallbackQuery), title: String(meta.title ?? fallbackQuery), requestedBy, ...(duration > 0 ? { duration } : {}), ...(thumbnail ? { thumbnail } : {}) };
-  // Прямой URL экономит вторую полную экстракцию на старте стрима.
   if (mediaUrl) { track.mediaUrl = mediaUrl; track.mediaUrlExpiresAt = Date.now() + MEDIA_URL_TTL_MS; }
   cacheSingleMeta(normalizeTrackKey(track.query), track.title, duration, thumbnail, mediaUrl);
   return track;
@@ -226,8 +204,6 @@ function trackFromFullMeta(meta: Record<string, unknown>, fallbackQuery: string,
 
 type ResolveResult = { tracks: Track[]; error: string | null; playlist: boolean };
 
-/** Ссылка → треки: плейлист до MAX_PLAYLIST позиций, результат кэшируется.
- *  playlistLimit=1 используется, когда сервер разрешает только первый трек. */
 export async function resolveTracks(query: string, requestedBy: string, playlistLimit = MAX_PLAYLIST): Promise<ResolveResult> {
   const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
   const limited = limit < MAX_PLAYLIST;
@@ -244,7 +220,6 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
     return track ? { tracks: [track], error: null, playlist: false } : { tracks: [], error: "too-long", playlist: false };
   }
   const entries = Array.isArray(meta.entries) ? meta.entries : [];
-  // Одиночная flat-запись приходит без форматов: добираем полный -J.
   if (entries.length === 1) {
     const raw = String(entries[0]!.url ?? entries[0]!.id ?? "");
     if (raw) {
@@ -261,7 +236,6 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
     const raw = String(entry.url ?? entry.id ?? "");
     if (!raw) continue;
     const duration = typeof entry.duration === "number" && entry.duration > 0 ? entry.duration : undefined;
-    // Отсекаем заведомо длинные записи до очереди: скрытый лимит иначе съедает слоты.
     if (duration && duration > MAX_DURATION_SECONDS) continue;
     const thumbnail = pickThumbnail(entry as Record<string, unknown>);
     tracks.push({
@@ -279,7 +253,6 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
   return { tracks, error: null, playlist: true };
 }
 
-// Политика «превышение длительности» принадлежит сессии; резолвер только сообщает.
 type HydrateHooks = {
   onTooLong: (guildId: string, track: Track) => void;
   onChange: (guildId: string) => void;
@@ -287,8 +260,6 @@ type HydrateHooks = {
 let hydrateHooks: HydrateHooks | null = null;
 export function setHydrateHooks(hooks: HydrateHooks): void { hydrateHooks = hooks; }
 
-/** Позднее обогащение трека: название, длина, прямой URL. Ошибки тихи — за
- *  ними следит стрим. */
 export function hydrateTrackMeta(track: Track, guildId: string): void {
   if (track.metaPending) return;
   track.metaPending = true;
@@ -313,7 +284,6 @@ function applyHydration(track: Track, guildId: string, title: string, duration: 
   if (mediaUrl) { track.mediaUrl = mediaUrl; if (expiresAt !== undefined) track.mediaUrlExpiresAt = expiresAt; }
   if (duration > MAX_DURATION_SECONDS) {
     logger.info("[MUSIC] Трек длиннее лимита — пропускаю", guildId, title);
-    // Текущий трек пропускаем, а prefetched-трек убираем из очереди.
     hydrateHooks?.onTooLong(guildId, track);
   }
   hydrateHooks?.onChange(guildId);

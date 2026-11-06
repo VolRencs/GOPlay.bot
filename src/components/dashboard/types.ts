@@ -7,7 +7,6 @@ export {
   hexToColorNumber,
 } from "../../lib/colors.ts";
 
-// Общие DTO живут вне компонентов и используются серверными роутами.
 export type {
   Channel,
   EmbedField,

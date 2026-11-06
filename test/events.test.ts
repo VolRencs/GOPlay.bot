@@ -75,7 +75,6 @@ test("waitlist: full event queues users, leaving promotes the first queued", () 
   const row = insertEvent("g1", { ...baseInput(), maxParticipants: 1, waitlistEnabled: true });
   const first = joinEvent(row.id, "u1", "g1");
   assert.equal(first.ok && first.state, "joined");
-  // Повторный join тем же пользователем не занимает второй слот.
   const second = joinEvent(row.id, "u1", "g1");
   assert.equal(second.ok ? second.action : "", "already_joined");
   const queued = joinEvent(row.id, "u2", "g1");

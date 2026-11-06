@@ -26,7 +26,6 @@ export function DashboardAuditLog() {
   );
   const entries = data?.entries ?? null;
   const total = data?.total ?? 0;
-  // Устаревший append (сменилась гильдия/секция) не должен дописываться в новый список.
   useEffect(() => { genRef.current++; setLoadingMore(false); }, [guildId, section]);
   async function loadMore() {
     const gen = genRef.current;

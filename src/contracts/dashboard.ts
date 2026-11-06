@@ -1,5 +1,3 @@
-// DTO панели, общие для серверных роутов и клиентских компонентов.
-// Здесь нет импортов из React/Next — только формы данных и чистые преобразования.
 
 import type { ServerEmoji as GoEmoji } from "goemoji";
 
@@ -29,6 +27,21 @@ export type StatsGet = {
 };
 
 export type { EmbedField, EmbedPayload } from "./embeds.ts";
+
+export const SETTINGS_ENDPOINTS = {
+  autorole: "autorole",
+  lang: "lang",
+  levels: "levels",
+  logging: "logging",
+  music: "music",
+  tempchannels: "tempchannels",
+  welcome: "welcome",
+} as const;
+
+export type SettingsKey = keyof typeof SETTINGS_ENDPOINTS;
+
+export const settingsEndpoint = (guildId: string, key: SettingsKey): string =>
+  `/api/guilds/${guildId}/${SETTINGS_ENDPOINTS[key]}`;
 
 export type LangCode = "ru" | "en";
 export type LangDto = { lang: LangCode };

@@ -108,10 +108,10 @@ CREATE TABLE temp_channels (
 
 CREATE TABLE music_settings (
   guild_id              TEXT PRIMARY KEY,
-  command_channel_id    TEXT,                          -- канал, где разрешена /play; NULL — в любом
-  voice_channel_ids_json TEXT NOT NULL DEFAULT '[]',   -- разрешённые голосовые каналы; '[]' — любые
-  allowed_role_ids_json TEXT NOT NULL DEFAULT '[]',    -- роли, которым доступна /play; '[]' — только админы
-  leave_after_seconds   INTEGER NOT NULL DEFAULT 300   -- автовыход после стольких секунд тишины
+  command_channel_id    TEXT,
+  voice_channel_ids_json TEXT NOT NULL DEFAULT '[]',
+  allowed_role_ids_json TEXT NOT NULL DEFAULT '[]',
+  leave_after_seconds   INTEGER NOT NULL DEFAULT 300
 );
 
 CREATE TABLE appeals (
@@ -217,8 +217,6 @@ CREATE INDEX idx_channel_stats_day ON guild_daily_channel_stats(day);
 CREATE INDEX idx_user_stats_day ON guild_daily_user_stats(day);
 
 CREATE INDEX idx_hourly_day ON guild_hourly_messages(day);
--- Ретеншн-прунинг moderation_actions идёт по created_at без guild_id —
--- составной idx_actions_guild для него бесполезен.
 CREATE INDEX IF NOT EXISTS idx_actions_created ON moderation_actions(created_at);
 CREATE INDEX IF NOT EXISTS idx_appeals_reviewer ON appeals(guild_id, reviewed_by);
 

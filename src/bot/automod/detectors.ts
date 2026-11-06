@@ -10,16 +10,12 @@ const URL_RE = /(?:https?:\/\/|www\.)[^\s<]+/gi;
 const DOMAIN_RE = /(?:^|[\s(])([a-zа-яё][\wа-яё-]*(\.[a-zа-яё][\wа-яё-]*)+)/gi;
 const EMOJI_RE = /<a?:\w+:\d+>|\p{Extended_Pictographic}/gu;
 function urls(text: string) { return text.match(URL_RE) ?? []; }
-function bareDomains(text: string) { const out: string[] = []; for (const match of text.matchAll(DOMAIN_RE)) { try { out.push(new URL(`https://${match[1]}`).hostname.toLowerCase()); } catch { /* ignore malformed token */ } } return out; }
+function bareDomains(text: string) { const out: string[] = []; for (const match of text.matchAll(DOMAIN_RE)) { try { out.push(new URL(`https://${match[1]}`).hostname.toLowerCase()); } catch {  } } return out; }
 function emojiCount(text: string) { return (text.match(EMOJI_RE) ?? []).length; }
 
-/** Правила с окном: считают сообщения за период, а не по одному сообщению. */
 const BURST_KINDS = new Set<RuleKind>(["spam", "duplicate", "emoji"]);
 export const isBurstKind = (kind: RuleKind) => BURST_KINDS.has(kind);
 
-// Запись сообщения в окно правила — побочный эффект, отделённый от проверки:
-// раньше `break` после первого совпадения оставлял счётчики других правил
-// пустыми, и они не срабатывали никогда.
 function record(rule: Rule, message: MessageData): void {
   const key = keyFor(rule, message);
   if (rule.kind === "spam") { const a = bucket(key, message.at, rule.window); a.push({ at: message.at, text: "", amount: 1, id: message.id, channelId: message.channelId }); return; }
@@ -27,7 +23,6 @@ function record(rule: Rule, message: MessageData): void {
   if (rule.kind === "emoji") { const count = emojiCount(message.content); if (count <= 3) return; const a = bucket(key, message.at, rule.window); a.push({ at: message.at, text: "", amount: count, id: message.id, channelId: message.channelId }); }
 }
 
-// Проверка правила по уже записанному состоянию окна.
 function matches(rule: Rule, message: MessageData): boolean {
   const t = rule.threshold; const key = keyFor(rule, message);
   if (rule.kind === "spam") return bucket(key, message.at, rule.window).length >= Number(t.messages ?? automodThresholdDefaults.spam.messages);
@@ -41,7 +36,6 @@ function matches(rule: Rule, message: MessageData): boolean {
   const invite = /discord(?:\.gg|(?:app)?\.com\/invite)\/[a-z0-9-]+/i.test(message.content); return invite && t.mode !== "allow";
 }
 
-/** Записать сообщение в окно правила и проверить его. */
 export function detect(rule: Rule, message: MessageData): boolean {
   record(rule, message);
   return matches(rule, message);
@@ -57,13 +51,9 @@ export function shouldWarn(rule: Rule, message: MessageData): boolean {
   return last === undefined || last < message.at - rule.window * 1000;
 }
 export function markWarned(rule: Rule, message: MessageData) { warned.set(keyFor(rule, message), message.at); }
-/** Снять claim окна: наказание не применилось — следующее сообщение в окне
- *  снова может быть наказано. */
 export function clearWarned(rule: Rule, message: MessageData) { warned.delete(keyFor(rule, message)); }
 export function resetDetectors() { memory.clear(); warned.clear(); }
 export function pruneDetectors() {
-  // Окно правила настраивается до 3600 c: запас +1 минута, иначе редкая серия
-  // внутри длинного окна теряла бы счёт (и warned сбрасывался бы слишком рано).
   const cutoff = Date.now() - 61 * 60_000;
   for (const [key, values] of memory) {
     const last = values[values.length - 1];

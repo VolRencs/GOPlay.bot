@@ -1,5 +1,3 @@
-// Сессия гильдии: соединение, плеер, очередь и политика судьбы трека по
-// исходам стримера. Все переходы через handleIdle — двойных advance нет.
 
 import { type Guild } from "discord.js";
 import { AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, createAudioPlayer, entersState, joinVoiceChannel, type VoiceConnection } from "@discordjs/voice";
@@ -21,8 +19,8 @@ type Session = {
   loopMode: LoopMode;
   idleSince: number | null;
   activityTimer: NodeJS.Timeout | null;
-  skipFlag: boolean; // явный /skip или too-long: Idle двигает очередь без лупа и резюма
-  generation: number; // растёт на каждом новом стриме; инвалидирует устаревшие решения
+  skipFlag: boolean;
+  generation: number;
   handle: StreamHandle | null;
   failedStarts: number;
   resumesLeft: number;
@@ -32,21 +30,18 @@ type Session = {
 
 const sessions = new Map<string, Session>();
 
-/** Сколько голов очереди показывает embed панели. */
 const PANEL_PREVIEW_SIZE = 5;
 
 let onMusicChange: ((guildId: string) => void) | null = null;
 export function setOnMusicChange(fn: (guildId: string) => void): void { onMusicChange = fn; }
-function notify(guildId: string): void { try { onMusicChange?.(guildId); } catch { /* панель не критична */ } }
+function notify(guildId: string): void { try { onMusicChange?.(guildId); } catch {  } }
 
 let onTrackStart: ((guildId: string, requestedBy: string) => void) | null = null;
-/** Новый трек пошел (не резюм): бот-слой может перевести соединение к каналу автора. */
 export function setOnTrackStart(fn: (guildId: string, requestedBy: string) => void): void { onTrackStart = fn; }
 
 let playerEnvironment: { humansInBotChannel: (guildId: string) => number } | null = null;
 export function setPlayerEnvironment(env: { humansInBotChannel: (guildId: string) => number }): void { playerEnvironment = env; }
 
-// Политика «трек длиннее лимита» здесь; резолвер только сообщает.
 setHydrateHooks({
   onTooLong: (guildId, track) => {
     const session = sessions.get(guildId);
@@ -67,7 +62,6 @@ export const getSessionTextChannelId = (guildId: string): string | null => sessi
 export const hasCurrent = (guildId: string): boolean => sessions.get(guildId)?.current != null;
 export const queueSizeOf = (guildId: string): number => sessions.get(guildId)?.queue.length ?? 0;
 
-/** Фоновая гидрация следующего трека: старт без ожидания yt-dlp. */
 function prefetchNext(guildId: string): void {
   const next = sessions.get(guildId)?.queue[0];
   if (next) hydrateTrackMeta(next, guildId);
@@ -113,7 +107,6 @@ function disarmActivityTimer(s: Session): void {
   if (s.activityTimer) { clearTimeout(s.activityTimer); s.activityTimer = null; }
 }
 
-/** Внешнее событие присутствия: пересчитать условие бездействия живой сессии. */
 export function refreshSessionActivity(guildId: string): void {
   const s = sessions.get(guildId);
   if (s) refreshActivityTimer(s);
@@ -123,8 +116,6 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
   const guildId = guild.id;
   if (sessions.has(guildId)) return;
   const connection = joinVoiceChannel({ channelId: voiceChannelId, guildId, adapterCreator: guild.voiceAdapterCreator, selfDeaf: true });
-  // Терпимость к сухому буферу 250×20мс=5c вместо дефолтных 100мс: дефолт
-  // молча скипал треки при троттлинге источника.
   const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play, maxMissedFrames: 250 } });
   connection.subscribe(player);
   const session: Session = {
@@ -136,18 +127,12 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     failedStarts: 0, resumesLeft: 0, lastResumeSec: 0, restarted: false,
   };
   sessions.set(guildId, session);
-  // Замыкания проверяют, что в map всё ещё эта сессия: иначе поздний колбэк
-  // старого соединения уничтожил бы уже новую сессию пользователя.
   const alive = () => sessions.get(guildId) === session;
 
-  // Официальный рецепт @discordjs/voice: ждём Ready, на таймауте — destroy.
   void entersState(connection, VoiceConnectionStatus.Ready, 15_000).catch((error: unknown) => {
     logger.warn("[MUSIC] Не удалось установить голосовое соединение", guildId, error);
     if (alive()) destroySession(guildId);
   });
-  // Официальный рецепт Disconnected (кик, 4014): 5 c на самовосстановление.
-  // once вместо entersState(2**31-1): таймер на 24,8 суток удерживал бы всю
-  // сессию — при destroy события disconnected не бывает.
   const onDisconnected = () => {
     Promise.race([
       entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
@@ -167,9 +152,7 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     if (sessions.get(guildId)) logger.warn("[MUSIC] Ошибка аудиопотока", guildId, error.message);
   });
   player.on(AudioPlayerStatus.Idle, oldState => {
-    if (!sessions.get(guildId)) return; // сессия уничтожена/пересоздана
-    // Наигранную позицию знает только предыдущее состояние: у Idle и Buffering
-    // playbackDuration нет.
+    if (!sessions.get(guildId)) return;
     const playedMs = oldState.status === AudioPlayerStatus.Playing || oldState.status === AudioPlayerStatus.Paused || oldState.status === AudioPlayerStatus.AutoPaused
       ? oldState.playbackDuration
       : 0;
@@ -183,9 +166,9 @@ function destroySession(guildId: string): void {
   if (!s) return;
   sessions.delete(guildId);
   disarmActivityTimer(s);
-  try { s.handle?.cancel(); } catch { /* уже мертв */ }
-  try { s.player.stop(true); } catch { /* уже остановлен */ }
-  try { s.connection.destroy(); } catch { /* уже уничтожено */ }
+  try { s.handle?.cancel(); } catch {  }
+  try { s.player.stop(true); } catch {  }
+  try { s.connection.destroy(); } catch {  }
   notify(guildId);
 }
 
@@ -250,8 +233,6 @@ export function skipCurrent(guildId: string): void {
   const s = sessions.get(guildId);
   if (!s?.current) return;
   s.skipFlag = true;
-  // Стрим рвём ДО остановки плеера: SIGKILL даёт чистый external, а не ложный
-  // source-error от разрушения демуксера.
   s.handle?.cancel();
   if (s.player.state.status === AudioPlayerStatus.Paused) s.player.unpause();
   refreshActivityTimer(s);
@@ -278,7 +259,6 @@ export function playNext(guildId: string): Track | null {
 
 const RESUME_BUDGET = 2;
 const RESUME_MIN_PROGRESS = 5;
-/** Сколько ждём исход стримера после Idle, прежде чем решать без него. */
 const OUTCOME_RACE_MS = 250;
 
 function launch(s: Session, track: Track, offsetSec: number): void {
@@ -287,21 +267,17 @@ function launch(s: Session, track: Track, offsetSec: number): void {
     advance(s, null);
     return;
   }
-  // Новый трек (не резюм с позиции): бот-слой решает, переезжать ли к автору.
-  if (offsetSec === 0) { try { onTrackStart?.(s.guildId, track.requestedBy); } catch { /* переход не критичен */ } }
+  if (offsetSec === 0) { try { onTrackStart?.(s.guildId, track.requestedBy); } catch {  } }
   if (/^https?:\/\//i.test(track.query) && !isAllowedMediaUrl(track.query)) {
     logger.warn("[MUSIC] Отклонена ссылка на недопустимый хост", s.guildId);
     failForward(s, "unsupported-url");
     return;
   }
   if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
-    count("music.limit_wait"); // слот занят другой гильдией — ждём, не выметая очередь
+    count("music.limit_wait");
     const gen = s.generation;
     const retry = () => {
-      // Сессия пересоздана/трек сменился — ждать больше нечего.
       if (sessions.get(s.guildId) !== s || s.generation !== gen || s.current !== track) return;
-      // Skip в окне ожидания отменяет запуск: player.stop() при Idle
-      // не порождает Idle-события, очередь двигаем явно без возврата в луп.
       if (s.skipFlag) { s.skipFlag = false; advance(s, track, false); return; }
       if (s.player.state.status === AudioPlayerStatus.Playing) return;
       if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
@@ -320,12 +296,10 @@ function launch(s: Session, track: Track, offsetSec: number): void {
 async function handleIdle(s: Session, playedMs: number): Promise<void> {
   const finished = s.current;
   const playedSec = s.lastResumeSec + playedMs / 1000;
-  // Исход обычно успевает придти вместе с close процессов; кап страховочный.
   const outcome: StreamOutcome | null = s.handle
     ? await Promise.race([s.handle.outcome, delay(OUTCOME_RACE_MS, null)])
     : null;
   if (sessions.get(s.guildId) !== s || s.current !== finished) return;
-  // Скип не возвращает трек в луп очереди, естественное завершение — возвращает.
   if (s.skipFlag) { s.skipFlag = false; advance(s, finished, false); return; }
 
   const naturalEnd = !outcome || (outcome.kind === "eof" && isNaturalEnd(playedSec, finished?.duration));
@@ -335,7 +309,6 @@ async function handleIdle(s: Session, playedMs: number): Promise<void> {
 }
 
 function tryResumeOrForward(s: Session, track: Track, playedSec: number, outcome: StreamOutcome): void {
-  // Резюм возможен при прогрессе между попытками либо в самом начале трека.
   if (s.resumesLeft > 0 && (playedSec >= s.lastResumeSec + RESUME_MIN_PROGRESS || playedSec < RESUME_MIN_PROGRESS)) {
     s.resumesLeft--;
     s.lastResumeSec = Math.max(s.lastResumeSec, playedSec);
@@ -366,7 +339,7 @@ function failForward(s: Session, reason: string): void {
     return;
   }
   logger.warn("[MUSIC] Трек не смог играть — переключаюсь", s.guildId, track?.title ?? "", reason);
-  advance(s, null); // битый трек сознательно не возвращается в луп очереди
+  advance(s, null);
 }
 
 function advance(s: Session, finished: Track | null, requeue = true): void {

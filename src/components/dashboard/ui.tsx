@@ -6,6 +6,7 @@ import { stripVariationSelectors } from "goemoji/discord";
 import { ArrowDown, ArrowRight, Check, ChevronDown, Image, Smile } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
 import { safeJson, stableJson } from "../../lib/json.ts";
+import { embedCharacterCount, EMBED_LIMITS, type EmbedContent } from "#contracts/embeds.ts";
 
 export function SectionLoading() {
   return <p className="loading" role="status">Загружаем раздел…</p>;
@@ -61,7 +62,6 @@ function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (f
 
 type EmbedFieldsValue = { title: string; description: string; footer: string; fields: EmbedField[] };
 
-/** Общие текстовые поля embed'а: одинаковый порядок и лимиты в сообщениях и событиях. */
 export function EmbedFields({ value, onChange, titlePlaceholder = "Заголовок", descriptionPlaceholder = "Описание" }: { value: EmbedFieldsValue; onChange: (patch: Partial<EmbedFieldsValue>) => void; titlePlaceholder?: string; descriptionPlaceholder?: string }) {
   return <>
     <input className="embed-title-input" value={value.title} maxLength={256} placeholder={titlePlaceholder} onChange={e => onChange({ title: e.target.value })}/>
@@ -69,6 +69,15 @@ export function EmbedFields({ value, onChange, titlePlaceholder = "Заголо�
     <FieldsEditor fields={value.fields} onChange={fields => onChange({ fields })}/>
     <input className="embed-footer-input" value={value.footer} maxLength={2048} placeholder="Футер" onChange={e => onChange({ footer: e.target.value })}/>
   </>;
+}
+
+export function EmbedUsage({ content, label = "Контент embed" }: { content: EmbedContent; label?: string }) {
+  const used = embedCharacterCount(content);
+  const max = EMBED_LIMITS.total;
+  return <div className={used > max * .9 ? "embed-usage is-near" : "embed-usage"} aria-label={`Использовано ${used} из ${max} символов`}>
+    <div className="embed-usage-head"><span>{label}</span><output>{used} / {max}</output></div>
+    <div className="embed-usage-track"><i style={{ width: `${Math.min(100, used / max * 100)}%` }}/></div>
+  </div>;
 }
 
 type EmbedMediaSlot = {
@@ -80,7 +89,6 @@ type EmbedMediaSlot = {
   onClear: () => void;
 };
 
-/** Общие медиа-поля embed'а: изображение и миниатюра. */
 export function EmbedMediaFields({ image, thumbnail }: { image: EmbedMediaSlot; thumbnail: EmbedMediaSlot }) {
   return <div className="embed-bottom">
     <MediaField icon={<Image size={18}/>} label="Основное изображение" file={image.file} previewUrl={image.preview} saved={image.saved} onPick={image.onPick} onClear={image.onClear} {...(image.inputRef ? { ref: image.inputRef } : {})} clearLabel="Удалить изображение"/>
@@ -90,8 +98,6 @@ export function EmbedMediaFields({ image, thumbnail }: { image: EmbedMediaSlot; 
 
 export { formatNumber, formatTime } from "../../lib/format.ts";
 
-// Единая каноническая сериализация с сервером (src/lib/json.ts):
-// dirty-check клиента сходится с no-op детектом роутов.
 export const stableStringify = stableJson;
 
 export function useAsyncAction() {
@@ -107,12 +113,9 @@ export function useAsyncAction() {
 }
 
 const writeSessionDraft = (key: string, value: unknown) => {
-  try { sessionStorage.setItem(key, JSON.stringify(value, (_key, item) => item instanceof File ? undefined : item)); } catch { /* storage full or unavailable */ }
+  try { sessionStorage.setItem(key, JSON.stringify(value, (_key, item) => item instanceof File ? undefined : item)); } catch {  }
 };
 
-/** Debounce-запись черновика в sessionStorage; File-объекты отбрасываются.
- *  Effect Event читает свежие key/value в таймере и cleanup: последние правки
- *  дописываются при размонтировании, а не теряются за 400 мс. */
 export function useSessionDraft(key: string, enabled: boolean, deps: readonly unknown[], value: () => unknown): void {
   const write = useEffectEvent(() => { if (enabled) writeSessionDraft(key, value()); });
   useEffect(() => {
@@ -123,8 +126,6 @@ export function useSessionDraft(key: string, enabled: boolean, deps: readonly un
   useEffect(() => () => write(), []);
 }
 
-/** Восстановление черновика из sessionStorage: читает ключ при смене
- *  guildId/key, мусор и массивы игнорируются, apply получает объект. */
 export function useSessionDraftRestore(key: string, enabled: boolean, apply: (saved: Record<string, unknown>) => void): void {
   const applyEvent = useEffectEvent(apply);
   useEffect(() => {
@@ -135,7 +136,7 @@ export function useSessionDraftRestore(key: string, enabled: boolean, apply: (sa
       const saved = safeJson<Record<string, unknown>>(raw, {});
       if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
       applyEvent(saved);
-    } catch { /* malformed draft */ }
+    } catch {  }
   }, [key, enabled]);
 }
 
@@ -216,8 +217,6 @@ export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange
   const openPicker=()=>{
     const rect=anchorRef.current?.getBoundingClientRect();
     if(!rect) return;
-    // Поповер рисуется порталом в <body> и прижимается к viewport:
-    // иначе на мобильных он вылезает за экран из узкой колонки формы.
     const width=Math.min(340, window.innerWidth-24);
     const left=Math.max(12, Math.min(rect.left, window.innerWidth-width-12));
     const below=window.innerHeight-rect.bottom;
@@ -341,8 +340,6 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
   const listRef = useRef<HTMLDivElement>(null);
   const selected = options.find(option => option.value === value);
 
-  // Список рисуется порталом в <body> с position:fixed — как нативный селект:
-  // ни overflow карточек, ни stacking-контексты его не обрезают и не перекрывают.
   const openList = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -362,7 +359,6 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
       if (!rootRef.current?.contains(target) && !listRef.current?.contains(target)) setOpen(false);
     };
     const onScrollOrResize = (event: Event) => {
-      // Скролл внутри самого списка (ползунок, колесо) — не причина закрытия.
       if (listRef.current?.contains(event.target as Node)) return;
       setOpen(false);
     };
@@ -405,8 +401,6 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        // Тогл на mousedown с stopPropagation: <label> ре-диспатчит только
-        // click, поэтому его синтетический повторный клик не закроет список.
         onMouseDown={e => { e.preventDefault(); e.stopPropagation(); open ? setOpen(false) : openList(); }}
         onKeyDown={e => {
           if ((e.key === "Enter" || e.key === " ") && !open) { e.preventDefault(); openList(); }

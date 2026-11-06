@@ -1,20 +1,13 @@
 import { embedUploadsDir, eventUploadsDir, serveUploadFile, UPLOAD_CONTENT_TYPES as contentTypes } from "#lib/uploads.ts";
 import { guildRoute, isSnowflake } from "#lib/guild-access.ts";
-// Только простое имя файла: сегмент [filename] декодирует %2f, поэтому
-// «../../../secret.png» иначе дошёл бы до readFile.
 const SAFE_FILENAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export const GET = guildRoute<{ kind: string; guildId: string; filename: string }>(async (_, { guildId, params }) => {
   const { kind, filename } = params;
   if ((kind !== "embeds" && kind !== "events") || !isSnowflake(guildId) || !SAFE_FILENAME.test(filename)) return new Response(null, { status: 404 });
-  // Загрузки модераторов — не публичный контент «по угаданному URL»: читать
-  // могут только пользователи панели (<img> в дашборде шлёт cookies сам).
-  // Проверяем доступ именно к этой гильдии, иначе кросс-гильд IDOR.
   const ext = filename.toLowerCase().split(".").pop() ?? "";
   const type = contentTypes[ext];
   if (!type) return new Response(null, { status: 404 });
-  // Имя файла содержит timestamp и никогда не перезаписывается: контент
-  // неизменяем, браузер может кэшировать навсегда.
   const dir = kind === "embeds" ? embedUploadsDir(guildId) : eventUploadsDir(guildId);
   return serveUploadFile(dir, filename, type, "private, max-age=31536000, immutable");
 });

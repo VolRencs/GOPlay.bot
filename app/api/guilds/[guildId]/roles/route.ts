@@ -54,8 +54,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const options = readOptions(value);
   if (!options.length) return jsonError("Добавьте хотя бы одну роль.");
   if (!Number.isInteger(value.embedId)) return jsonError("Выберите отправленное сообщение.");
-  // channelId/messageId/roleId интерполируются в путь Discord REST (и roleId
-  // возвращается из custom_id кнопок в roles.add) — только snowflake.
   if ((value.channelId && !isSnowflake(value.channelId)) || (value.messageId && !isSnowflake(value.messageId)) || options.some(o => !isSnowflake(o.roleId)))
     return jsonError("Некорректный канал или роль.");
   const tpl = rolesQueries.embedTemplate.get(value.embedId, guildId);
@@ -80,8 +78,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const roleMode = value.roleMode === undefined ? "toggle" : value.roleMode;
   if (!["toggle", "add", "remove"].includes(roleMode)) return jsonError("Некорректный режим выдачи ролей.");
   const template = (typeof value.notifyTemplate === "string" ? value.notifyTemplate.slice(0, 500) : "") || "✅ Выдана роль **{role}**";
-  // Свежая строка панели создаётся первой: custom_id компонентов содержит её id
-  // (`role:<panelId>:<roleId>`); при сбое Discord строка удаляется обратно.
   let panelId: number;
   let created = false;
   let beforePanel: { title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null } | undefined;
@@ -110,8 +106,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   try {
   if (style === "reaction") {
     for (const option of options) {
-      // Каждая реакция проверяется: rate limit на первой не маскируется
-      // успешной третьей.
       const added = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}/reactions/${encodeURIComponent(toDiscordReaction(option.emoji || "✅"))}/@me`, { method: "PUT" });
       if (!added.ok) throw new Error(`reaction ${added.status}`);
     }

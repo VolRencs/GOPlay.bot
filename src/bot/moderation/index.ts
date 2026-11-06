@@ -14,8 +14,6 @@ import { trModeration } from "../../lib/i18n/bot/moderation.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 function canTarget(actor: GuildMember, target: GuildMember) { return actor.id !== target.id && actor.roles.highest.position > target.roles.highest.position && target.manageable; }
 export function recordPunishmentAndOffer(client: Client, input: { guildId: string; guildName: string; userId: string; type: string; reason: string; moderatorId: string | null }) {
-  // Запись наказания обязана пережить сбой БД: она вызывается из .then() внутри
-  // gateway-обработчиков, где throw превращался бы в unhandled rejection.
   let punishmentId: number;
   try {
     const result = stmt.moderationInsert.run(input.guildId, input.userId, input.moderatorId, input.type, input.reason, Date.now());
@@ -25,13 +23,10 @@ export function recordPunishmentAndOffer(client: Client, input: { guildId: strin
     return;
   }
   addMetric(input.guildId, "moderation");
-  // untimeout — коррекция, kick необратим: оффер апелляции не нужен обоим.
   const appealType = appealPunishmentTypes.find(type => type === input.type);
   if (!appealType) return;
   void offerAppeal(client, { punishmentId, guildId: input.guildId, guildName: input.guildName, userId: input.userId, reason: input.reason, appealType });
 }
-// Логируем сразу с известным исполнителем (без audit-lookup) и помечаем,
-// чтобы соответствующее gateway-событие не задублировало запись.
 const logTypes: Record<string, string> = { ban: "member_ban", kick: "member_kick", timeout: "member_timeout", untimeout: "member_timeout" };
 export async function moderate(i: ChatInputCommandInteraction) {
   const t = guildTr(trModeration, i.guildId ?? "");
@@ -39,8 +34,6 @@ export async function moderate(i: ChatInputCommandInteraction) {
   if (!i.guild || !i.member) return void i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
   if (!i.memberPermissions?.has(PermissionFlagsBits.Administrator)) return void i.reply({ content: t("noPermsSelf"), flags: MessageFlags.Ephemeral }).catch(() => null);
   const command = i.commandName;
-  // Отвечаем сразу: ниже REST-вызовы (фетч участника, бан, purge), которые
-  // иначе держали бы интеракцию висящей и могли вылететь за 3-секундное окно.
   try {
     await i.deferReply({ flags: MessageFlags.Ephemeral });
   } catch (error) {
@@ -100,7 +93,6 @@ async function channelAction(i: ChatInputCommandInteraction) {
   if (i.commandName === "purge") {
     const amount = i.options.getInteger("amount", true);
     const messages = await text.messages.fetch({ limit: amount });
-    // bulkDelete не трогает сообщения старше 14 дней — тот же кап.
     const recent = messages.filter(m => Date.now() - m.createdTimestamp < 14 * DAY_MS);
     await text.bulkDelete(recent, true);
     logAction({ guildId: i.guildId!, type: "message_purge", targetId: text.id, moderatorId: i.user.id, details: t("logPurge", { n: String(recent.size) }) });
@@ -112,13 +104,7 @@ async function channelAction(i: ChatInputCommandInteraction) {
   return i.editReply(t("channelUpdated"));
 }
 
-// Массовая чистка сообщений автора (защищённый канал автомодерации): best-effort,
-// ошибки не роняют вызывающий путь. Повторный вызов во время активной чистки
-// расширяет дедлайн и не запускает второй проход.
 const userPurges = new Map<string, { cutoff: number; requeue: boolean; promise: Promise<number> }>();
-// Повторная чистка того же автора в защищённом канале не запускается сразу:
-// иначе 10 сообщений подряд = 10 полных проходов по всем каналам гильдии
-// (до тысячи REST-запросов на одно сообщение).
 const PURGE_COOLDOWN_MS = 60_000;
 const recentPurges = new Map<string, number>();
 

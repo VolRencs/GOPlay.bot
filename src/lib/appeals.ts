@@ -15,13 +15,10 @@ export const appealStatuses = ["pending", "reviewing", "approved", "rejected", "
 export const reviewActions = ["reviewing", "approved", "rejected", "closed"] as const;
 type ReviewAction = (typeof reviewActions)[number];
 
-// Типы наказаний, по которым возможна реальная отмена (см. reversalFor).
 export const appealPunishmentTypes = ["warn", "timeout", "ban"] as const;
 export type AppealPunishmentType = (typeof appealPunishmentTypes)[number];
 
 type Punishment = AppealPunishmentRow;
-// id — глобальный PK, number — локальная для гильдии нумерация (1,2,3...),
-// берётся из guilds.appeal_counter.
 type Appeal = AppealRow;
 type AppealView = AppealSource;
 
@@ -32,19 +29,12 @@ function getPunishment(punishmentId: number): Punishment | undefined {
   return stmt.appealPunishment.get(punishmentId);
 }
 
-// Счётчик на гильдию: инкремент в той же транзакции, что и insert — серверы не
-// делят последовательность, номера непрерывны. UNIQUE (guild_id, number)
-// страхует от гонок выделения.
 function nextAppealNumber(guildId: string): number {
-  // Строку гильдии могли удалить между проверкой и insert — тогда номер не
-  // выдаём, а апелляция падает с понятной ошибкой вместо TypeError.
   const row = stmt.appealNextNumber.get(guildId);
   if (!row) throw new Error("Гильдия не найдена");
   return row.appeal_counter;
 }
 
-// Любая строка апелляции — включая отклонённую — навсегда блокирует новую
-// по тому же наказанию: «Отказаться» в оффере в ЛС закрывает возможность.
 function existingError(lang: Locale, existing: { id: number; number: number; status: AppealStatus } | undefined) {
   if (!existing) return trAppeals(lang, "createFail");
   if (existing.status === "declined") return trAppeals(lang, "alreadyDeclined");
@@ -60,8 +50,6 @@ function insertAppeal(guildId: string, userId: string, punishmentId: number, typ
   });
 }
 
-// `type` — конкретное наказание для автомода: запись moderation_actions хранит
-// type='automod', а отмена зависит от реального действия (timeout/ban/warn).
 export function createAppeal(input: { guildId: string; userId: string; punishmentId: number; reason: string; type?: AppealPunishmentType | undefined }): Result<Appeal> {
   const lang = guildLang(input.guildId);
   const punishment = getPunishment(input.punishmentId);
@@ -75,15 +63,11 @@ export function createAppeal(input: { guildId: string; userId: string; punishmen
   try {
     return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, input.type ?? punishment.type, reason, "pending") };
   } catch {
-    // UNIQUE(punishment_id): вторая апелляция обогнала проверку выше.
     const raced = stmt.appealExisting.get(input.punishmentId);
     return { ok: false, error: existingError(lang, raced) };
   }
 }
 
-// Юзер нажал «Отказаться» в DM-оффере. Отклонённая строка — финал: повторная
-// апелляция по тому же наказанию отклоняется. Существующая строка (гонка с
-// «Подать апелляцию» или повторный клик) не пишется и не считается ошибкой.
 export function declineAppeal(input: { guildId: string; userId: string; punishmentId: number }): Result<Appeal | null> {
   const lang = guildLang(input.guildId);
   const punishment = getPunishment(input.punishmentId);
@@ -113,9 +97,6 @@ export function reviewAppeal(input: { guildId: string; appealId: number; action:
   return { ok: true, value: { appeal: { ...appeal, status: input.action, moderator_comment: comment, updated_at: at, reviewed_by: input.reviewerId, reviewed_at: at }, reversal, previousStatus: appeal.status } };
 }
 
-// После одобренной апелляции отменить можно только ban (unban) и timeout
-// (снятие): kick лишь удаляет юзера, варны — постоянные записи, automod
-// повторяет одно из двух.
 export function reversalFor(type: string): "unban" | "untimeout" | null {
   if (type === "ban") return "unban";
   if (type === "timeout") return "untimeout";
@@ -154,8 +135,6 @@ export async function notifyAppealStatus(appeal: Appeal, reversal?: { ok: boolea
 }
 
 export type AppealListQuery = { guildId: string; status?: AppealStatus | "all"; userId?: string; moderatorId?: string; from?: number; to?: number; limit?: number; offset?: number };
-// Набор фильтров ограничен — кэшируем готовые statements вместо prepare на
-// каждый GET вкладки «Апелляции».
 const listAppealCache = new Map<string, ReadStatement<AppealView>>();
 
 export function listAppeals(query: AppealListQuery): AppealView[] {

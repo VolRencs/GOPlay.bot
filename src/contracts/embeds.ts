@@ -1,19 +1,14 @@
 import { safeJson } from "../lib/json.ts";
 
-// Единая модель содержимого embed'а для панели сообщений и событий.
-// Специфичные поля (режим/отправки у сообщений, timestamp у событий) живут
-// в своих контрактах, а общая форма и лимиты Discord — только здесь.
-
+// Shared embed model for message and event composers; Discord limits live here.
 export type EmbedField = { name: string; value: string; inline?: boolean };
 
 export type EmbedAuthor = { name?: string; url?: string; iconUrl?: string };
 
 export type EmbedContent = { title?: string; description?: string; color?: number; footer?: { text?: string }; author?: EmbedAuthor; image?: { url?: string }; thumbnail?: { url?: string }; fields?: EmbedField[] };
 
-/** DTO панели сообщений: та же форма, что и у общего EmbedContent. */
 export type EmbedPayload = EmbedContent;
 
-/** Нормализованная форма, которая уходит в Discord REST. */
 export type DiscordEmbed = Omit<EmbedContent, "footer" | "author" | "image" | "thumbnail"> & {
   footer?: { text: string };
   author?: { name: string; url?: string; icon_url?: string };
@@ -21,6 +16,7 @@ export type DiscordEmbed = Omit<EmbedContent, "footer" | "author" | "image" | "t
   thumbnail?: { url: string };
 };
 
+// Discord limit: title + description + fields + footer + author must stay <= 6000.
 export const EMBED_LIMITS = { title: 256, description: 4096, fields: 25, fieldName: 256, fieldValue: 1024, footer: 2048, authorName: 256, url: 2048, total: 6000 } as const;
 
 function text(value: unknown): string | undefined {
@@ -42,7 +38,15 @@ function mediaUrl(value: unknown): string | undefined {
   return undefined;
 }
 
-/** Поля embed'а: обрезка лимитов и признак полузаполненного поля. */
+function footerText(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (value && typeof value === "object") {
+    const entry = value as Record<string, unknown>;
+    if (typeof entry.text === "string") return entry.text.trim() || undefined;
+  }
+  return undefined;
+}
+
 function cleanEmbedFields(value: unknown): { fields: EmbedField[]; halfFilled: boolean } {
   const raw = Array.isArray(value) ? value : [];
   const fields: EmbedField[] = [];
@@ -57,14 +61,12 @@ function cleanEmbedFields(value: unknown): { fields: EmbedField[]; halfFilled: b
   return { fields, halfFilled };
 }
 
-/** Приводит пользовательский ввод к форме Discord, сохраняя старый формат
- *  footer/thumbnail/image в виде строки. Пустые значения отбрасываются. */
 export function normalizeEmbedContent(value: unknown): { content: EmbedContent; halfFilled: boolean } {
   const v = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
   const { fields, halfFilled } = cleanEmbedFields(v.fields);
   const title = text(v.title)?.slice(0, EMBED_LIMITS.title);
   const description = text(v.description)?.slice(0, EMBED_LIMITS.description);
-  const footer = text(v.footer)?.slice(0, EMBED_LIMITS.footer);
+  const footer = footerText(v.footer)?.slice(0, EMBED_LIMITS.footer);
   const author = (v.author && typeof v.author === "object" ? v.author : {}) as Record<string, unknown>;
   const authorName = text(author.name)?.slice(0, EMBED_LIMITS.authorName);
   const authorUrl = text(author.url)?.slice(0, EMBED_LIMITS.url);
@@ -86,7 +88,6 @@ export function normalizeEmbedContent(value: unknown): { content: EmbedContent; 
   };
 }
 
-/** Суммарный лимит Discord: title + description + поля + footer + author. */
 export function embedCharacterCount(content: EmbedContent): number {
   return (content.title?.length ?? 0)
     + (content.description?.length ?? 0)
@@ -95,7 +96,25 @@ export function embedCharacterCount(content: EmbedContent): number {
     + (content.fields ?? []).reduce((sum, field) => sum + field.name.length + field.value.length, 0);
 }
 
-/** Маппинг в форму Discord REST: camelCase author.iconUrl → icon_url. */
+// Keeps the last `preserve` fields (generated event fields) and drops user fields first.
+export function fitEmbed(content: EmbedContent, preserve = 0, limit = EMBED_LIMITS.total): EmbedContent {
+  const fields = [...(content.fields ?? [])];
+  while (fields.length > preserve && embedCharacterCount({ ...content, fields }) > limit) {
+    fields.splice(fields.length - preserve - 1, 1);
+  }
+  const next = { ...content };
+  if (fields.length) next.fields = fields;
+  else delete next.fields;
+  const over = () => embedCharacterCount(next) - limit;
+  if (next.description && over() > 0) next.description = next.description.slice(0, Math.max(0, next.description.length - over()));
+  if (next.footer?.text && over() > 0) next.footer = { text: next.footer.text.slice(0, Math.max(0, next.footer.text.length - over())) };
+  if (next.author?.name && over() > 0) next.author = { ...next.author, name: next.author.name.slice(0, Math.max(0, next.author.name.length - over())) };
+  if (!next.description) delete next.description;
+  if (!next.footer?.text) delete next.footer;
+  if (!next.author?.name) delete next.author;
+  return next;
+}
+
 export function toDiscordEmbed(content: EmbedContent): DiscordEmbed {
   const { footer, author, image, thumbnail, fields, ...rest } = content;
   return {

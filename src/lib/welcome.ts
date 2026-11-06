@@ -35,10 +35,9 @@ const color = (value: unknown, fallback: string) => {
 export function parseImageConfig(value: unknown): WelcomeImageConfig {
   let raw: Record<string, unknown> = {};
   try {
-    // JSON.parse("null") не бросает: без проверки на объект raw.avatarWidth ниже падал бы 500.
     const parsed = typeof value === "string" ? JSON.parse(value) : value;
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) raw = parsed as Record<string, unknown>;
-  } catch { /* default configuration */ }
+  } catch {  }
   return {
     avatarWidth: number(raw.avatarWidth, defaultImageConfig.avatarWidth, 48, 420),
     avatarHeight: number(raw.avatarHeight, defaultImageConfig.avatarHeight, 48, 420),
@@ -71,8 +70,6 @@ export const welcomePreviewValues: Record<string, string> = {
   userId: "000000000000000000",
 };
 
-/** Значения плейсхолдеров шаблона из базовых данных участника: общий источник
- *  для текста приветствия (бот) и подписей на картинке (welcome-image). */
 export function welcomeValues(input: { name: string; username?: string; userId?: string; server: string; count: number; avatar: string }): Record<string, string> {
   return {
     user: input.name, username: input.username ?? input.name, displayName: input.name, server: input.server,
@@ -84,10 +81,6 @@ const escapeXml = (value: string) => value.replace(/[&<>"']/g, (c) => ({"&":"&am
 
 export const WELCOME_DESIGN = { width: 900, height: 480 } as const;
 
-// Размеры из заголовков PNG/GIF/WEBP/JPEG без декодирования картинки.
-// Значения атакер-контролируемые (5 МБ PNG может заявить 60000x60000):
-// парсинг под охраной, результат клампится — иначе Resvg пытается растеризовать
-// гигапиксельный холст и падает.
 const MAX_IMAGE_DIMENSION = 4096;
 const clampSize = ({ width, height }: { width: number; height: number }) => ({ width: Math.min(MAX_IMAGE_DIMENSION, Math.max(1, Math.round(width))), height: Math.min(MAX_IMAGE_DIMENSION, Math.max(1, Math.round(height))) });
 
@@ -98,25 +91,15 @@ export function imageSize(data: Buffer, fallback = { width: WELCOME_DESIGN.width
     if (data.length >= 30 && data.subarray(0, 4).toString() === "RIFF" && data.subarray(8, 12).toString() === "WEBP") {
       const fourcc = data.subarray(12, 16).toString();
       if (fourcc === "VP8X") return clampSize({ width: data.readUIntLE(24, 3) + 1, height: data.readUIntLE(27, 3) + 1 });
-      // Lossless VP8L: сигнатура 0x2f, затем LE32 с двумя 14-битными размерами (−1);
-      // лосси-смещения 26/29 здесь указывают внутрь сжатого потока.
       if (fourcc === "VP8L" && data.length >= 25 && data[20] === 0x2f) { const bits = data.readUIntLE(21, 4); return clampSize({ width: (bits & 0x3fff) + 1, height: ((bits >>> 14) & 0x3fff) + 1 }); }
-      // Lossy VP8 (fourcc с хвостом-пробелом): размеры фрейма по смещениям 26/29.
       if (fourcc === "VP8 " && data.length >= 32) return clampSize({ width: data.readUIntLE(26, 3) + 1, height: data.readUIntLE(29, 3) + 1 });
       return fallback;
     }
     if (data.length >= 12 && data[0] === 0xff && data[1] === 0xd8) for (let i = 2; i < data.length - 9;) { if (data[i] !== 0xff) { i++; continue; } const marker=data[i+1] ?? 0, length=data.readUInt16BE(i+2); if (marker >= 0xc0 && marker <= 0xc3) return clampSize({ width:data.readUInt16BE(i+7), height:data.readUInt16BE(i+5) }); i += 2 + length; }
-  } catch { /* truncated or malformed header */ }
+  } catch {  }
   return fallback;
 }
 
-// SVG картинки приветствия, один шаблон на обоих потребителей: бот гонит его
-// через Resvg в PNG для Discord, панель вставляет тот же markup инлайн —
-// мгновенно и с идентичной раскладкой. Канва равна реальному размеру фона
-// (фото показывается целиком и без искажений), элементы позиционируются
-// пропорционально канве, а их размеры масштабируются одним коэффициентом по
-// ширине — иначе на фоне с чужой пропорцией аватар превращался бы в овал.
-// backgroundHref/avatarHref — data: URI у бота либо same-origin пути в превью.
 export function buildWelcomeSvg(input: { backgroundHref?: string | null; backgroundWidth: number; backgroundHeight: number; avatarHref: string; title: string; subtitle: string; config: WelcomeImageConfig }) {
   const { config } = input;
   const scaleX = input.backgroundWidth / WELCOME_DESIGN.width, scaleY = input.backgroundHeight / WELCOME_DESIGN.height;

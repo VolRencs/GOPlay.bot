@@ -7,7 +7,6 @@ import type {
   MusicSettingsRow, WelcomeSettingsRow,
 } from "./rows.ts";
 
-// Prepared statements для API-роутов: SQL живёт в db-слое, а не в обработчиках.
 export const welcomeQueries = {
   upsert: upsert<Omit<WelcomeSettingsRow, "background_path">>(
     "welcome_settings",
@@ -68,7 +67,6 @@ export const embedsQueries = {
   delete: write("DELETE FROM embeds WHERE id=? AND guild_id=?"),
 };
 
-/** Удаление отмеченных stale-отправок: набор ID динамический, поэтому prepare один раз. */
 export function deleteEmbedSendings(ids: readonly number[]) {
   if (!ids.length) return;
   const placeholders = ids.map(() => "?").join(",");

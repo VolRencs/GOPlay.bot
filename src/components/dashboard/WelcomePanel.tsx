@@ -23,7 +23,7 @@ export function WelcomeSettings() {
     loadError: "Не удалось загрузить настройки приветствия.",
     saveError: "Не удалось сохранить настройки приветствия.",
     savedMessage: "Настройки приветствия и прощания сохранены.",
-    registerKey: "welcome",
+    settingsKey: "welcome",
   });
   const [bgTimestamp, setBgTimestamp] = useState(0);
   if (loading) return <SectionLoading/>;
@@ -71,7 +71,7 @@ function ImageEditor({value,onChange}:{value:WelcomeImageConfig;onChange:(value:
     </EditorGroup>
     <EditorGroup title="Положение и размер аватара">
       <div className="coordinate-grid">
-        {/* Пропорции аватара сохраняются: высота считается из ширины. */}
+        {}
         <EditorNumber label="Размер" field="avatarWidth" value={value} min={low} max={high} onChange={setAvatarSize}/>
         <EditorNumber label="Слева (px)" field="avatarX" value={value} min={0} max={900} onChange={onChange}/>
         <EditorNumber label="Сверху (px)" field="avatarY" value={value} min={0} max={480} onChange={onChange}/>

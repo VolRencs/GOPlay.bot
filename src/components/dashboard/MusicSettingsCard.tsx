@@ -23,7 +23,7 @@ export function MusicSettingsCard() {
     loadError: "Не удалось загрузить настройки музыки.",
     saveError: "Не удалось сохранить настройки музыки.",
     savedMessage: "Настройки музыки сохранены.",
-    registerKey: "music",
+    settingsKey: "music",
   });
   if (loading) return <SectionLoading/>;
   const channels = resources?.channels ?? [];

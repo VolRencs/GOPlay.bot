@@ -4,7 +4,6 @@ import { useTempDb } from "./helpers.ts";
 
 useTempDb("goplay-pure-");
 
-// Тесты ядра плеера (pickAudioUrl и т.д.) живут в player.test.ts.
 const { isMissingDiscordResource } = await import("../src/lib/errors.ts");
 const { isSnowflake } = await import("../src/lib/ids.ts");
 const { parseActions } = await import("../src/lib/json.ts");
@@ -12,23 +11,19 @@ const { automodDefaultActions } = await import("../src/lib/automod.ts");
 const { extractFilenames, embedUploadPrefix } = await import("../src/lib/uploads.ts");
 const { clampNumber } = await import("../src/lib/constants.ts");
 
-// --- isMissingDiscordResource: единый предикат «ресурс удалён» --------------
 
 test("isMissingDiscordResource различает коды и источники", () => {
   assert.equal(isMissingDiscordResource({ code: 10008 }), true);
   assert.equal(isMissingDiscordResource({ rawError: { code: 10003 } }), true);
   assert.equal(isMissingDiscordResource({ status: 404 }), true);
-  // Транзиентные ошибки — не «удалён».
   assert.equal(isMissingDiscordResource({ code: 50013 }), false);
   assert.equal(isMissingDiscordResource({ status: 502 }), false);
   assert.equal(isMissingDiscordResource(new Error("network")), false);
   assert.equal(isMissingDiscordResource(null), false);
-  // kind-ограничения: канал не должен детачиться от кода сообщения.
   assert.equal(isMissingDiscordResource({ code: 10008 }, "channel"), false);
   assert.equal(isMissingDiscordResource({ code: 10003 }, "channel"), true);
 });
 
-// --- isSnowflake / parseActions / extractFilenames ---------------------------
 test("isSnowflake держит границы длины", () => {
   for (const bad of ["", "1234567890123", "123456789012345678901234", "12abc", ".."]) assert.equal(isSnowflake(bad), false, bad);
   assert.equal(isSnowflake("123456789012345"), true);

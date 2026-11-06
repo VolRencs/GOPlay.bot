@@ -1,21 +1,21 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { eventStatusMeta } from "#lib/labels.ts";
 import { userRef } from "#lib/format.ts";
 import type { EventButtonStyle, EventStatus, RecurrenceFrequency } from "#lib/events.ts";
 import type { EventListDto, EventListItemDto } from "#contracts/events.ts";
 import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, EmbedFields, EmbedMediaFields, formatTime, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useObjectUrl, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { CardHeader, channelOptions, ColorRow, confirmAction, EmojiPicker, EmbedFields, EmbedMediaFields, EmbedUsage, formatTime, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiMutate, apiSend } from "./api.ts";
-import { useApiResource, usePanelAction } from "./hooks.ts";
+import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 
 const EVENT_TONE: Record<string, string> = { scheduled: "pill-info", live: "pill-ok", completed: "pill-accent", cancelled: "pill-err" };
-type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: EventStatus; eventRoleId: string; reminders: string; recurrenceFreq: RecurrenceFrequency; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; thumbnailFile: File | null; imageFile: File | null; fields: EmbedField[]; joinLabel: string; joinEmoji: string; joinStyle: EventButtonStyle; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: EventButtonStyle; leaveEnabled: boolean };
+type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: EventStatus; eventRoleId: string; reminders: string; recurrenceFreq: RecurrenceFrequency; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; fields: EmbedField[]; joinLabel: string; joinEmoji: string; joinStyle: EventButtonStyle; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: EventButtonStyle; leaveEnabled: boolean };
 const toLocalInput = (ts: number) => new Date(ts - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-const defaultEventDraft = (): EventDraft => ({ channelId: "", scheduledAt: toLocalInput(Date.now() + 3_600_000), maxParticipants: 0, registrationEnabled: true, waitlistEnabled: true, status: "scheduled", eventRoleId: "", reminders: "", recurrenceFreq: "none", recurrenceInterval: 7, title: "", description: "", color: DEFAULT_ACCENT, footer: "", timestamp: true, thumbnail: "", image: "", thumbnailFile: null, imageFile: null, fields: [], joinLabel: "Участвовать", joinEmoji: "✅", joinStyle: "primary", joinEnabled: true, leaveLabel: "Отказаться", leaveEmoji: "❌", leaveStyle: "danger", leaveEnabled: true });
+const defaultEventDraft = (): EventDraft => ({ channelId: "", scheduledAt: toLocalInput(Date.now() + 3_600_000), maxParticipants: 0, registrationEnabled: true, waitlistEnabled: true, status: "scheduled", eventRoleId: "", reminders: "", recurrenceFreq: "none", recurrenceInterval: 7, title: "", description: "", color: DEFAULT_ACCENT, footer: "", timestamp: true, thumbnail: "", image: "", fields: [], joinLabel: "Участвовать", joinEmoji: "✅", joinStyle: "primary", joinEnabled: true, leaveLabel: "Отказаться", leaveEmoji: "❌", leaveStyle: "danger", leaveEnabled: true });
 
 function ButtonEditor({ title, label, emoji, style, enabled, emojis, onChange }: { title: string; label: string; emoji: string; style: string; enabled: boolean; emojis: ServerEmoji[]; onChange: (change: { label?: string; emoji?: string; style?: string; enabled?: boolean }) => void }) {
   return (
@@ -53,10 +53,8 @@ export function EventsPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventDraft>(defaultEventDraft);
   const { busy, run } = usePanelAction({ onDone, onError });
-  const imageInput = useRef<HTMLInputElement>(null);
-  const thumbnailInput = useRef<HTMLInputElement>(null);
-  const thumbnailPreview = useObjectUrl(draft.thumbnailFile) || draft.thumbnail;
-  const imagePreview = useObjectUrl(draft.imageFile) || draft.image;
+  const image = useMediaField(draft.image);
+  const thumbnail = useMediaField(draft.thumbnail);
 
   const draftKey = `goplay-draft-event-${guildId}`;
   useSessionDraft(draftKey, Boolean(guildId), [editingId, draft], () => ({ editingId, ...draft }));
@@ -82,7 +80,6 @@ export function EventsPanel() {
       timestamp: asBoolean(saved.timestamp, false),
       thumbnail: asString(saved.thumbnail),
       image: asString(saved.image),
-      thumbnailFile: null, imageFile: null,
       fields: asFields(saved.fields),
       joinLabel: asString(saved.joinLabel, d.joinLabel),
       joinEmoji: asString(saved.joinEmoji, d.joinEmoji),
@@ -104,22 +101,20 @@ export function EventsPanel() {
       registrationEnabled: e.registrationEnabled, waitlistEnabled: e.waitlistEnabled, status: e.status, eventRoleId: e.eventRoleId ?? "",
       reminders: e.reminders.join(", "), recurrenceFreq: e.recurrence.freq, recurrenceInterval: e.recurrence.interval,
       title: e.embed.title ?? "", description: e.embed.description ?? "", color: colorNumberToHex(e.embed.color), footer: e.embed.footer?.text ?? "", timestamp: Boolean(e.embed.timestamp),
-      thumbnail: e.embed.thumbnail?.url ?? "", image: e.embed.image?.url ?? "", thumbnailFile: null, imageFile: null,
+      thumbnail: e.embed.thumbnail?.url ?? "", image: e.embed.image?.url ?? "",
       fields: (e.embed.fields ?? []).map(f => ({ name: f.name, value: f.value, inline: Boolean(f.inline) })),
       joinLabel: join?.label ?? "Участвовать", joinEmoji: join?.emoji ?? "✅", joinStyle: join?.style ?? "primary", joinEnabled: join?.enabled ?? true,
       leaveLabel: leave?.label ?? "Отказаться", leaveEmoji: leave?.emoji ?? "❌", leaveStyle: leave?.style ?? "danger", leaveEnabled: leave?.enabled ?? true,
     });
     setEditingId(e.id);
-    if (imageInput.current) imageInput.current.value = "";
-    if (thumbnailInput.current) thumbnailInput.current.value = "";
+    image.clear(); thumbnail.clear();
   }
 
   const reset = () => {
     setEditingId(null);
     setDraft(defaultEventDraft());
-    if (imageInput.current) imageInput.current.value = "";
-    if (thumbnailInput.current) thumbnailInput.current.value = "";
-    try { sessionStorage.removeItem(draftKey); } catch { /* unavailable */ }
+    image.clear(); thumbnail.clear();
+    try { sessionStorage.removeItem(draftKey); } catch {  }
   };
 
   async function save(statusOverride?: EventStatus) {
@@ -139,8 +134,8 @@ export function EventsPanel() {
     };
     const form = new FormData();
     form.set("data", JSON.stringify(payload));
-    if (draft.thumbnailFile) form.set("thumbnailFile", draft.thumbnailFile);
-    if (draft.imageFile) form.set("imageFile", draft.imageFile);
+    if (thumbnail.file) form.set("thumbnailFile", thumbnail.file);
+    if (image.file) form.set("imageFile", image.file);
     await run(
       () => apiSend<{ warning?: string; id?: string }>(`/api/guilds/${guildId}/events`, { method: "POST", body: form }, "Не удалось сохранить событие."),
       data => {
@@ -175,8 +170,8 @@ export function EventsPanel() {
   }
 
   const set = (change: Partial<EventDraft>) => setDraft(d => ({ ...d, ...change }));
-  const clearImage = () => { set({ image: "", imageFile: null }); if (imageInput.current) imageInput.current.value = ""; };
-  const clearThumbnail = () => { set({ thumbnail: "", thumbnailFile: null }); if (thumbnailInput.current) thumbnailInput.current.value = ""; };
+  const clearImage = () => { set({ image: "" }); image.clear(); };
+  const clearThumbnail = () => { set({ thumbnail: "" }); thumbnail.clear(); };
   const setButton = (base: "join" | "leave") => (change: { label?: string; emoji?: string; style?: string; enabled?: boolean }) => {
     const keyed = Object.fromEntries(Object.entries(change).map(([k, v]) => [`${base}${k.charAt(0).toUpperCase()}${k.slice(1)}`, v])) as Partial<EventDraft>;
     set(keyed);
@@ -243,9 +238,10 @@ export function EventsPanel() {
             <label className="check-row"><input type="checkbox" checked={draft.timestamp} onChange={e => set({ timestamp: e.target.checked })}/> Показывать дату события в сообщении (Discord @time)</label>
             <EmbedFields value={draft} onChange={patch => set(patch)} titlePlaceholder="Заголовок события" descriptionPlaceholder="Описание: markdown, эмодзи, несколько абзацев"/>
             <EmbedMediaFields
-              image={{ file: draft.imageFile, preview: imagePreview, saved: Boolean(draft.image), inputRef: imageInput, onPick: file => set({ imageFile: file }), onClear: clearImage }}
-              thumbnail={{ file: draft.thumbnailFile, preview: thumbnailPreview, saved: Boolean(draft.thumbnail), inputRef: thumbnailInput, onPick: file => set({ thumbnailFile: file }), onClear: clearThumbnail }}
+              image={{ file: image.file, preview: image.preview, saved: Boolean(draft.image), inputRef: image.inputRef, onPick: image.setFile, onClear: clearImage }}
+              thumbnail={{ file: thumbnail.file, preview: thumbnail.preview, saved: Boolean(draft.thumbnail), inputRef: thumbnail.inputRef, onPick: thumbnail.setFile, onClear: clearThumbnail }}
             />
+            <EmbedUsage label="Контент без служебных полей" content={{ title: draft.title, description: draft.description, footer: { text: draft.footer }, fields: draft.fields }}/>
           </div>
           <div className="event-buttons-grid">
             <ButtonEditor title="Кнопка «Участвовать»" label={draft.joinLabel} emoji={draft.joinEmoji} style={draft.joinStyle} enabled={draft.joinEnabled} emojis={emojis} onChange={setButton("join")}/>

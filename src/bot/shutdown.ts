@@ -14,8 +14,6 @@ export async function shutdown(client: Client) {
   try { flushLevels(); } catch (error) { logger.warn("[LEVELS] Не удалось слить XP при остановке", error); }
   try { flushMessageCache(); } catch (error) { logger.warn("[CACHE] Не удалось слить буфер при остановке", error); }
   logger.info("Остановка бота...");
-  // Логи дренируются перед выходом: очередь журнала иначе теряла бы самые
-  // важные записи (модерация, удаления, входы).
   try { await flushLogs(); } catch (error) { logger.warn("[LOG] Не удалось слить логи при остановке", error); }
   destroyAllSessions();
   client.destroy();

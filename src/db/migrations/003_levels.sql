@@ -1,6 +1,3 @@
--- Система уровней: настройки гильдии, накопленный XP участников и роли-награды.
--- XP копится инкрементом (бот буферизует его в памяти), а level хранится как
--- производная от xp для быстрых топов и выдачи ролей.
 CREATE TABLE IF NOT EXISTS level_settings (
   guild_id                 TEXT PRIMARY KEY REFERENCES guilds(id) ON DELETE CASCADE,
   enabled                  INTEGER NOT NULL DEFAULT 0,
@@ -28,7 +25,6 @@ CREATE TABLE IF NOT EXISTS member_levels (
   PRIMARY KEY (guild_id, user_id)
 );
 
--- Топ и место в рейтинге: COUNT(*) с xp>? без индекса сканировал бы гильдию.
 CREATE INDEX IF NOT EXISTS idx_member_levels_rank ON member_levels(guild_id, xp DESC);
 
 CREATE TABLE IF NOT EXISTS level_rewards (

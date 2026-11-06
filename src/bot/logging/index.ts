@@ -15,8 +15,6 @@ import { channelRef, userRef } from "../../lib/format.ts";
 let client: Client | null = null;
 export function initLogging(c: Client) { client = c; }
 
-// Настройки логирования кэшируются на пару секунд: горячие пути (удаления,
-// диффы ролей) не блокируются на SQLite; правки панели применяются за TTL.
 const SETTINGS_TTL = 5_000;
 const settingsCache = ttlCacheSync<string, { channelId: string | null; categories: Record<string, boolean> }>((guildId) => {
   count("db.settings_load");
@@ -24,25 +22,19 @@ const settingsCache = ttlCacheSync<string, { channelId: string | null; categorie
     const setting = stmt.loggingSettings.get(guildId);
     return { channelId: setting?.channel_id ?? null, categories: safeJson<Record<string, boolean>>(setting?.categories_json, {}) };
   } catch (error) {
-    // Сбой SQLite не должен ронять logAction из обработчиков без собственного catch.
     logger.warn("[LOG] Не удалось прочитать настройки логирования", guildId, error);
     return { channelId: null, categories: {} };
   }
 }, SETTINGS_TTL);
 
-// Очередь на канал + один отправитель: burst событий не упирается в rate
-// limit и не теряет логи — фейлы ретраятся и только потом репортятся.
 const queues = new Map<string, EmbedBuilder[]>();
 const draining = new Set<string>();
 const MAX_ATTEMPTS = 3;
-// Отрицательный результат кэшируется ТОЛЬКО для «канал действительно не
-// существует» (404/10003). Транзиентные ошибки (сеть, rate limit) не кэшируются,
-// иначе drain за 60 секунд израсходует попытки и логи будут потеряны.
 const NEGATIVE_CACHE_TTL = 60_000;
 const channelCache = ttlCacheAsync<string, SendableChannels | null>((channelId) => {
   if (!client) return Promise.resolve(null);
   return client.channels.fetch(channelId).then(channel => channel && "isTextBased" in channel && channel.isTextBased() ? (channel as SendableChannels) : null).catch((error) => {
-    if (isMissingDiscordResource(error, "channel")) return null; // канал удалён — кэшируем
+    if (isMissingDiscordResource(error, "channel")) return null;
     logger.warn("[LOG] Канал недоступен (транзиентная ошибка, не кэшируем)", channelId, error);
     throw error;
   });
@@ -64,7 +56,7 @@ function enqueueLog(channelId: string, embed: EmbedBuilder) {
   void drainChannel(channelId);
 }
 
-// Лимит Discord на embeds в одном сообщении.
+// Batch up to 10 embeds per request to stay under channel rate limits.
 const EMBEDS_PER_MESSAGE = 10;
 
 async function drainChannel(channelId: string) {
@@ -73,8 +65,6 @@ async function drainChannel(channelId: string) {
   let requeued = false;
   try {
     while (true) {
-      // Батч до 10 embeds на POST: массовые удаления/пурджи дают ×10 меньше
-      // REST-вызовов и не упираются в rate limit самого канала логов.
       const queue = queues.get(channelId) ?? [];
       const batch = queue.splice(0, EMBEDS_PER_MESSAGE);
       if (!batch.length) break;
@@ -84,7 +74,6 @@ async function drainChannel(channelId: string) {
       while (true) {
         const channel = await resolveChannel(channelId);
         if (!channel) {
-          // Канала нет (удалён/недоступен) — повтор не поможет, пакет отброшен.
           permanent = true;
           logger.error("[LOG] Канал логов недоступен, пакет отброшен.", channelId, batch.length);
           break;
@@ -104,8 +93,6 @@ async function drainChannel(channelId: string) {
         }
       }
       if (!sent && !permanent) {
-        // Транзиентная ошибка: возвращаем батч в очередь и ждём следующего
-        // события/остановки — логи не теряются молча.
         const list = queues.get(channelId) ?? [];
         list.unshift(...batch);
         queues.set(channelId, list);
@@ -120,7 +107,6 @@ async function drainChannel(channelId: string) {
   else if (!queues.get(channelId)?.length) queues.delete(channelId);
 }
 
-/** Дождаться отправки накопленных логов (остановка бота). */
 export async function flushLogs(timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (const channelId of queues.keys()) void drainChannel(channelId);
@@ -132,12 +118,8 @@ export async function flushLogs(timeoutMs = 5_000): Promise<void> {
   logger.warn("[LOG] Часть логов не успела отправиться при остановке");
 }
 
-// Действия бота логируются сразу с известным исполнителем и помечаются, чтобы
-// соответствующее gateway-событие не дублировало запись.
 const botActions = new Map<string, number>();
 const BOT_ACTION_TTL = 15_000;
-// Пометки, не подтверждённые gateway-событием (действие отменено/упало),
-// удаляются только при isBotAction — без sweep map росла бы навсегда.
 setInterval(() => {
   const now = Date.now();
   for (const [key, at] of botActions) if (now - at > BOT_ACTION_TTL) botActions.delete(key);
@@ -151,11 +133,6 @@ export function isBotAction(guildId: string, type: string, targetId: string) {
   return Date.now() - at <= BOT_ACTION_TTL;
 }
 
-// Audit-lookups — REST-вызовы из общего лимита аудита Discord. Один фоновый
-// воркер дренирует глобальную FIFO в фиксированном темпе: всплески (массовые
-// удаления, смены ролей) не бьют по API — лишние приходят без исполнителя,
-// событие всё равно логируется. Kick/ban чувствительны ко времени (записи
-// выбывают из окна матчинга) и идут вне очереди.
 type AuditRequest = { guildId: string; type: number; targetId: string; priority: boolean; resolve: (entry: GuildAuditLogsEntry<number> | undefined) => void };
 const auditQueue: AuditRequest[] = [];
 let auditWorker: Promise<void> | null = null;
@@ -163,16 +140,13 @@ let auditFailures = 0;
 const AUDIT_INTERVAL = 300;
 const AUDIT_QUEUE_LIMIT = 250;
 
+// Discord audit log is eventually consistent; retry lookups instead of losing the actor.
 function auditLookup(guildId: string, type: number, targetId: string, priority: boolean) {
   return new Promise<GuildAuditLogsEntry<number> | undefined>(resolve => {
     const request = { guildId, type, targetId, priority, resolve };
     if (priority) auditQueue.unshift(request);
     else auditQueue.push(request);
-    // При экстремальном всплеске роняем самый старый НЕприоритетный запрос:
-    // priority-запросы (kick/ban/timeout) никогда не выкидывают себя сами.
     if (auditQueue.length > AUDIT_QUEUE_LIMIT) {
-      // Роняем самый старый неприоритетный; при всплеске одних приоритетных —
-      // самый старый вообще, чтобы очередь не росла без границы.
       const dropAt = auditQueue.findIndex(entry => !entry.priority);
       const [dropped] = auditQueue.splice(dropAt === -1 ? 0 : dropAt, 1);
       dropped!.resolve(undefined);
@@ -201,10 +175,6 @@ async function drainAuditQueue() {
 
 type AuditFindOptions = { priority?: boolean; retries?: number; retryDelay?: number };
 
-// Audit log Discord распространяется с задержкой: lookup сразу после события
-// может ничего не найти. Ретраим несколько раз вместо молчаливой потери
-// исполнителя (для кика — всей записи). Массовым событиям уходит retries: 0:
-// первых lookups хватает на исполнителя, остальные пишутся без него.
 export async function auditFind(guild: Guild, type: number, targetId: string, opts: AuditFindOptions = {}): Promise<GuildAuditLogsEntry<number> | undefined> {
   const { priority = false, retries = 1, retryDelay = 1_500 } = opts;
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -237,14 +207,11 @@ const logColors: Record<string, number> = {
 function buildEmbed(guildId: string, settings: { channelId: string | null; categories: Record<string, boolean> }, input: Omit<LogActionInput, "guildId">): EmbedBuilder | null {
   const { type, targetId, moderatorId, details } = input;
   if (!settings.channelId) return null;
-  // Тип, отсутствующий в сохранённой конфиге (новое событие), считается
-  // включённым; явный false уважается.
   const allowed = settings.categories[type] ?? true;
   if (!allowed) return null;
   const lang = guildLang(guildId);
   const t = trFor(logTr, lang);
   const channelEvent = type.startsWith("channel_") || type === "message_purge";
-  // «все» — сентинел для /clearwarn all: это не ID, а признак «вся гильдия».
   const subject = targetId === "все" ? t("targetAllSubject") : targetId === t("unknownExecutor") ? targetId : channelEvent ? `${channelRef(targetId)} (ID: ${targetId})` : `${userRef(targetId)} (ID: ${targetId})`;
   const color = logColors[type] ?? BRAND_COLOR;
   const embed = new EmbedBuilder()

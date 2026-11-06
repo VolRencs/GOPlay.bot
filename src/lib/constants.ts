@@ -1,6 +1,5 @@
 export const DAY_MS = 86_400_000;
 
-/** Лимиты компонентов Discord, общие для панели, бота и роутов. */
 export const SELECT_OPTION_LIMIT = 25;
 export const REACTION_OPTION_LIMIT = 20;
 export const MAX_TIMEOUT_SECONDS = 2_419_200;
@@ -13,13 +12,10 @@ export const SERVER_FALLBACK_NAME = "Discord server";
 
 export const discordInviteUrl = () => `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID ?? ""}&scope=bot%20applications.commands&permissions=8`;
 
-// Discord component-button style identifiers, shared by the bot's builders
-// (значения совпадают с enum discord.js) и payload'ам панели.
 export const BUTTON_STYLE_IDS = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;
 export type ButtonStyleName = keyof typeof BUTTON_STYLE_IDS;
 export const buttonStyleId = (name: ButtonStyleName): number => BUTTON_STYLE_IDS[name];
 
-/** Парсит число в диапазон: нечисло → fallback; mode — округление/целочисленность. */
 export function clampNumber(value: unknown, fallback: number, min: number, max: number, mode: "exact" | "round" | "integer" = "exact"): number {
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return fallback;

@@ -14,13 +14,11 @@ const pruneStmt = db.prepare(
 );
 
 export function recordDashboardChange(guildId: string, actor: AuditActor, section: string, summary: string) {
-  // Аудит не должен превращать успешное сохранение в 500: запись best-effort.
   try {
     insertStmt.run(guildId, actor.id.slice(0, 100), actor.name.slice(0, 100), section.slice(0, 50), summary.slice(0, 500), Date.now());
-    // Retention — на записи, а не на чтении: GET аудита остаётся чистым SELECT без гонок.
     try {
       pruneStmt.run(guildId, guildId, RETENTION);
-    } catch { /* prune — best-effort, запись уже сохранена */ }
+    } catch {  }
   } catch (error) {
     logger.warn("[AUDIT] Не удалось записать изменение", guildId, section, error);
   }
@@ -34,10 +32,6 @@ function short(value: unknown): string {
   return text.length > 80 ? `${text.slice(0, 77)}…` : text;
 }
 
-/** Дельта двух «отображаемых» объектов (ключи — подписи полей): возвращает
- *  только отличающиеся поля `Подпись: было → стало`, массивы — добавлено/убрано.
- *  `opaque` задаёт текст для полей, значения которых показывать не нужно
- *  (сравнение всё равно идёт по значению). Пустая строка — изменений нет. */
 export function describeChanges(before: Record<string, unknown>, after: Record<string, unknown>, opaque: Record<string, string> = {}): string {
   const parts: string[] = [];
   for (const [label, value] of Object.entries(after)) {
@@ -61,7 +55,6 @@ export function describeChanges(before: Record<string, unknown>, after: Record<s
   return summary.length > 480 ? `${summary.slice(0, 479)}…` : summary;
 }
 
-/** Запись дельты в журнал; пустая дельта записи не создаёт. */
 export function recordDashboardDiff(
   guildId: string, actor: AuditActor, section: string, prefix: string,
   before: Record<string, unknown>, after: Record<string, unknown>, opaque?: Record<string, string>,

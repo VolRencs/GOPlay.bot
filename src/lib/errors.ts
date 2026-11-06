@@ -1,32 +1,22 @@
 import { logger } from "./logger.ts";
 import { MessageFlags, type Interaction, type RepliableInteraction } from "discord.js";
 
-/** Fire-and-forget вызов async-функции, трогающей SQLite/сеть, из gateway-
- *  обработчика: sync-throw или rejection логируются с контекстом вместо того,
- *  чтобы стать uncaughtException/unhandledRejection. Для «выстрелил и забыл»
- *  путей, у которых нет собственной обёртки try/catch. */
 export function guard(scope: string, fn: () => unknown): void {
   void Promise.try(fn).catch((error: unknown) => logger.error(`[${scope}]`, error));
 }
 
 type RestLike = { code?: unknown; status?: unknown; rawError?: { code?: unknown } };
 
-/** Best-effort ответ пользователю из catch-блока обработчика интеракции.
- *  Отложенная интеракция без ответа висит как «думает…» вечно — поэтому
- *  deferred отвечаем через editReply, иначе ephemeral-ответом. */
 function replyInteractionError(i: RepliableInteraction, content: string): void {
   if (i.replied) return;
   void (i.deferred ? i.editReply(content) : i.reply({ content, flags: MessageFlags.Ephemeral })).catch(() => null);
 }
 
-/** Единый catch обработчика интеракции: лог с контекстом и best-effort ответ. */
 export function failInteraction(message: string, i: Interaction, error: unknown, content: string, ...context: unknown[]): void {
   logger.warn(message, ...context, error);
   if (i.isRepliable()) replyInteractionError(i, content);
 }
 
-/** «Ресурс реально удалён»: сообщение (10008), канал (10003) или HTTP 404.
- *  Понимает и DiscordAPIError, и сырые REST-ошибки (код в rawError). */
 export function isMissingDiscordResource(error: unknown, kind: "message" | "channel" | "any" = "any"): boolean {
   if (!error || typeof error !== "object") return false;
   const e = error as RestLike;

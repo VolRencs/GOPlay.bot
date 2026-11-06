@@ -1,9 +1,10 @@
-import { langQueries } from "../../db/queries.ts";
+import { read } from "../../db/typed.ts";
 import { ttlCacheSync } from "../cache.ts";
 import type { Bi, Locale } from "./core.ts";
 
+const guildLangStmt = read<{ lang: string }>("SELECT lang FROM guilds WHERE id=?");
 const langCache = ttlCacheSync<string, Locale>((guildId) => {
-  const row = langQueries.get.get(guildId);
+  const row = guildLangStmt.get(guildId);
   return row?.lang === "en" ? "en" : "ru";
 }, 10_000);
 
@@ -15,8 +16,6 @@ export function invalidateGuildLang(guildId: string): void {
   langCache.delete(guildId);
 }
 
-/** Общие строки всех словарей интерфейса: один источник текста для
- *  genericError/notGuild/noReason вместо копий в каждом файле. */
 const commonMessages = {
   genericError: { ru: "❌ Произошла ошибка. Попробуйте ещё раз.", en: "❌ An error occurred. Please try again." },
   notGuild: { ru: "❌ Команда доступна только на сервере.", en: "❌ This command is only available in a server." },
@@ -35,16 +34,12 @@ export function makeTr<M extends Record<string, Bi>>(messages: M): (lang: Locale
   };
 }
 
-/** Тип готового переводчика на guildId (см. guildTr). */
 type Tr<K extends string> = (key: K, vars?: Record<string, string | number>) => string;
 
-/** Перевод на фиксированный язык: заменяет локальные `(k, v) => trX(lang, k, v)`. */
 export function trFor<K extends string>(tr: (lang: Locale, key: K, vars?: Record<string, string | number>) => string, lang: Locale): Tr<K> {
   return (key, vars) => tr(lang, key, vars);
 }
 
-// Готовый переводчик на guildId: заменяет копии `(k, v) => trX(guildLang(id), k, v)`
-// в обработчиках бота. guildLang кэширован (10 c), так что вызов дешёвый.
 export function guildTr<K extends string>(tr: (lang: Locale, key: K, vars?: Record<string, string | number>) => string, guildId: string): Tr<K> {
   return trFor(tr, guildLang(guildId));
 }

@@ -9,6 +9,7 @@ const projectRoot = join(moduleDir, "../..");
 const configuredPath = process.env.DATABASE_PATH ?? "data/bot.sqlite";
 const path = isAbsolute(configuredPath) ? configuredPath : join(projectRoot, configuredPath);
 mkdirSync(dirname(path), { recursive: true });
+// WAL lets dashboard reads run while the bot writes.
 export const db = new DatabaseSync(path, { timeout: 5000 });
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA cache_size = -8192;");
 db.exec("CREATE TABLE IF NOT EXISTS _migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)");
@@ -30,10 +31,6 @@ for (const name of readdirSync(migrations).filter((file) => /^\d+_.+\.sql$/.test
     }
   }
 }
-// Таблица автороли создаётся в 001_init.sql, но базы, обновившиеся с
-// промежуточной версии (массив ролей в role_ids_json), её не имеют.
-// Синхронизация идемпотентна: недостающая таблица создаётся, старая колонка
-// заменяется новой, сохранённая роль переносится.
 function syncAutoroleSchema() {
   db.exec(`CREATE TABLE IF NOT EXISTS autorole_settings (
     guild_id TEXT PRIMARY KEY REFERENCES guilds(id) ON DELETE CASCADE,
@@ -52,10 +49,9 @@ syncAutoroleSchema();
 
 export function closeDatabase() { db.close(); }
 
+// Nested calls use savepoints; top-level BEGIN IMMEDIATE avoids lock-upgrade deadlocks.
 export function withTransaction<T>(fn: () => T): T {
   if (txDepth > 0) {
-    // Уникальное имя на каждый уровень вложенности: одноимённые savepoint
-    // работают лишь на LIFO-семантике SQLite и хрупки к изменениям.
     txDepth++;
     const savepoint = `sp_${txDepth}`;
     try {
@@ -64,13 +60,13 @@ export function withTransaction<T>(fn: () => T): T {
       db.exec(`RELEASE ${savepoint}`);
       return result;
     } catch (error) {
-      try { db.exec(`ROLLBACK TO ${savepoint}`); db.exec(`RELEASE ${savepoint}`); } catch { /* already aborted */ }
+      try { db.exec(`ROLLBACK TO ${savepoint}`); db.exec(`RELEASE ${savepoint}`); } catch {  }
       throw error;
     } finally { txDepth--; }
   }
   db.exec("BEGIN IMMEDIATE");
   txDepth++;
   try { const result = fn(); db.exec("COMMIT"); return result; }
-  catch (error) { try { db.exec("ROLLBACK"); } catch { /* the transaction was already aborted */ } throw error; }
+  catch (error) { try { db.exec("ROLLBACK"); } catch {  } throw error; }
   finally { txDepth--; }
 }

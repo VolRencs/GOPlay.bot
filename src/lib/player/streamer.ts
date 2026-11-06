@@ -6,7 +6,6 @@ import { count, time } from "../perf.ts";
 import { FFMPEG, YT_DLP, isAllowedMediaUrl, ytDlpArgs } from "./resolver.ts";
 import type { StreamOutcome, Track } from "./types.ts";
 
-/** Прямой URL принимается только от доверенных хостов (googlevideo CDN). */
 function isAllowedStreamUrl(url: string): boolean {
   try {
     const host = new URL(url).hostname.toLowerCase();
@@ -14,7 +13,7 @@ function isAllowedStreamUrl(url: string): boolean {
   } catch { return false; }
 }
 
-export const ACTIVE_STREAM_LIMIT = 8; // глобальный потолок процессов ffmpeg+yt-dlp
+export const ACTIVE_STREAM_LIMIT = 8;
 let activeStreams = 0;
 export const activeStreamCount = (): number => activeStreams;
 
@@ -22,13 +21,9 @@ const STALL_MS = 30_000;
 
 export type StreamHandle = {
   outcome: Promise<StreamOutcome>;
-  /** SIGKILL пары процессов; исход будет external, если ещё не завершён.
-   *  Вызывать ДО остановки плеера — тогда разборка не выглядит аварией. */
   cancel: () => void;
 };
 
-/** Аргументы ffmpeg. Резюм: прямой URL — быстрый входной -ss (HTTP Range);
- *  для трубы seek делает сам yt-dlp (--download-sections), тут offset не нужен. */
 export function ffmpegArgs(mediaUrl: string | null, offsetSec: number): string[] {
   const input = mediaUrl
     ? [
@@ -49,7 +44,6 @@ export function ffmpegArgs(mediaUrl: string | null, offsetSec: number): string[]
   ];
 }
 
-/** Аргументы yt-dlp; с позиции — серверный Range-seek (--download-sections). */
 export function ytdlpArgsFor(offsetSec: number, query: string): string[] {
   return ytDlpArgs(
     ...(offsetSec > 0 ? ["--download-sections", `*${Math.floor(offsetSec)}-inf`] : []),
@@ -64,7 +58,6 @@ export function startAudioStream(opts: { track: Track; player: AudioPlayer; offs
   const { promise, resolve: resolveOutcome } = Promise.withResolvers<StreamOutcome>();
   const settle = (value: StreamOutcome) => { if (!settled) { settled = true; resolveOutcome(value); } };
 
-  // Прямой URL живёт ограниченное время: протух или не выдался — через yt-dlp.
   const viaExtractor = !(track.mediaUrl && track.mediaUrlExpiresAt && Date.now() < track.mediaUrlExpiresAt && isAllowedStreamUrl(track.mediaUrl));
   count(viaExtractor ? "music.stream_extractor" : "music.stream_direct");
   let ytdlpErrTail = "";
@@ -83,14 +76,13 @@ export function startAudioStream(opts: { track: Track; player: AudioPlayer; offs
     finished = true;
     activeStreams--;
     clearInterval(stallTimer);
-    try { ytdlp?.kill("SIGKILL"); } catch { /* уже вышел */ }
-    try { ffmpeg.kill("SIGKILL"); } catch { /* уже вышел */ }
+    try { ytdlp?.kill("SIGKILL"); } catch {  }
+    try { ffmpeg.kill("SIGKILL"); } catch {  }
   };
 
   let gotFirstPacket = false;
   let lastOutputAt = performance.now();
   const spawnAt = performance.now();
-  // Пассивный слушатель поверх потребления ресурсом: только метки времени.
   ffmpeg.stdout!.on("data", () => { lastOutputAt = performance.now(); });
   const stallTimer = setInterval(() => {
     if (!gotFirstPacket) {
@@ -98,7 +90,6 @@ export function startAudioStream(opts: { track: Track; player: AudioPlayer; offs
       return;
     }
     const status = player.state.status;
-    // Пауза и межтрековый зазор — осознанное отсутствие потока, не стиль.
     if (status === AudioPlayerStatus.Paused || status === AudioPlayerStatus.Idle) { lastOutputAt = performance.now(); return; }
     if (performance.now() - lastOutputAt >= STALL_MS) { settle({ kind: "stall", phase: "middle" }); finish(); }
   }, 5_000);
@@ -110,31 +101,27 @@ export function startAudioStream(opts: { track: Track; player: AudioPlayer; offs
   });
 
   if (ytdlp) {
-    // pipeline вместо pipe: EPIPE при смерти одной стороны не крашит процесс.
-    void pipeline(ytdlp.stdout!, ffmpeg.stdin!).catch(() => { /* разборка в close */ });
-    // Спавн-фейл (нет бинаря, права) иначе падал бы необработанной ошибкой.
+    void pipeline(ytdlp.stdout!, ffmpeg.stdin!).catch(() => {  });
     ytdlp.once("error", error => { logger.warn("[MUSIC] yt-dlp не удалось запустить", String(error).slice(0, 200)); settle({ kind: "source-error", detail: "yt-dlp spawn failed" }); finish(); });
     ytdlp.once("close", code => {
-      // Ненулевой код скачивания — мёртвый источник; EOF дождётся close ffmpeg.
       if (!finished && !cancelled && code !== 0 && code !== null)
         settle({ kind: "source-error", detail: (ytdlpErrTail.trim() || `код ${code}`).slice(-300) });
     });
   }
   ffmpeg.once("error", () => { settle({ kind: "source-error", detail: "ffmpeg spawn failed" }); finish(); });
   ffmpeg.once("close", code => {
-    if (cancelled) return finish(); // external уже выставлен cancel()
+    if (cancelled) return finish();
     if (code !== null && code !== 0) {
       logger.warn("[MUSIC] ffmpeg завершился аварийно", (ffmpegErrTail || ytdlpErrTail).trim(), `код ${code}`);
       settle({ kind: "source-error", detail: (ffmpegErrTail.trim() || `код ${code}`).slice(-300) });
     } else {
-      settle({ kind: "eof" }); // наигранную позицию знает сессия (playbackDuration)
+      settle({ kind: "eof" });
     }
     finish();
   });
   try {
     player.play(createAudioResource(ffmpeg.stdout!, { inputType: StreamType.OggOpus }));
   } catch (error) {
-    // Отсутствие libopus и подобные сбои не вылетают наружу.
     settle({ kind: "source-error", detail: String(error).slice(0, 200) });
     finish();
   }

@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server.js";
-import { botTokenError, discordFetch, guildMemberNames, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { botTokenError, discordFetch, guildMemberNamesFor, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { channelRef, roleRef, userRef } from "#lib/format.ts";
@@ -31,7 +31,6 @@ async function cleanupUnusedEventImages(guildId: string) {
 type SendResult = { id: string } | { status: number };
 async function sendOrEdit(channelId: string, messageId: string | null, embed: EventEmbedPayload, buttons: RenderedEventButton[], eventId: string, files: readonly StoredAsset<EventImageTarget>[]): Promise<SendResult> {
   const components = buttons.length ? [{ type: 1, components: buttons.map(b => ({ type: 2, style: buttonStyleId(b.style), label: buttonLabel(b), custom_id: `event:${b.key}:${eventId}`, disabled: Boolean(b.disabled) })) }] : [];
-  // Панель публикует от имени бота: упоминания в заголовке/описании не должны пинговать никого.
   const bodyData = { embeds: [embed], components, allowed_mentions: { parse: [] } };
   let body: BodyInit = JSON.stringify(bodyData);
   let headers: Record<string, string> = { "content-type": "application/json" };
@@ -67,8 +66,10 @@ async function syncDiscord(current: EventRow, channelId: string, embed: EventEmb
 }
 
 export const GET = guildRoute(async (_, { guildId }) => {
-  const names = await guildMemberNames(guildId).catch(() => new Map<string, string>());
-  return NextResponse.json<EventListDto>({ events: listEvents(guildId).map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
+  const events = listEvents(guildId);
+  const ids = [...new Set(events.flatMap(view => view.participants.map(p => p.userId)))];
+  const names = await guildMemberNamesFor(guildId, ids).catch(() => new Map<string, string>());
+  return NextResponse.json<EventListDto>({ events: events.map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
 });
 
 export const POST = guildRoute(async (request, { guildId, user }) => {
@@ -98,7 +99,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   let originals: { target: EventImageTarget; url: string }[];
   try {
     assets = await collectNewUploads<EventImageTarget>(form, [{ formKey: "thumbnailFile", target: "thumbnail" }, { formKey: "imageFile", target: "image" }], setAsset);
-    // Переотправка сохранённых локальных картинок — правка их не ломает.
     const stored = await reattachStoredAssets<EventImageTarget>({
       targets: ["thumbnail", "image"],
       urlOf: fieldUrl,
@@ -129,15 +129,12 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     saved = current;
     messageId = sync.messageId;
   } else {
-    // Сообщение шлётся после создания строки: custom_id кнопок содержит реальный
-    // id события; неудачная отправка откатывает событие целиком.
     saved = insertEvent(guildId, { ...input, id: crypto.randomUUID(), messageId: null });
     const sent = await sendOrEdit(input.channelId, null, rendered, buttons, saved.id, assets);
     if (!("id" in sent)) { deleteEvent(guildId, saved.id); return jsonError("Не удалось отправить сообщение в выбранный канал.", 502); }
     messageId = sent.id;
   }
   await persistAssets();
-  // Параллельное удаление другим модератором → 409 вместо TypeError по пустой строке.
   const updated = updateEvent(guildId, saved.id, { ...input, messageId });
   if (!updated) return jsonError("Событие было удалено во время сохранения.", 409);
   saved = updated;

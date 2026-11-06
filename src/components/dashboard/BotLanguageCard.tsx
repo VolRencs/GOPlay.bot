@@ -13,7 +13,7 @@ export function BotLanguageCard() {
     loadError: "Не удалось загрузить язык бота.",
     saveError: "Не удалось сохранить язык бота.",
     savedMessage: "Язык сообщений бота сохранён.",
-    registerKey: "lang",
+    settingsKey: "lang",
   });
   if (loading) return <SectionLoading/>;
   return (

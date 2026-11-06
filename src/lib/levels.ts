@@ -1,8 +1,3 @@
-// Система уровней (/lvl, /top): чистые типы, дефолты и формула, безопасные для
-// клиентского бандла (панель импортирует их напрямую). Доступ к БД — в
-// levels-store.ts, чтобы node:sqlite не попадал в браузер.
-// Уровень — производная от XP: need(1) = base_xp,
-// need(n+1) = need(n) × (1 + growth_percent/100), порог накапливается.
 
 export const notifyModes = ["off", "dm", "channel"] as const;
 export type NotifyMode = (typeof notifyModes)[number];
@@ -49,8 +44,6 @@ export const levelDefaults: LevelSettings = {
   notify_channel_id: null,
 };
 
-// Пороговые таблицы не зависят от пользователя и переиспользуются между
-// сообщениями/флешами: линейный проход на каждый flush был лишней работой.
 const THRESHOLD_CACHE_MAX = 64;
 const thresholdCache = new Map<string, readonly number[]>();
 
@@ -72,13 +65,11 @@ function thresholds(baseXp: number, growthPercent: number): readonly number[] {
   return values;
 }
 
-/** Суммарный XP, необходимый для достижения уровня (0 → 0). */
 export function xpForLevel(level: number, baseXp: number, growthPercent: number): number {
   const values = thresholds(baseXp, growthPercent);
   return values[Math.min(MAX_LEVEL, Math.max(0, Math.floor(level)))] ?? 0;
 }
 
-/** Бинарный поиск уровня по накопленному XP. */
 function levelFromThresholds(xp: number, values: readonly number[]): number {
   if (xp <= 0) return 0;
   let low = 0;
