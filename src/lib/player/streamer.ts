@@ -93,7 +93,7 @@ export function startAudioStream(opts: { track: Track; player: AudioPlayer; offs
     if (status === AudioPlayerStatus.Paused || status === AudioPlayerStatus.Idle) { lastOutputAt = performance.now(); return; }
     if (performance.now() - lastOutputAt >= STALL_MS) { settle({ kind: "stall", phase: "middle" }); finish(); }
   }, 5_000);
-  stallTimer.unref?.();
+  stallTimer.unref();
   ffmpeg.stdout!.once("data", () => {
     if (gotFirstPacket) return;
     gotFirstPacket = true;

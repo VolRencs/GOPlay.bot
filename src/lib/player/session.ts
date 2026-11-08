@@ -281,12 +281,12 @@ function launch(s: Session, track: Track, offsetSec: number): void {
       if (s.skipFlag) { s.skipFlag = false; advance(s, track, false); return; }
       if (s.player.state.status === AudioPlayerStatus.Playing) return;
       if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
-        setTimeout(retry, 1_000).unref?.();
+        setTimeout(retry, 1_000).unref();
         return;
       }
       launch(s, track, offsetSec);
     };
-    setTimeout(retry, 1_000).unref?.();
+    setTimeout(retry, 1_000).unref();
     return;
   }
   s.handle?.cancel();
