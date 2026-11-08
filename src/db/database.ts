@@ -31,22 +31,6 @@ for (const name of readdirSync(migrations).filter((file) => /^\d+_.+\.sql$/.test
     }
   }
 }
-function syncAutoroleSchema() {
-  db.exec(`CREATE TABLE IF NOT EXISTS autorole_settings (
-    guild_id TEXT PRIMARY KEY REFERENCES guilds(id) ON DELETE CASCADE,
-    enabled INTEGER NOT NULL DEFAULT 0,
-    role_id TEXT,
-    updated_at INTEGER NOT NULL
-  )`);
-  const columns = db.prepare("PRAGMA table_info(autorole_settings)").all().map(row => row.name).filter((name): name is string => typeof name === "string");
-  if (columns.includes("role_id") || !columns.includes("role_ids_json")) return;
-  withTransaction(() => {
-    db.exec("ALTER TABLE autorole_settings ADD COLUMN role_id TEXT");
-    db.exec("UPDATE autorole_settings SET role_id = json_extract(role_ids_json, '$[0]')");
-  });
-}
-syncAutoroleSchema();
-
 export function closeDatabase() { db.close(); }
 
 // Nested calls use savepoints; top-level BEGIN IMMEDIATE avoids lock-upgrade deadlocks.

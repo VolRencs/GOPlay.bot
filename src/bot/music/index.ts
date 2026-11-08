@@ -99,7 +99,7 @@ export function registerMusic(client: Client): void {
 }
 
 function rememberPanel(guildId: string, channelId: string, messageId: string): void {
-  try { stmt.musicSessionUpsert.run({ guild_id: guildId, channel_id: channelId, message_id: messageId, updated_at: Date.now() }); }
+  try { stmt.musicSessionUpsert.run({ guild_id: guildId, channel_id: channelId, message_id: messageId }); }
   catch (error) { logger.warn("[MUSIC] Не удалось сохранить панель для очистки после рестарта", guildId, error); }
 }
 

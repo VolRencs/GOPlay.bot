@@ -61,5 +61,5 @@ export const TAB_GROUPS: readonly { label: string; keys: readonly TabKey[] }[] =
 ];
 
 export function isTabKey(value: string): value is TabKey {
-  return value in TAB_DEFS;
+  return Object.hasOwn(TAB_DEFS, value);
 }

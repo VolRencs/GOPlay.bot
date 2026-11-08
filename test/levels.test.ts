@@ -33,7 +33,7 @@ test("levelProgress отдаёт прогресс внутри уровня и �
 });
 
 test("настройки читаются с дефолтами, клампами и нормализацией режима", () => {
-  db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES('g1','G',NULL,?)").run(Date.now());
+  db.prepare("INSERT INTO guilds(id,name) VALUES('g1','G')").run();
   assert.deepEqual(levelSettingsFor("g1"), { ...levelDefaults, ignored_channel_ids: [], ignored_role_ids: [] });
   stmt.levelSettingsUpsert.run({
     guild_id: "g1", enabled: 1, xp_per_message: 20, message_cooldown_seconds: 30,
@@ -46,7 +46,7 @@ test("настройки читаются с дефолтами, клампам�
   assert.equal(saved.xp_per_message, 20);
   assert.equal(saved.notify_mode, "dm");
   assert.deepEqual(saved.ignored_channel_ids, ["123456789012345"]);
-  db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES('g2','G',NULL,?)").run(Date.now());
+  db.prepare("INSERT INTO guilds(id,name) VALUES('g2','G')").run();
   stmt.levelSettingsUpsert.run({
     guild_id: "g2", enabled: 1, xp_per_message: 5000, message_cooldown_seconds: 30,
     min_message_length: 0, xp_per_voice_minute: 0, base_xp: 0, growth_percent: 0,
@@ -72,7 +72,7 @@ test("XP инкрементится, место в топе и лидербор�
 });
 
 test("уровень хранится как максимум: рост порогов не понижает его", () => {
-  db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES('g3','G',NULL,?)").run(Date.now());
+  db.prepare("INSERT INTO guilds(id,name) VALUES('g3','G')").run();
   stmt.levelUpsert.run({ guild_id: "g3", user_id: "u1", xp: 500, level: 5, messages: 0, voice_seconds: 0, updated_at: Date.now() });
   stmt.levelUpsert.run({ guild_id: "g3", user_id: "u1", xp: 10, level: 2, messages: 1, voice_seconds: 0, updated_at: Date.now() });
   const row = stmt.levelRow.get("g3", "u1")!;
@@ -86,7 +86,7 @@ test("XP удалённой гильдии выбрасывается из бу�
   const emitter = new EventEmitter();
   registerLevels(emitter as never);
   const guildId = "g9";
-  db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES(?,?,NULL,?)").run(guildId, "G", Date.now());
+  db.prepare("INSERT INTO guilds(id,name) VALUES(?,?)").run(guildId, "G");
   stmt.levelSettingsUpsert.run({
     guild_id: guildId, enabled: 1, xp_per_message: 10, message_cooldown_seconds: 60,
     min_message_length: 0, xp_per_voice_minute: 5, base_xp: 100, growth_percent: 15,
@@ -102,7 +102,7 @@ test("XP удалённой гильдии выбрасывается из бу�
   });
   db.prepare("DELETE FROM guilds WHERE id=?").run(guildId);
   flushLevels();
-  db.prepare("INSERT INTO guilds(id,name,icon,updated_at) VALUES(?,?,NULL,?)").run(guildId, "G", Date.now());
+  db.prepare("INSERT INTO guilds(id,name) VALUES(?,?)").run(guildId, "G");
   flushLevels();
   assert.equal(stmt.levelRow.get(guildId, "u1"), undefined);
 });

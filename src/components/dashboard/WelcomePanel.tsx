@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { WelcomeImageConfig } from "#lib/welcome.ts";
 import { welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
 import { WelcomePreview } from "./WelcomePreview.tsx";
-import { CardHeader, SectionLoading, channelOptions, NumberField, SaveButton, Select } from "./ui.tsx";
+import { CardHeader, SectionError, SectionLoading, channelOptions, NumberField, SaveButton, Select } from "./ui.tsx";
 import { apiSend } from "./api.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
@@ -15,7 +15,7 @@ const welcomeVariables: [string, string][] = [["{user}", "упоминание"]
 
 export function WelcomeSettings() {
   const { guildId, resources, notify, fail } = useDashboard();
-  const { value, setValue, patch, loading, saving, saveNow } = useSettingsTab<WelcomeDto, WelcomeDto>({
+  const { value, setValue, patch, loading, loadError, reload, saving, saveNow } = useSettingsTab<WelcomeDto, WelcomeDto>({
     initial: { ...welcomeDefaults },
     fromGet: data => ({ ...welcomeDefaults, ...data }),
     toBody: value => value,
@@ -27,15 +27,16 @@ export function WelcomeSettings() {
   });
   const [bgTimestamp, setBgTimestamp] = useState(0);
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   const channels = resources?.channels ?? [];
   async function upload(file: File) {
     const body = new FormData();
     body.set("background", file);
-    const sent = await apiSend<{ backgroundPath: string }>(`/api/guilds/${guildId}/welcome`, { method: "POST", body }, "Не удалось загрузить фон.");
+    const sent = await apiSend<{ backgroundPath: string; imageEnabled?: boolean }>(`/api/guilds/${guildId}/welcome`, { method: "POST", body }, "Не удалось загрузить фон.");
     if (sent.ok) {
-      patch(current => ({ ...current, backgroundPath: sent.data.backgroundPath }));
+      patch(current => ({ ...current, backgroundPath: sent.data.backgroundPath, imageEnabled: true }));
       setBgTimestamp(Date.now());
-      notify("Фон загружен.");
+      notify("Фон загружен и включён.");
     } else fail(sent.error);
   }
   return <div className="welcome-layout"><div className="event-settings"><MemberEvent title="Приветствие новых участников" event="welcome" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/><MemberEvent title="Прощание с участником" event="goodbye" channels={channels} value={value} onChange={setValue} onUpload={upload} bgTimestamp={bgTimestamp}/></div><aside className="card variables-card floating-preview"><h2>Переменные</h2><div className="variables-list">{welcomeVariables.map(([token,help])=><span key={token}><code>{token}</code> {help}</span>)}</div><SaveButton saving={saving} onClick={saveNow}/></aside></div>;
@@ -71,7 +72,6 @@ function ImageEditor({value,onChange}:{value:WelcomeImageConfig;onChange:(value:
     </EditorGroup>
     <EditorGroup title="Положение и размер аватара">
       <div className="coordinate-grid">
-        {}
         <EditorNumber label="Размер" field="avatarWidth" value={value} min={low} max={high} onChange={setAvatarSize}/>
         <EditorNumber label="Слева (px)" field="avatarX" value={value} min={0} max={900} onChange={onChange}/>
         <EditorNumber label="Сверху (px)" field="avatarY" value={value} min={0} max={480} onChange={onChange}/>

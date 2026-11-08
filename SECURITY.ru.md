@@ -24,12 +24,12 @@
   из `src/lib/guild-access.ts`, настройки — через `settingsPutRoute` из
   `src/lib/settings-route.ts`): доступ только у управляющих сервером, админка —
   только `ADMIN_DISCORD_IDS`.
-- Загрузки embeds/events изолированы по `guildId`; фоны приветствия намеренно
-  публичны. Имена файлов санитизируются (`src/lib/uploads.ts`), лимит тела запроса
-  + `client_max_body_size 8m` в nginx.
+- Загрузки изолированы по `guildId`; фоны приветствия доступны только тем,
+  кто управляет этим сервером. Имена файлов санитизируются (`src/lib/uploads.ts`),
+  есть лимиты тела запроса на маршрутах + `client_max_body_size 8m` в nginx.
 - Музыкальный резолвер ограничен allowlist YouTube-доменов.
-- При удалении бота с сервера данные зачищаются
-  (`wipeGuildData` + `deleteGuildFiles`).
+- При удалении бота с сервера данные сохраняются; стереть их можно явно
+  через `/admin` (`wipeGuildData` + `deleteGuildFiles`).
 
 ## Гигиена секретов
 

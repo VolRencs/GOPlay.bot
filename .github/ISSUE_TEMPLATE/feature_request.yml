@@ -35,5 +35,5 @@ body:
         - Music
         - Automod
         - i18n (RU/EN)
-        - DB / migrations
+        - DB / schema
         - Documentation

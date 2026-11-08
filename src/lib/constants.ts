@@ -17,6 +17,7 @@ export type ButtonStyleName = keyof typeof BUTTON_STYLE_IDS;
 export const buttonStyleId = (name: ButtonStyleName): number => BUTTON_STYLE_IDS[name];
 
 export function clampNumber(value: unknown, fallback: number, min: number, max: number, mode: "exact" | "round" | "integer" = "exact"): number {
+  if (value === null || value === undefined || value === "") return fallback;
   const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   if (mode === "integer" && !Number.isInteger(parsed)) return fallback;

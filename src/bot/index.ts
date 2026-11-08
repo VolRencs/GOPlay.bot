@@ -22,8 +22,6 @@ import { sendMemberEvent } from "./welcome.ts";
 import { registerLevels } from "./levels/index.ts";
 import { stopAndLeave } from "../lib/player/index.ts";
 import { startHeartbeat } from "./heartbeat.ts";
-import { wipeGuildData } from "../lib/server-cleanup.ts";
-import { deleteGuildFiles } from "../lib/uploads.ts";
 import { onboardGuild } from "./onboarding.ts";
 import { registerLoggingEvents } from "./logging/events.ts";
 import { registerInteractions } from "./interactions.ts";
@@ -79,7 +77,7 @@ on(client, Events.GuildMemberAdd, "MEMBER_JOIN", member => {
 on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
   count("events.message_create");
   if (!message.guild || message.author.bot) return;
-  rememberMessage(message.id, message.guild.id, message.channel.id, message.content);
+  rememberMessage(message.id, message.guild.id, message.content);
   addMessage(message.guild.id, message.channel.id, message.author.id);
   const cache = cachedRules(message.guild.id);
   if (!cache.protectedChannelId && cache.rules.length === 0) return;
@@ -125,12 +123,7 @@ registerEvents(client);
 on(client, Events.GuildDelete, "GUILD_DELETE", guild => {
   stopAndLeave(guild.id);
   purgeConfigCaches(guild.id);
-  let wiped = false;
-  try { wipeGuildData(guild.id); wiped = true; }
-  catch (error) { logger.error("[GUILD] Не удалось стереть данные сервера", guild.id, error); }
-  guard("GUILD_FILES", () => deleteGuildFiles(guild.id));
-  if (wiped) logger.info("[GUILD] Бот удалён с сервера, данные стёрты:", guild.id);
-  else logger.warn("[GUILD] Бот удалён с сервера, данные остались в базе:", guild.id);
+  logger.info("[GUILD] Бот удалён с сервера, данные сохранены:", guild.id);
 });
 
 process.on("SIGINT", () => { void shutdown(client); });

@@ -12,6 +12,13 @@ export function SectionLoading() {
   return <p className="loading" role="status">Загружаем раздел…</p>;
 }
 
+export function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return <div className="card settings-card" role="alert">
+    <p className="error-note">⚠ {message}</p>
+    <button type="button" className="btn secondary" onClick={onRetry}>Повторить</button>
+  </div>;
+}
+
 export function channelOptions(channels: Channel[], emptyLabel: string) {
   return [{ value: "", label: emptyLabel }, ...channels.map(c => ({ value: c.id, label: `# ${c.name}` }))];
 }
@@ -205,7 +212,7 @@ export function NumberField({ label, hint, value, min, max, onChange }: { label:
     <label>
       {label}
       {hint && <span className="muted"> {hint}</span>}
-      <input type="number" min={min} {...(max !== undefined ? { max } : {})} value={value} onChange={e => onChange(Number(e.target.value))}/>
+      <input type="number" min={min} {...(max !== undefined ? { max } : {})} value={value} onChange={e => onChange(Number.isFinite(e.currentTarget.valueAsNumber) ? e.currentTarget.valueAsNumber : min)}/>
     </label>
   );
 }

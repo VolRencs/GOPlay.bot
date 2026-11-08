@@ -11,7 +11,7 @@ export function useTempDb(prefix: string): string {
 
 export async function seedGuilds(ids: string[]): Promise<void> {
   const { db } = await import("../src/db/database.ts");
-  for (const id of ids) db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)").run(id, id, null, Date.now());
+  for (const id of ids) db.prepare("INSERT OR IGNORE INTO guilds(id,name) VALUES(?,?)").run(id, id);
 }
 
 export async function withToken<T>(token: string, run: () => Promise<T>): Promise<T> {

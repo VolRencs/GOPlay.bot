@@ -14,15 +14,22 @@ function uptime(ms: number) {
 export function AdminPanel() {
   const [data, setData] = useState<AdminDataDto | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [leaveTarget, setLeaveTarget] = useState<AdminGuildDto | null>(null);
   const [notice, setNotice] = useState("");
   const { busy, run } = useAsyncAction();
 
   function refresh() {
     setError("");
+    setLoading(true);
     void apiGet<AdminDataDto | null>("/api/admin", null).then(result => {
-      if (!result) return setError("Не удалось загрузить данные.");
+      if (!result) {
+        setError("Не удалось загрузить данные.");
+        setLoading(false);
+        return;
+      }
       setData(result);
+      setLoading(false);
     });
   }
   useEffect(() => { refresh(); }, []);
@@ -47,12 +54,12 @@ export function AdminPanel() {
   };
 
   return <>
-    {error && <p className="error-note" role="alert">⚠ {error}</p>}
+    {error && <p className="error-note" role="alert">⚠ {error} <button type="button" className="btn secondary small" onClick={refresh}>Повторить</button></p>}
     {notice && <p className="loading" role="status">✓ {notice}</p>}
     <section className="panel-stack">
-      {data === null ? (
+      {loading ? (
         <p className="loading" role="status">Загружаем данные бота…</p>
-      ) : (
+      ) : data === null ? null : (
         <>
           <article className="card settings-card">
             <CardHeader title={<>Статус бота <span className={`pill ${data.online ? "pill-ok" : "pill-err"}`}>{data.online ? "онлайн" : "оффлайн"}</span></>}
@@ -67,7 +74,7 @@ export function AdminPanel() {
           <TemplateLibrary
             title="Серверы"
             note={data.guilds.length ? String(data.guilds.length) : undefined}
-            description="Все серверы, где есть бот. Выход из сервера необратимо удаляет его настройки только после вашего выбора."
+            description="Все серверы, где есть бот. Выход из сервера сохраняет настройки; стереть их можно отдельной кнопкой."
             empty="Бот пока не добавлен ни на один сервер."
           >
             {data.guilds.length > 0 ? (

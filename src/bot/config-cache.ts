@@ -2,8 +2,9 @@ import { stmt } from "../db/statements.ts";
 import { logger } from "../lib/logger.ts";
 import { safeJson, parseStringArray } from "../lib/json.ts";
 import { ttlCacheSync } from "../lib/cache.ts";
-import { guildLang } from "../lib/i18n/bot.ts";
+import { guildLang, invalidateGuildLang } from "../lib/i18n/bot.ts";
 import { invalidateAutoroleSettings } from "../lib/autorole.ts";
+import { invalidateMusicSettings } from "../lib/music-settings.ts";
 import type { Rule } from "./automod/detectors.ts";
 
 export type CachedRule = {
@@ -79,9 +80,9 @@ function refreshLoop() {
 export function cachedRules(guildId: string): CachedRules {
   activeGuilds.set(guildId, Date.now());
   ensureTimer();
-  const snapshot = snapshots.get(guildId) ?? refreshGuild(guildId) ?? { rules: [], ignoredRoles: [], protectedChannelId: null, lang: "ru" as const };
-  snapshots.set(guildId, snapshot);
-  return snapshot;
+  return snapshots.get(guildId)
+    ?? refreshGuild(guildId)
+    ?? { rules: [], ignoredRoles: [], protectedChannelId: null, lang: "ru" as const };
 }
 
 const PANEL_TTL = 10_000;
@@ -105,4 +106,6 @@ export function purgeConfigCaches(guildId: string) {
   activeGuilds.delete(guildId);
   reactionPanelCache.delete(guildId);
   invalidateAutoroleSettings(guildId);
+  invalidateGuildLang(guildId);
+  invalidateMusicSettings(guildId);
 }

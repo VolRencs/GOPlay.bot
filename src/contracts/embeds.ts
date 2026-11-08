@@ -20,31 +20,19 @@ export type DiscordEmbed = Omit<EmbedContent, "footer" | "author" | "image" | "t
 export const EMBED_LIMITS = { title: 256, description: 4096, fields: 25, fieldName: 256, fieldValue: 1024, footer: 2048, authorName: 256, url: 2048, total: 6000 } as const;
 
 function text(value: unknown): string | undefined {
-  if (typeof value === "string") return value.trim() || undefined;
-  if (value && typeof value === "object") {
-    const entry = value as Record<string, unknown>;
-    if (typeof entry.text === "string") return entry.text.trim() || undefined;
-    if (typeof entry.url === "string") return entry.url.trim() || undefined;
-  }
-  return undefined;
+  return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
 function mediaUrl(value: unknown): string | undefined {
-  if (typeof value === "string") return value.trim() || undefined;
-  if (value && typeof value === "object") {
-    const entry = value as Record<string, unknown>;
-    if (typeof entry.url === "string") return entry.url.trim() || undefined;
-  }
-  return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.url === "string" ? entry.url.trim() || undefined : undefined;
 }
 
 function footerText(value: unknown): string | undefined {
-  if (typeof value === "string") return value.trim() || undefined;
-  if (value && typeof value === "object") {
-    const entry = value as Record<string, unknown>;
-    if (typeof entry.text === "string") return entry.text.trim() || undefined;
-  }
-  return undefined;
+  if (!value || typeof value !== "object") return undefined;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.text === "string" ? entry.text.trim() || undefined : undefined;
 }
 
 function cleanEmbedFields(value: unknown): { fields: EmbedField[]; halfFilled: boolean } {
@@ -128,8 +116,7 @@ export function toDiscordEmbed(content: EmbedContent): DiscordEmbed {
 }
 
 export function parseEmbedJson(raw: string | null | undefined): EmbedContent {
-  const parsed = safeJson<unknown>(raw, {});
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as EmbedContent : {};
+  return normalizeEmbedContent(safeJson<unknown>(raw, {})).content;
 }
 
 export type EmbedDto = {

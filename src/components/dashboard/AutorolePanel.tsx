@@ -1,13 +1,13 @@
 "use client";
 
-import { CardHeader, SaveButton, SectionLoading, Select } from "./ui.tsx";
+import { CardHeader, SaveButton, SectionError, SectionLoading, Select } from "./ui.tsx";
 import type { AutoroleDto } from "#contracts/roles.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
 export function AutoroleSettings() {
   const { resources } = useDashboard();
-  const { value, setValue, loading, saving, saveNow } = useSettingsTab<AutoroleDto, AutoroleDto>({
+  const { value, setValue, loading, loadError, reload, saving, saveNow } = useSettingsTab<AutoroleDto, AutoroleDto>({
     initial: { enabled: false, roleId: null },
     fromGet: data => data,
     toBody: value => value,
@@ -18,6 +18,7 @@ export function AutoroleSettings() {
     settingsKey: "autorole",
   });
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   const roles = resources?.roles ?? [];
   return (
     <section className="card settings-card">

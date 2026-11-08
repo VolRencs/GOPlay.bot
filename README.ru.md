@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord-бот и веб-панель управления сервером в одном репозитории, но в двух
-процессах под общим supervisor (Next.js + бот), с одной SQLite-базой. Стек
+процессах (Next.js + бот) с одной SQLite-базой. Стек
 (версии в `package.json`, зафиксированы в `pnpm-lock.yaml`): Node **≥ 26**,
 pnpm **12.18.0**, Next.js **16.4.5**, React **19.3.1**, TypeScript **7.0.2**,
 нативное снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
@@ -73,7 +73,7 @@ cp .env.example .env
 # - Bot → Reset Token → включите intents Server Members и Message Content
 # - OAuth2 → Redirects → http://localhost:3000/api/auth/callback/discord
 
-# 5. Запуск (бот + веб через supervisor, лог — data/logs/bot.log)
+# 5. Запуск (бот + веб вместе, лог — data/logs/bot.log)
 pnpm dev
 # открыть http://localhost:3000
 ```
@@ -113,7 +113,7 @@ pnpm test    # node --test test/*.test.ts
 | `pnpm dev` | `migrate:auth` + `next dev` и бот (`src/bot/index.ts`) через `scripts/run-both.ts`, лог в `data/logs/bot.log` |
 | `pnpm build` | `next build` |
 | `pnpm start` | `migrate:auth` + `next start` и бот через `scripts/run-both.ts`, лог в `data/logs/bot.log` |
-| `pnpm migrate:auth` | Миграции таблиц better-auth в той же SQLite |
+| `pnpm migrate:auth` | Синхронизация таблиц better-auth в той же SQLite |
 | `pnpm logs:rotate` | Переносит `data/logs/bot.log` в `.1` при превышении 5 МБ |
 | `pnpm test` | `node --test test/*.test.ts` |
 | `pnpm check` | `next typegen` + `tsc --noEmit` |
@@ -128,16 +128,16 @@ src/bot/              Точка входа бота (index.ts) + модули:
                       commands, moderation, automod, appeals, logging, tempchannels, music
                       (panel/command/shared), events, levels, welcome, self-roles,
                       onboarding, interactions, config-cache, metrics, heartbeat, shutdown
-src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
+src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/001_init.sql
 src/lib/              Общая логика: auth, guild-access, settings-route/views, automod, welcome,
                       colors/format, appeals, levels, events, uploads,
                       player/* (yt-dlp/ffmpeg стек), i18n
 src/components/       React: user-menu + dashboard/* (панели вкладок)
-scripts/              migrate-auth.ts, run-both.ts (супервизор бота и веба)
+scripts/              migrate-auth.ts, run-both.ts (запуск бота и веба)
 deploy/               nginx-ip-https.conf (пример reverse-proxy)
 test/                 *.test.ts (node --test)
 data/                 SQLite, логи, загрузки (не в git, кроме .gitkeep)
-public/               bot-logo.avif, fonts/, uploads/ (фоны приветствий, не в git)
+public/               bot-logo.avif, fonts/
 ```
 
 ## Продакшн

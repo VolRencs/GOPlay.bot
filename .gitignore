@@ -11,7 +11,6 @@ cookies.txt
 .DS_Store
 data/*
 !data/.gitkeep
-public/uploads/*
 *.tsbuildinfo
 TODO.md
 .directory

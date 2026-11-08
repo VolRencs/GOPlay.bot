@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { embedCharacterCount, EMBED_LIMITS, fitEmbed, normalizeEmbedContent, toDiscordEmbed } from "../src/contracts/embeds.ts";
 
-test("normalizeEmbedContent accepts legacy string media and drops empty values", () => {
+test("normalizeEmbedContent normalizes object media and drops empty values", () => {
   const { content, halfFilled } = normalizeEmbedContent({
     title: "  Заголовок  ",
     description: "",
-    footer: "  Футер  ",
-    thumbnail: " https://example.com/t.png ",
+    footer: { text: "  Футер  " },
+    thumbnail: { url: " https://example.com/t.png " },
     image: { url: " https://example.com/i.png " },
     author: { name: " Автор ", url: " https://example.com", iconUrl: " https://example.com/a.png " },
     color: 123,

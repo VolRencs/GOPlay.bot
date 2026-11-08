@@ -10,7 +10,7 @@
 - `pnpm i --frozen-lockfile` — установка.
 - `cp .env.example .env` — заполнить `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).
-- `pnpm dev` — запуск (бот + веб под supervisor, `http://localhost:3000`).
+- `pnpm dev` — запуск (бот + веб вместе, `http://localhost:3000`).
 - `pnpm check` (`next typegen && tsc --noEmit`) и `pnpm test` (`node --test test/*.test.ts`) —
   обязательны перед каждым PR. CI выполняет то же самое плюс `pnpm build`.
 
@@ -21,7 +21,7 @@
 - PR: что сделано, зачем, как проверено (`check`/`test` вывод). Шаблон подставится
   автоматически (`.github/PULL_REQUEST_TEMPLATE.md`).
 - Не коммитьте: `.env`, `cookies.txt`, `*.pem`/`*.key`, `data/*.sqlite*`,
-  `data/logs/`, `public/uploads/`, `.next/`, `*.tsbuildinfo`.
+  `data/logs/`, `data/uploads/`, `.next/`, `*.tsbuildinfo`.
 
 ## Где что менять
 
@@ -29,8 +29,10 @@
   `description_localizations` для EN).
 - Тексты бота RU/EN: `src/lib/i18n/` (`core.ts`, `bot.ts`, `bot/*.ts`).
   Новую строку добавляйте сразу в оба языка.
-- Миграции БД: новый файл `src/db/migrations/NNN_name.sql`
-  (применяется автоматически через `src/db/database.ts`, таблица `_migrations`).
+- Схема БД: единственный базовый файл `src/db/migrations/001_init.sql`
+  (применяется один раз через `src/db/database.ts`, отметка в таблице `_migrations`).
+  Новые файлы миграций не добавляйте: правьте базу для свежих БД и вручную
+  применяйте изменения к существующим.
   Таблицы better-auth трогать нельзя — ими управляет `scripts/migrate-auth.ts`.
 - API дашборда: `app/api/guilds/[guildId]/*/route.ts`. Любая новая точка обязана
   идти через публичные обёртки из `src/lib/guild-access.ts` (`guildRoute`/`adminRoute`)
@@ -50,4 +52,4 @@
 ## Релизы и прод
 
 - `pnpm build && pnpm start`; пример nginx — `deploy/nginx-ip-https.conf`.
-- Бекап перед миграциями: скопировать `data/bot.sqlite`.
+- Бекап перед изменениями схемы: скопировать `data/bot.sqlite`.

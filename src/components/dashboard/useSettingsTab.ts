@@ -23,6 +23,8 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
   const { guildId, notify, fail } = useDashboard();
   const draft = useConfigDraft(options.initial);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadGeneration, setLoadGeneration] = useState(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const draftRef = useRef(draft);
@@ -35,17 +37,20 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
     let active = true;
     const controller = new AbortController();
     setLoading(true);
+    setLoadError(null);
     void apiSend<TGet>(endpoint, { signal: controller.signal }, options.loadError).then(result => {
       if (!active) return;
       if (result.ok) draftRef.current.commit(optionsRef.current.fromGet(result.data));
       else {
-        draftRef.current.commit(optionsRef.current.initial);
+        setLoadError(result.error);
         fail(result.error);
       }
       setLoading(false);
     });
     return () => { active = false; controller.abort(); };
-  }, [endpoint, options.loadError, fail]);
+  }, [endpoint, options.loadError, fail, loadGeneration]);
+
+  const reload = useCallback(() => setLoadGeneration(value => value + 1), []);
 
   const save = useCallback(async (report = true): Promise<boolean> => {
     const current = draftRef.current;
@@ -66,5 +71,5 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
 
   useRegisterChanges(options.settingsKey, { dirty: draft.dirty, save, discard: () => draftRef.current.reset() });
 
-  return { ...draft, loading, save, saving, saveNow };
+  return { ...draft, loading, loadError, reload, save, saving, saveNow };
 }

@@ -87,8 +87,11 @@ async function deleteBurst(guild: Guild, burst: { id: string; channelId: string 
   for (const [channelId, entries] of Map.groupBy(burst, entry => entry.channelId)) {
     const channel = guild.channels.cache.get(channelId);
     if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement && !channel.isThread())) continue;
-    const removed = await channel.bulkDelete(entries.map(entry => entry.id), true).catch(() => null);
-    deleted += removed?.size ?? 0;
+    const ids = entries.map(entry => entry.id);
+    for (let i = 0; i < ids.length; i += 100) {
+      const removed = await channel.bulkDelete(ids.slice(i, i + 100), true).catch(() => null);
+      deleted += removed?.size ?? 0;
+    }
   }
   return deleted;
 }

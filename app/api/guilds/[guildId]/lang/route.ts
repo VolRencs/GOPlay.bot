@@ -17,7 +17,7 @@ export const PUT = settingsPutRoute<string>({
   },
   view: langView,
   save: (guildId, lang) => {
-    if (langQueries.update.run(lang, Date.now(), guildId, lang).changes > 0) invalidateGuildLang(guildId);
+    if (langQueries.update.run(lang, guildId, lang).changes > 0) invalidateGuildLang(guildId);
   },
   section: AUDIT_SECTION.settings,
   prefix: "Язык сообщений бота: ",

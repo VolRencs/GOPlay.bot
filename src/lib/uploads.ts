@@ -5,7 +5,7 @@ export const embedUploadsDir = (guildId: string) => join(process.cwd(), "data", 
 export const embedUploadPrefix = (guildId: string) => `/uploads/embeds/${guildId}/`;
 export const eventUploadsDir = (guildId: string) => join(process.cwd(), "data", "uploads", "events", guildId);
 export const eventUploadPrefix = (guildId: string) => `/uploads/events/${guildId}/`;
-export const welcomeUploadsDir = () => join(process.cwd(), "public", "uploads", "welcome");
+export const welcomeUploadsDir = () => join(process.cwd(), "data", "uploads", "welcome");
 export const WELCOME_UPLOAD_PREFIX = "/uploads/welcome/";
 
 export const UPLOAD_CONTENT_TYPES: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" };

@@ -35,7 +35,7 @@ export function discordAccountOf(userId: string) {
 class DiscordAuthError extends Error {}
 
 function guildsRequest(accessToken: string): Promise<Response> {
-  return fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" });
+  return fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) });
 }
 
 async function requestGuilds(accessToken: string, retry = true): Promise<DiscordGuild[]> {
@@ -70,15 +70,7 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
   const entry: GuildCache = existing ?? { expiresAt: 0, staleUntil: 0, pending: undefined };
   const load = async () => {
     try {
-      let guilds: DiscordGuild[];
-      try { guilds = await requestGuilds(token.accessToken); }
-      catch (error) {
-        // Old accounts may have no token expiry; refresh once on 401.
-        if (!Error.isError(error) || !error.message.includes("(401)")) throw error;
-        const refreshed = await auth.api.refreshToken({ body: { accountId: accountId ?? await discordAccountId(requestHeaders) }, headers: requestHeaders });
-        if (!refreshed.accessToken) throw new Error("Discord refresh did not return an access token");
-        guilds = await requestGuilds(refreshed.accessToken);
-      }
+      const guilds = await requestGuilds(token.accessToken);
       entry.guilds = guilds; entry.expiresAt = Date.now() + 60_000; entry.staleUntil = Date.now() + 10 * 60_000;
       delete entry.lastError; delete entry.errorExpiresAt;
       return guilds;
@@ -163,7 +155,7 @@ function accessError(error: unknown) {
   return { ok: false as const, error: "Не удалось проверить доступ Discord. Обновите страницу; если ошибка повторится, войдите через Discord снова.", status: 403 };
 }
 
-async function authorize(guildId: string) {
+export async function authorize(guildId: string) {
   const gate = await requireUser();
   if (!gate.ok) return gate;
   let remote: DiscordGuild[];
@@ -229,7 +221,7 @@ const memberNamesCache = ttlCacheAsync<string, Map<string, string>>(async guildI
   }
   return names;
 }, DAY_MS, true);
-export const guildMemberNames = (guildId: string): Promise<Map<string, string>> => memberNamesCache.get(guildId);
+const guildMemberNames = (guildId: string): Promise<Map<string, string>> => memberNamesCache.get(guildId);
 
 // Small ID sets use per-member lookups; large sets fall back to full pagination.
 const memberNameCache = ttlCacheAsync<string, string | null>(async key => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { CardHeader, CheckList, NumberField, SaveButton, SectionLoading, Select, channelOptions } from "./ui.tsx";
+import { CardHeader, CheckList, NumberField, SaveButton, SectionError, SectionLoading, Select, channelOptions } from "./ui.tsx";
 import { musicDefaults, normalize, type MusicDto } from "#contracts/music.ts";
 import { formatLeaveAfter } from "#lib/format.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -15,7 +15,7 @@ const leavePresets = [
 
 export function MusicSettingsCard() {
   const { resources } = useDashboard();
-  const { value, setValue, loading, saving, saveNow } = useSettingsTab<MusicDto, MusicDto>({
+  const { value, setValue, loading, loadError, reload, saving, saveNow } = useSettingsTab<MusicDto, MusicDto>({
     initial: musicDefaults,
     fromGet: normalize,
     toBody: normalize,
@@ -26,6 +26,7 @@ export function MusicSettingsCard() {
     settingsKey: "music",
   });
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   const channels = resources?.channels ?? [];
   const voiceChannels = resources?.voiceChannels ?? [];
   const roles = resources?.roles ?? [];

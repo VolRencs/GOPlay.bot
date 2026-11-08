@@ -28,7 +28,7 @@ async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
 export function registerEvents(client: Client) {
   client.on(Events.InteractionCreate, (i) => guard("EVENTS", () => handleInteraction(i)));
   client.on(Events.MessageDelete, (message) => { if (message.guildId) guard("EVENTS:DETACH", () => detachEventMessage(message.id)); });
-  client.on(Events.GuildMemberRemove, (member) => {
+  client.on(Events.GuildMemberRemove, (member) => guard("EVENTS:GONE", () => {
     for (const result of removeParticipantFromGuild(member.guild.id, member.user.id)) {
       const event = getEvent(result.eventId);
       if (event?.event_role_id) {
@@ -37,7 +37,7 @@ export function registerEvents(client: Client) {
       }
       void refreshMessage(member.guild.id, result.eventId);
     }
-  });
+  }));
   setInterval(() => void tick(), 30_000).unref();
 }
 
@@ -105,6 +105,7 @@ async function refreshMessageNow(guildId: string, eventId: string) {
     await channel.messages.edit(event.message_id, { embeds: [embed], components, files });
   } catch (error) {
     if (isMissingDiscordResource(error)) detachEventMessage(event.message_id);
+    else throw error;
   }
 }
 

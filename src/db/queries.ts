@@ -17,7 +17,7 @@ export const welcomeQueries = {
     "welcome_settings",
     ["guild_id", "enabled", "channel_id", "message", "image_enabled", "image_config_json", "goodbye_enabled", "goodbye_channel_id", "goodbye_message", "background_path", "updated_at"],
     ["guild_id"],
-    ["background_path=excluded.background_path", "updated_at=excluded.updated_at"],
+    ["background_path=excluded.background_path", "image_enabled=excluded.image_enabled", "updated_at=excluded.updated_at"],
   ),
 };
 
@@ -91,7 +91,7 @@ export const auditQueries = {
 export const adminQueries = {
   guildCount: read<{ c: number }>("SELECT COUNT(*) AS c FROM guilds"),
   activity7d: read<{ m: number; mod: number }>("SELECT COALESCE(SUM(messages),0) AS m, COALESCE(SUM(moderation),0) AS mod FROM guild_daily_metrics WHERE day>=?"),
-  guilds: read<{ id: string; name: string; icon: string | null }>("SELECT id,name,icon FROM guilds ORDER BY name"),
+  guilds: read<{ id: string; name: string }>("SELECT id,name FROM guilds ORDER BY name"),
   messages: read<{ guild_id: string; m: number }>("SELECT guild_id,SUM(messages) AS m FROM guild_daily_metrics GROUP BY guild_id"),
   panels: read<{ guild_id: string; c: number }>("SELECT guild_id,COUNT(*) AS c FROM self_role_panels GROUP BY guild_id"),
   events: read<{ guild_id: string; c: number }>("SELECT guild_id,COUNT(*) AS c FROM events GROUP BY guild_id"),
@@ -107,7 +107,7 @@ export const loggingQueries = {
 
 export const langQueries = {
   get: read<{ lang: string }>("SELECT lang FROM guilds WHERE id=?"),
-  update: write("UPDATE guilds SET lang=?, updated_at=? WHERE id=? AND lang<>?"),
+  update: write("UPDATE guilds SET lang=? WHERE id=? AND lang<>?"),
 };
 
 export const musicQueries = {

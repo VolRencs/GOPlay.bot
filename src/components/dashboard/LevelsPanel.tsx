@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { MAX_LEVEL, MAX_REWARDS, xpForLevel, type NotifyMode } from "#lib/levels.ts";
 import { levelDefaultsDto, levelRangesDto, normalize, type LevelRewardDto, type LevelSettingsDto, type LevelsDto } from "#contracts/levels.ts";
-import { CardHeader, CheckList, NumberField, SaveButton, SectionLoading, Select, channelOptions, formatNumber } from "./ui.tsx";
+import { CardHeader, CheckList, NumberField, SaveButton, SectionError, SectionLoading, Select, channelOptions, formatNumber } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
@@ -21,7 +21,7 @@ function nextRewardLevel(rewards: LevelRewardDto[]): number | null {
 
 export function LevelsPanel() {
   const { resources } = useDashboard();
-  const { value: levels, setValue, loading, saving, saveNow } = useSettingsTab<LevelsDto, LevelsDto>({
+  const { value: levels, setValue, loading, loadError, reload, saving, saveNow } = useSettingsTab<LevelsDto, LevelsDto>({
     initial: { settings: { ...levelDefaultsDto, ignoredChannelIds: [], ignoredRoleIds: [] }, rewards: [] },
     fromGet: normalize,
     toBody: normalize,
@@ -32,6 +32,7 @@ export function LevelsPanel() {
     settingsKey: "levels",
   });
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   const channels = resources?.channels ?? [];
   const roles = resources?.roles ?? [];
   const value = levels.settings;

@@ -17,7 +17,9 @@ export async function withRateLimitRetry<T>(response: Response, retry: boolean, 
 export async function discordFetch(path: string, init?: RequestInit, retry = true): Promise<Response> {
   const token = process.env.DISCORD_TOKEN;
   if (!token) throw new Error("DISCORD_TOKEN missing");
-  const response = await fetch(`https://discord.com/api/v10${path}`, { ...init, headers: { ...(init?.headers as Record<string, string> ?? {}), Authorization: `Bot ${token}` }, cache: "no-store" });
+  const timeout = AbortSignal.timeout(15_000);
+  const signal = init?.signal ? AbortSignal.any([timeout, init.signal]) : timeout;
+  const response = await fetch(`https://discord.com/api/v10${path}`, { ...init, signal, headers: { ...(init?.headers as Record<string, string> ?? {}), Authorization: `Bot ${token}` }, cache: "no-store" });
   return withRateLimitRetry(response, retry, (settled) => Promise.resolve(settled), () => discordFetch(path, init, false));
 }
 

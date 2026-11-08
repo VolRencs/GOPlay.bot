@@ -80,9 +80,7 @@ export function EmbedsPanel() {
   }
 
   function editTemplate(item: EmbedDto) {
-      const parsed = item.payload;
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return onError("Шаблон повреждён и не может быть загружен в редактор.");
-    const p = parsed;
+    const p = item.payload;
     setForm({
       id: item.id,
       published: Boolean(item.messageId),

@@ -54,7 +54,8 @@ async function handleOwnerLeave(guild: Guild, userId: string) {
   const channel = await fetchTempChannel(guild, row.channel_id);
   if (channel === undefined) return;
   if (!channel) { stmt.tempDelete.run(row.channel_id); return; }
-  const nextOwner = channel.members.find(m => !m.user.bot && !stmt.tempByOwner.get(guild.id, m.id))?.id;
+  const owners = new Set(stmt.tempOwners.all(guild.id).map(entry => entry.owner_id));
+  const nextOwner = channel.members.find(m => !m.user.bot && !owners.has(m.id))?.id;
   if (!nextOwner) {
     if (channel.members.some(m => !m.user.bot)) {
       logger.warn("[TEMP] Владелец ушёл, свободного получателя владения нет", guild.id, channel.id);
@@ -69,12 +70,12 @@ async function handleOwnerLeave(guild: Guild, userId: string) {
 async function handleVoiceState(oldState: VoiceState, newState: VoiceState) {
   count("events.voice_state");
   const guild = newState.guild ?? oldState.guild;
+  const config = guildConfig(guild.id);
+  if (!config) return;
   if (oldState.channelId && oldState.channelId !== newState.channelId) {
     const row = stmt.tempByChannel.get(oldState.channelId);
     if (row) scheduleEmptinessCheck(guild, oldState.channelId);
   }
-  const config = guildConfig(guild.id);
-  if (!config) return;
   const member = newState.member ?? oldState.member;
   if (!member || member.user.bot) return;
 
@@ -115,16 +116,20 @@ function isTempEmpty(channel: VoiceChannel): boolean {
 }
 
 async function deleteTempChannel(guild: Guild, channel: VoiceChannel, failureMessage: string): Promise<void> {
-  stmt.tempDelete.run(channel.id);
   if (guild.members.me?.voice.channelId === channel.id) stopAndLeave(guild.id);
-  await channel.delete().catch((error) => logger.warn(failureMessage, guild.id, error));
+  try {
+    await channel.delete();
+  } catch (error) {
+    if (!isMissingDiscordResource(error, "channel")) { logger.warn(failureMessage, guild.id, error); return; }
+  }
+  stmt.tempDelete.run(channel.id);
 }
 
 const emptinessTimers = new Map<string, ReturnType<typeof setTimeout>>();
 function scheduleEmptinessCheck(guild: Guild, channelId: string) {
   const existing = emptinessTimers.get(channelId);
   if (existing) clearTimeout(existing);
-  emptinessTimers.set(channelId, setTimeout(async () => {
+  const timer = setTimeout(async () => {
     emptinessTimers.delete(channelId);
     try {
       const channel = await fetchTempChannel(guild, channelId);
@@ -134,7 +139,8 @@ function scheduleEmptinessCheck(guild: Guild, channelId: string) {
     } catch (error) {
       logger.warn("[TEMP] Проверка пустоты канала не удалась", guild.id, error);
     }
-  }, 500));
+  }, 500).unref();
+  emptinessTimers.set(channelId, timer);
 }
 
 async function createTempChannel(guild: Guild, member: GuildMember, settings: TempConfig, triggerChannelId: string) {

@@ -15,9 +15,9 @@ function reportRoleHierarchy(guild: Guild) {
 }
 
 export function onboardGuild(guild: Guild): void {
-  const isNew = stmt.guildInsert.run(guild.id, guild.name, guild.iconURL(), Date.now()).changes > 0;
+  const isNew = stmt.guildInsert.run(guild.id, guild.name).changes > 0;
   if (isNew) stmt.guildLangUpdate.run(localeFromDiscord(guild.preferredLocale), guild.id);
-  else stmt.guildRefresh.run(guild.name, guild.iconURL(), Date.now(), guild.id);
+  else stmt.guildRefresh.run(guild.name, guild.id);
   cachedRules(guild.id);
   reportRoleHierarchy(guild);
 }

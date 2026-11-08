@@ -68,6 +68,8 @@ export const welcomePreviewValues: Record<string, string> = {
   count: "123",
   memberCount: "123",
   userId: "000000000000000000",
+  userAvatar: "",
+  serverIcon: "",
 };
 
 export function welcomeValues(input: { name: string; username?: string; userId?: string; server: string; count: number; avatar: string }): Record<string, string> {

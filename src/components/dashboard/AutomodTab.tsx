@@ -5,7 +5,7 @@ import { defaultRule, type AutomodGetDto, type AutomodRuleDto, type AutomodSecur
 import { AutoModSettings } from "./AutomodPanel.tsx";
 import { apiJson, apiSend } from "./api.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
-import { SectionLoading, stableStringify } from "./ui.tsx";
+import { SectionError, SectionLoading, stableStringify } from "./ui.tsx";
 
 export function AutomodTab() {
   const { guildId, resources, notify, fail } = useDashboard();
@@ -15,10 +15,13 @@ export function AutomodTab() {
   const [savedRules, setSavedRules] = useState<Record<string, AutomodRuleDto> | null>(null);
   const [savedSecurity, setSavedSecurity] = useState<{ roles: string[]; channel: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadGeneration, setLoadGeneration] = useState(0);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setLoadError(null);
     void apiSend<AutomodGetDto>(`/api/guilds/${guildId}/automod`, {}, "Не удалось загрузить автомодерацию.").then(result => {
       if (!active) return;
       if (result.ok) {
@@ -29,14 +32,13 @@ export function AutomodTab() {
         setSavedRules(nextRules);
         setSavedSecurity({ roles: result.data.ignoredRoleIds, channel: result.data.protectedChannelId });
       } else {
-        setSavedRules({});
-        setSavedSecurity({ roles: [], channel: null });
+        setLoadError(result.error);
         fail(result.error);
       }
       setLoading(false);
     });
     return () => { active = false; };
-  }, [guildId, fail]);
+  }, [guildId, fail, loadGeneration]);
 
   const ruleDirty = (kind: string) => savedRules !== null && (savedRules[kind] === undefined || stableStringify(savedRules[kind]) !== stableStringify(rules[kind]));
   const rulesDirty = Object.keys(rules).some(ruleDirty);
@@ -82,6 +84,7 @@ export function AutomodTab() {
   useRegisterChanges("automod", { dirty, save, discard });
 
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={() => setLoadGeneration(value => value + 1)}/>;
   return <AutoModSettings
     channels={resources?.channels ?? []}
     roles={resources?.roles ?? []}

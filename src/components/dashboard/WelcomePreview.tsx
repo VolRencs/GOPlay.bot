@@ -183,8 +183,6 @@ export function WelcomePreview({ message, config: committed, background, enabled
           <div className="canvas-svg" dangerouslySetInnerHTML={{ __html: svg }}/>
           {snap.x && <i className="drag-guide guide-v"/>}
           {snap.y && <i className="drag-guide guide-h"/>}
-          {
-}
           <div
             className={`preview-hit hit-avatar${gesture?.kind === "move" && gesture.target === "avatar" ? " grabbed" : ""}${gesture?.kind === "resize" ? " grabbed" : ""}`}
             onPointerDown={e => startMove(e, "avatar")}

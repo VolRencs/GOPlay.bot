@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import type { Channel } from "./types.ts";
 import { clampUserLimit } from "#lib/tempchannels.ts";
 import { defaultTempConfig, type TempChannelConfigDto, type TempPresetDto, type TempchannelsDto } from "#contracts/tempchannels.ts";
-import { CardHeader, CheckList, SectionLoading, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, TemplateRow } from "./ui.tsx";
+import { CardHeader, CheckList, SectionError, SectionLoading, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, TemplateRow } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
@@ -28,7 +28,7 @@ const channelLabel = (count: number) => count === 1 ? "1 канал" : count >= 
 
 export function TemporaryChannelsSettings() {
   const { resources } = useDashboard();
-  const { value, setValue: onChange, saved, loading, saving, saveNow } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
+  const { value, setValue: onChange, saved, loading, loadError, reload, saving, saveNow } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
     initial: { presets: [] },
     fromGet: data => ({ presets: data.presets }),
     toBody: value => ({ presets: value.presets }),
@@ -40,6 +40,7 @@ export function TemporaryChannelsSettings() {
   });
   const [editingId, setEditingId] = useState<number | null>(null);
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   const voiceChannels = resources?.voiceChannels ?? [];
   const categories = resources?.categories ?? [];
   const editing = value.presets.find(p => p.id === editingId) ?? null;

@@ -53,7 +53,6 @@ export type MusicSessionRow = {
   guild_id: string;
   channel_id: string;
   message_id: string;
-  updated_at: number;
 };
 
 export type AutoroleSettingsRow = AutoroleDomain & { guild_id: string; updated_at: number };
@@ -154,7 +153,6 @@ export type MusicSettingsRow = {
 export type MessageCacheRow = {
   message_id: string;
   guild_id: string;
-  channel_id: string;
   content: string;
   created_at: number;
 };

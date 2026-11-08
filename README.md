@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord bot and server-management web dashboard in a single repository, run as
-two supervised processes (Next.js + bot) sharing one SQLite database. Stack
+two processes (Next.js + bot) sharing one SQLite database. Stack
 (versions in `package.json`, locked in `pnpm-lock.yaml`): Node **≥ 26**,
 pnpm **12.18.0**, Next.js **16.4.5**, React **19.3.1**, TypeScript **7.0.2**,
 Node's native TypeScript type stripping and
@@ -72,7 +72,7 @@ cp .env.example .env
 # - Bot → Reset Token → enable the Server Members and Message Content intents
 # - OAuth2 → Redirects → http://localhost:3000/api/auth/callback/discord
 
-# 5. Run (bot + web under supervisor, log at data/logs/bot.log)
+# 5. Run (bot + web together, log at data/logs/bot.log)
 pnpm dev
 # open http://localhost:3000
 ```
@@ -112,7 +112,7 @@ Detailed instructions are in the [`.env.example`](.env.example) header.
 | `pnpm dev` | `migrate:auth` + `next dev` and the bot (`src/bot/index.ts`) via `scripts/run-both.ts`, log at `data/logs/bot.log` |
 | `pnpm build` | `next build` |
 | `pnpm start` | `migrate:auth` + `next start` and the bot via `scripts/run-both.ts`, log at `data/logs/bot.log` |
-| `pnpm migrate:auth` | better-auth table migrations in the same SQLite |
+| `pnpm migrate:auth` | better-auth table schema sync in the same SQLite |
 | `pnpm logs:rotate` | moves `data/logs/bot.log` to `.1` when it exceeds 5 MB |
 | `pnpm test` | `node --test test/*.test.ts` |
 | `pnpm check` | `next typegen` + `tsc --noEmit` |
@@ -128,16 +128,16 @@ src/bot/              Bot entry point (index.ts) + modules:
                       commands, moderation, automod, appeals, logging, tempchannels, music
                       (panel/command/shared), events, levels, welcome, self-roles,
                       onboarding, interactions, config-cache, metrics, heartbeat, shutdown
-src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
+src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/001_init.sql
 src/lib/              Shared logic: auth, guild-access, settings-route/views, automod, welcome,
                       colors/format, appeals, levels, events, uploads,
                       player/* (yt-dlp/ffmpeg stack), i18n
 src/components/       React: user-menu + dashboard/* (tab panels)
-scripts/              migrate-auth.ts, run-both.ts (bot + web supervisor)
+scripts/              migrate-auth.ts, run-both.ts (bot + web runner)
 deploy/               nginx-ip-https.conf (reverse-proxy example)
 test/                 *.test.ts (node --test)
 data/                 SQLite, logs, uploads (not in git, except .gitkeep)
-public/               bot-logo.avif, fonts/, uploads/ (welcome backgrounds, not in git)
+public/               bot-logo.avif, fonts/
 ```
 
 ## Production

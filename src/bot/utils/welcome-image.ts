@@ -4,8 +4,8 @@ import { readFile, stat } from "node:fs/promises";
 import { setImmediate as immediate } from "node:timers/promises";
 import { join, resolve } from "node:path";
 import { buildWelcomeSvg, imageSize, parseImageConfig, renderWelcomeTemplate, welcomeValues, WELCOME_DESIGN, type WelcomeImageConfig } from "../../lib/welcome.ts";
-const PUBLIC_ROOT = resolve(process.cwd(), "public");
-const WELCOME_ROOT = resolve(PUBLIC_ROOT, "uploads/welcome");
+const DATA_ROOT = resolve(process.cwd(), "data");
+const WELCOME_ROOT = resolve(DATA_ROOT, "uploads/welcome");
 const MAX_WELCOME_CONCURRENCY = 2;
 const RENDER_CACHE_MAX = 60;
 // Bound the render cache: welcome images can be large and are content-addressed.
@@ -81,7 +81,7 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
   let bgDataUri: string | null = null;
   const backgroundPath = input.backgroundPath;
   if (backgroundVersion !== "none" && backgroundPath) {
-    background = await readFile(resolve(PUBLIC_ROOT, "." + backgroundPath)).catch(() => null);
+    background = await readFile(resolve(DATA_ROOT, "." + backgroundPath)).catch(() => null);
     if (background) bgDataUri = `data:image/${backgroundPath.endsWith(".jpg") ? "jpeg" : backgroundPath.split(".").pop()};base64,${background.toBase64()}`;
   }
   const size = background ? imageSize(background) : WELCOME_DESIGN;
@@ -94,7 +94,7 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
 
 async function backgroundFingerprint(path?: string | null): Promise<string> {
   if (!path || !/^\/uploads\/welcome\/\d{15,22}-welcome\.(png|jpg|webp)$/.test(path)) return "none";
-  const candidate = resolve(PUBLIC_ROOT, "." + path);
+  const candidate = resolve(DATA_ROOT, "." + path);
   if (!candidate.startsWith(WELCOME_ROOT + "/")) return "none";
   try {
     const info = await stat(candidate);

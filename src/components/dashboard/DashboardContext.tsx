@@ -13,6 +13,8 @@ type Toast = { id: number; text: string; tone: "ok" | "warn" | "error" };
 type DashboardContextValue = {
   guildId: string;
   resources: ResourcesGet | null;
+  resourcesError: string | null;
+  reloadResources: () => void;
   loading: boolean;
   notify: PanelNotify;
   fail: PanelFail;
@@ -28,6 +30,8 @@ let toastSeq = 0;
 
 export function DashboardProvider({ guildId, children }: { guildId: string; children: React.ReactNode }) {
   const [resources, setResources] = useState<ResourcesGet | null>(null);
+  const [resourcesError, setResourcesError] = useState<string | null>(null);
+  const [resourcesGeneration, setResourcesGeneration] = useState(0);
   const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -56,14 +60,20 @@ export function DashboardProvider({ guildId, children }: { guildId: string; chil
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setResourcesError(null);
     void apiSend<ResourcesGet>(`/api/guilds/${guildId}/resources`, {}, "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу.").then(result => {
       if (!active) return;
       if (result.ok) setResources(result.data);
-      else fail(result.error);
+      else {
+        setResourcesError(result.error);
+        fail(result.error);
+      }
       setLoading(false);
     });
     return () => { active = false; };
-  }, [guildId, fail]);
+  }, [guildId, fail, resourcesGeneration]);
+
+  const reloadResources = useCallback(() => setResourcesGeneration(value => value + 1), []);
 
   const changes = useRef(new Map<string, ChangeRef>());
   const [changeVersion, setChangeVersion] = useState(0);
@@ -93,8 +103,8 @@ export function DashboardProvider({ guildId, children }: { guildId: string; chil
   }, [bumpChanges]);
 
   const value = useMemo<DashboardContextValue>(() => ({
-    guildId, resources, loading, notify, fail, isDirty, saveAll, discardAll, registerChanges,
-  }), [guildId, resources, loading, notify, fail, isDirty, saveAll, discardAll, registerChanges]);
+    guildId, resources, resourcesError, reloadResources, loading, notify, fail, isDirty, saveAll, discardAll, registerChanges,
+  }), [guildId, resources, resourcesError, reloadResources, loading, notify, fail, isDirty, saveAll, discardAll, registerChanges]);
 
   return <DashboardContext.Provider value={value}>
     {children}

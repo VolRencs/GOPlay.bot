@@ -2062,7 +2062,7 @@
 
   .sidebar .brand { margin: 0 0 .75rem; }
 
-  .settings-shell.is-dirty .toast-stack {
+  .settings-shell.is-dirty + .toast-stack {
     bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.8rem));
   }
 

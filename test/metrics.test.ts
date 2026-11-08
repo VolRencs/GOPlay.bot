@@ -31,7 +31,7 @@ test("messages, channels and users are aggregated without double counting", () =
 
 test("a deleted guild is evicted without blocking live metrics", () => {
   const day = "2026-07-15";
-  db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)").run("g9", "g9", null, Date.now());
+  db.prepare("INSERT OR IGNORE INTO guilds(id,name) VALUES(?,?)").run("g9", "g9");
   addMessage("g1", "c1", "u1", at(day, 8));
   addMessage("g9", "c1", "u1", at(day, 8));
   db.prepare("DELETE FROM guilds WHERE id='g9'").run();
@@ -54,7 +54,7 @@ test("temp trigger parsing and name template rendering", () => {
 
 test("temp config resolution: each preset configures its own trigger channels", () => {
   const guild = "g4";
-  db.prepare("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)").run(guild, guild, null, Date.now());
+  db.prepare("INSERT OR IGNORE INTO guilds(id,name) VALUES(?,?)").run(guild, guild);
   db.prepare("INSERT INTO temp_channel_presets(guild_id,name,trigger_channel_ids_json,category_id,name_template,user_limit,can_rename,can_manage_access,can_close,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").run(guild, "Main", '["111"]', "cat1", "Room {username}", 5, 1, 0, 1, Date.now());
   db.prepare("INSERT INTO temp_channel_presets(guild_id,name,trigger_channel_ids_json,category_id,name_template,user_limit,can_rename,can_manage_access,can_close,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").run(guild, "Private", '["222"]', "cat2", "{username} private", 2, 0, 1, 1, Date.now());
   const main = getConfig(guild, "111");

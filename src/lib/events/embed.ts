@@ -1,5 +1,5 @@
 import { safeJson } from "../json.ts";
-import { fitEmbed, normalizeEmbedContent, parseEmbedJson, toDiscordEmbed } from "../../contracts/embeds.ts";
+import { fitEmbed, normalizeEmbedContent, toDiscordEmbed } from "../../contracts/embeds.ts";
 import { eventStatusMetaM } from "../labels.ts";
 import type { Locale } from "../i18n/core.ts";
 import { eventsTr, trFor } from "../i18n/bot.ts";
@@ -10,7 +10,7 @@ import {
 } from "./types.ts";
 
 export function parseEventEmbed(raw: string | null | undefined): EventEmbed {
-  return parseEmbedJson(raw);
+  return cleanEmbed(safeJson<unknown>(raw, {}));
 }
 export function parseEventButtons(raw: string | null | undefined): EventButton[] {
   const parsed = safeJson<unknown>(raw, []);

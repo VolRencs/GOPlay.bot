@@ -1,11 +1,11 @@
 "use client";
 
-import { CardHeader, SaveButton, SectionLoading, Select } from "./ui.tsx";
+import { CardHeader, SaveButton, SectionError, SectionLoading, Select } from "./ui.tsx";
 import { fromLangDto, toLangDto, type LangCode, type LangDto } from "#contracts/dashboard.ts";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
 export function BotLanguageCard() {
-  const { value, setValue, loading, saving, saveNow } = useSettingsTab<LangDto, LangCode>({
+  const { value, setValue, loading, loadError, reload, saving, saveNow } = useSettingsTab<LangDto, LangCode>({
     initial: "ru",
     fromGet: fromLangDto,
     toBody: toLangDto,
@@ -16,6 +16,7 @@ export function BotLanguageCard() {
     settingsKey: "lang",
   });
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   return (
     <article className="card settings-card">
       <CardHeader title="Язык сообщений бота" muted="Служебные ответы бота на этом сервере."

@@ -18,28 +18,32 @@ test("welcome state defaults and diff", () => {
   assert.equal(describeChanges(welcomeView(state), welcomeView({ ...state, message: "Hi" })), "Текст приветствия: Добро пожаловать, {user}! → Hi");
 });
 
-test("background upload keeps code defaults for a new welcome row", async () => {
+test("background upload keeps settings and enables the image", async () => {
   const { welcomeQueries } = await import("../src/db/queries.ts");
   const { fromDto, welcomeDefaults } = await import("../src/contracts/welcome.ts");
   welcomeQueries.backgroundUpsert.run({
-    ...fromDto(welcomeDefaults),
+    ...fromDto({ ...welcomeDefaults, imageEnabled: true }),
     guild_id: "g1",
     background_path: "/uploads/welcome/g1-welcome.png",
     updated_at: Date.now(),
   });
   const { state, exists } = welcomeState("g1");
   assert.equal(exists, true);
+  assert.equal(state.imageEnabled, true);
   assert.equal(state.message, welcomeDefaults.message);
   assert.equal(state.goodbyeMessage, welcomeDefaults.goodbyeMessage);
 
   welcomeQueries.upsert.run({ ...fromDto({ ...state, message: "Custom" }), guild_id: "g1", updated_at: Date.now() });
   welcomeQueries.backgroundUpsert.run({
-    ...fromDto(welcomeDefaults),
+    ...fromDto({ ...welcomeDefaults, imageEnabled: true }),
     guild_id: "g1",
     background_path: "/uploads/welcome/g1-welcome.jpg",
     updated_at: Date.now(),
   });
-  assert.equal(welcomeState("g1").state.message, "Custom");
+  const updated = welcomeState("g1").state;
+  assert.equal(updated.message, "Custom");
+  assert.equal(updated.imageEnabled, true);
+  assert.equal(updated.backgroundPath, "/uploads/welcome/g1-welcome.jpg");
 });
 
 test("logging state merges defaults and diff", () => {

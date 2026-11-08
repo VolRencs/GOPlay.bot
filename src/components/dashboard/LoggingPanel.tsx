@@ -4,11 +4,11 @@ import { logGroups, logKeys } from "#lib/labels.ts";
 import { fromDto, loggingDefaults, toDto, type LoggingDto } from "#contracts/logging.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
-import { CardHeader, SaveButton, SectionLoading, channelOptions, Select } from "./ui.tsx";
+import { CardHeader, SaveButton, SectionError, SectionLoading, channelOptions, Select } from "./ui.tsx";
 
 export function LoggingSettings() {
   const { resources } = useDashboard();
-  const { value, setValue, loading, saving, saveNow } = useSettingsTab<LoggingDto, LoggingDto>({
+  const { value, setValue, loading, loadError, reload, saving, saveNow } = useSettingsTab<LoggingDto, LoggingDto>({
     initial: loggingDefaults,
     fromGet: fromDto,
     toBody: toDto,
@@ -19,6 +19,7 @@ export function LoggingSettings() {
     settingsKey: "logging",
   });
   if (loading) return <SectionLoading/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   const channels = resources?.channels ?? [];
   const channelId = value.channelId;
   const categories = value.categories;

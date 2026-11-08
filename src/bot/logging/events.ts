@@ -76,7 +76,7 @@ export function registerLoggingEvents(client: Client) {
     const after = newMessage.content ?? "";
     const before = messageContent(newMessage.id) ?? (oldMessage.partial ? "" : oldMessage.content);
     if (before === after) return;
-    rememberMessage(newMessage.id, newMessage.guild.id, newMessage.channelId, after);
+    rememberMessage(newMessage.id, newMessage.guild.id, after);
     const pending = editPending.get(key);
     if (pending) {
       clearTimeout(pending.timer);

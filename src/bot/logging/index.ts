@@ -40,17 +40,26 @@ const channelCache = ttlCacheAsync<string, SendableChannels | null>((channelId) 
   });
 }, NEGATIVE_CACHE_TTL);
 
-export async function resolveChannel(channelId: string): Promise<SendableChannels | null> {
+export async function resolveChannel(channelId: string, strict = false): Promise<SendableChannels | null> {
   if (!client) return null;
   try {
     return await channelCache.get(channelId);
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return null;
   }
 }
 
+const MAX_QUEUE = 1000;
+const RETRY_DELAY = 30_000;
+const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 function enqueueLog(channelId: string, embed: EmbedBuilder) {
   const list = queues.get(channelId) ?? [];
+  if (list.length >= MAX_QUEUE) {
+    const dropped = list.splice(0, list.length - MAX_QUEUE + 1);
+    logger.error("[LOG] Очередь логов переполнена, старые записи отброшены.", channelId, dropped.length);
+  }
   list.push(embed);
   queues.set(channelId, list);
   void drainChannel(channelId);
@@ -72,7 +81,19 @@ async function drainChannel(channelId: string) {
       let sent = false;
       let permanent = false;
       while (true) {
-        const channel = await resolveChannel(channelId);
+        let channel: SendableChannels | null;
+        try {
+          channel = await resolveChannel(channelId, true);
+        } catch (error) {
+          attempts += 1;
+          if (attempts >= MAX_ATTEMPTS) {
+            logger.error("[LOG] Канал логов временно недоступен, пакет отложен.", channelId, batch.length, error);
+            break;
+          }
+          logger.warn(`[LOG] Ошибка получения канала логов, попытка ${attempts}/${MAX_ATTEMPTS}`, channelId, error);
+          await sleep(1_000 * attempts);
+          continue;
+        }
         if (!channel) {
           permanent = true;
           logger.error("[LOG] Канал логов недоступен, пакет отброшен.", channelId, batch.length);
@@ -83,6 +104,11 @@ async function drainChannel(channelId: string) {
           sent = true;
           break;
         } catch (error) {
+          if (isMissingDiscordResource(error, "channel")) {
+            permanent = true;
+            logger.error("[LOG] Канал логов удалён, пакет отброшен.", channelId, batch.length, error);
+            break;
+          }
           attempts += 1;
           if (attempts >= MAX_ATTEMPTS) {
             logger.error("[LOG] Пакет логов не отправлен после повторных попыток.", channelId, batch.length, error);
@@ -103,8 +129,19 @@ async function drainChannel(channelId: string) {
   } finally {
     draining.delete(channelId);
   }
-  if (!requeued && queues.get(channelId)?.length) void drainChannel(channelId);
-  else if (!queues.get(channelId)?.length) queues.delete(channelId);
+  const pending = queues.get(channelId);
+  if (!pending?.length) {
+    queues.delete(channelId);
+    const timer = retryTimers.get(channelId);
+    if (timer) { clearTimeout(timer); retryTimers.delete(channelId); }
+    return;
+  }
+  if (requeued) {
+    if (!retryTimers.has(channelId)) {
+      const timer = setTimeout(() => { retryTimers.delete(channelId); void drainChannel(channelId); }, RETRY_DELAY).unref();
+      retryTimers.set(channelId, timer);
+    }
+  } else void drainChannel(channelId);
 }
 
 export async function flushLogs(timeoutMs = 5_000): Promise<void> {
@@ -170,7 +207,10 @@ async function drainAuditQueue() {
       resolve(entry);
       if (auditQueue.length) await sleep(AUDIT_INTERVAL);
     }
-  })().catch(error => { logger.warn("[AUDIT] Очередь журнала аудита прервана", error); }).finally(() => { auditWorker = null; });
+  })().catch(error => { logger.warn("[AUDIT] Очередь журнала аудита прервана", error); }).finally(() => {
+    auditWorker = null;
+    if (auditQueue.length) void drainAuditQueue();
+  });
 }
 
 type AuditFindOptions = { priority?: boolean; retries?: number; retryDelay?: number };

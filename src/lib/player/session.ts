@@ -140,7 +140,7 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     ]).catch(() => { if (alive()) destroySession(guildId); });
   };
   if (connection.state.status === VoiceConnectionStatus.Disconnected) onDisconnected();
-  else connection.once(VoiceConnectionStatus.Disconnected, onDisconnected);
+  connection.on(VoiceConnectionStatus.Disconnected, onDisconnected);
 
   player.on(AudioPlayerStatus.Playing, () => {
     const s = sessions.get(guildId);

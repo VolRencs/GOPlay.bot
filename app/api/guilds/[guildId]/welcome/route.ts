@@ -8,6 +8,7 @@ import { parseImageConfig } from "#lib/welcome.ts";
 import { deleteWelcomeBackgrounds, rejectOversized, WELCOME_IMAGE_EXTENSIONS, WELCOME_UPLOAD_PREFIX, welcomeUploadsDir } from "#lib/uploads.ts";
 import { recordDashboardChange } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { logger } from "#lib/logger.ts";
 import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { welcomeState, welcomeView } from "#lib/settings-views.ts";
 
@@ -63,18 +64,23 @@ export const PUT = settingsPutRoute<WelcomeDto>({
 });
 
 export const POST = guildRoute(async (request, { guildId, user }) => {
-  const oversized = rejectOversized(request);
+  const oversized = rejectOversized(request, 6 * 1024 * 1024);
   if (oversized) return oversized;
   const form = await request.formData(), file = form.get("background");
   if (!(file instanceof File)) return jsonError("Выберите изображение");
   const ext = WELCOME_IMAGE_EXTENSIONS[file.type];
   if (!ext || file.size > 5 * 1024 * 1024) return jsonError("Допустимы PNG, JPG или WEBP до 5 МБ");
   const dir = welcomeUploadsDir(); await mkdir(dir, { recursive: true });
-  const filename = `${guildId}-welcome.${ext}`, path = join(dir, filename), publicPath = `${WELCOME_UPLOAD_PREFIX}${filename}`;
-  await deleteWelcomeBackgrounds(guildId, filename);
+  const filename = `${guildId}-welcome.${ext}`, path = join(dir, filename), storedPath = `${WELCOME_UPLOAD_PREFIX}${filename}`;
   await writeFile(path, Buffer.from(await file.arrayBuffer()));
-  const welcomeInput = { ...welcomeDefaults };
-  welcomeQueries.backgroundUpsert.run({ ...fromDto(welcomeInput), guild_id: guildId, background_path: publicPath, updated_at: Date.now() });
+  await deleteWelcomeBackgrounds(guildId, filename);
+  const welcomeInput = { ...welcomeDefaults, imageEnabled: true };
+  welcomeQueries.backgroundUpsert.run({ ...fromDto(welcomeInput), guild_id: guildId, background_path: storedPath, updated_at: Date.now() });
+  const saved = welcomeState(guildId).state;
+  if (saved.backgroundPath !== storedPath || !saved.imageEnabled) {
+    logger.error("[WELCOME] Не удалось сохранить фон в базе", guildId, { backgroundPath: saved.backgroundPath, imageEnabled: saved.imageEnabled });
+    return jsonError("Не удалось сохранить фон. Попробуйте ещё раз.", 500);
+  }
   recordDashboardChange(guildId, user, AUDIT_SECTION.welcome, "Загружен новый фон картинки приветствия.");
-  return NextResponse.json({ ok: true, backgroundPath: publicPath });
+  return NextResponse.json({ ok: true, backgroundPath: storedPath, imageEnabled: true });
 });

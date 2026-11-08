@@ -4,7 +4,7 @@ import { stmt } from "./statements.ts";
 
 export const MESSAGE_CACHE_PER_GUILD = 1000;
 
-type PendingEntry = { guildId: string; channelId: string; content: string; createdAt: number };
+type PendingEntry = { guildId: string; content: string; createdAt: number };
 const pending = new Map<string, PendingEntry>();
 const PENDING_CAP = 10_000;
 let flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -33,7 +33,7 @@ export function flushMessageCache(): void {
   try {
     withTransaction(() => {
       for (const [messageId, entry] of entries) {
-        stmt.messageUpsert.run({ message_id: messageId, guild_id: entry.guildId, channel_id: entry.channelId, content: entry.content, created_at: entry.createdAt });
+        stmt.messageUpsert.run({ message_id: messageId, guild_id: entry.guildId, content: entry.content, created_at: entry.createdAt });
         touchedGuilds.add(entry.guildId);
       }
     });
@@ -55,10 +55,10 @@ export function forgetGuildMessages(guildId: string): void {
   for (const [messageId, entry] of pending) if (entry.guildId === guildId) pending.delete(messageId);
 }
 
-export function rememberMessage(messageId: string, guildId: string, channelId: string, content: string, at: number = Date.now()): void {
+export function rememberMessage(messageId: string, guildId: string, content: string, at: number = Date.now()): void {
   const existing = pending.get(messageId);
   if (existing) pending.set(messageId, { ...existing, content });
-  else rememberPending(messageId, { guildId, channelId, content, createdAt: at });
+  else rememberPending(messageId, { guildId, content, createdAt: at });
   ensureFlushTimer();
 }
 

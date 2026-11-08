@@ -16,10 +16,10 @@ import type { LevelReward } from "../lib/levels.ts";
 import type { EventRow, ParticipantRow } from "../lib/events/types.ts";
 
 export const stmt = {
-  guildInsert: write("INSERT OR IGNORE INTO guilds(id,name,icon,updated_at) VALUES(?,?,?,?)"),
+  guildInsert: write("INSERT OR IGNORE INTO guilds(id,name) VALUES(?,?)"),
   guildName: read<GuildNameRow>("SELECT name FROM guilds WHERE id=?"),
   guildLangUpdate: write("UPDATE guilds SET lang=? WHERE id=?"),
-  guildRefresh: write("UPDATE guilds SET name=?,icon=?,updated_at=? WHERE id=?"),
+  guildRefresh: write("UPDATE guilds SET name=? WHERE id=?"),
   moderationPrune: write("DELETE FROM moderation_actions WHERE created_at < ? AND id NOT IN(SELECT punishment_id FROM appeals)"),
   guildIds: read<GuildIdRow>("SELECT id FROM guilds"),
   rules: read<AutomodRuleCacheRow>("SELECT kind,action_json,threshold_json,window_seconds,escalation FROM automod_rules WHERE guild_id=? AND enabled=1 ORDER BY id"),
@@ -57,6 +57,7 @@ export const stmt = {
   tempPresets: read<TempPresetRow>("SELECT * FROM temp_channel_presets WHERE guild_id=? ORDER BY id"),
   tempAll: read<TempChannelRow>("SELECT * FROM temp_channels"),
   tempByOwner: read<TempChannelRow>("SELECT * FROM temp_channels WHERE guild_id=? AND owner_id=?"),
+  tempOwners: read<{ owner_id: string }>("SELECT owner_id FROM temp_channels WHERE guild_id=?"),
   tempByChannel: read<TempChannelRow>("SELECT * FROM temp_channels WHERE channel_id=?"),
   tempInsert: write("INSERT INTO temp_channels(guild_id,channel_id,owner_id,panel_message_id,source_channel_id,created_at) VALUES(?,?,?,?,?,?)"),
   tempDelete: write("DELETE FROM temp_channels WHERE channel_id=?"),
@@ -75,7 +76,7 @@ export const stmt = {
   panelReactions: read<ReactionPanelRow>("SELECT id,role_mode,message_id FROM self_role_panels WHERE guild_id=? AND style='reaction'"),
   messageUpsert: upsert<MessageCacheRow>(
     "message_cache",
-    ["message_id", "guild_id", "channel_id", "content", "created_at"],
+    ["message_id", "guild_id", "content", "created_at"],
     ["message_id"],
     ["content=excluded.content"],
   ),
@@ -86,7 +87,7 @@ export const stmt = {
   autoroleSettings: read<AutoroleSettingsRow>("SELECT guild_id, enabled, role_id, updated_at FROM autorole_settings WHERE guild_id=?"),
   musicSessionUpsert: upsert<MusicSessionRow>(
     "music_sessions",
-    ["guild_id", "channel_id", "message_id", "updated_at"],
+    ["guild_id", "channel_id", "message_id"],
     ["guild_id"],
   ),
   autoroleUpsert: upsert<AutoroleSettingsRow>(
@@ -133,7 +134,7 @@ export const stmt = {
   eventsOfUserInGuild: read<{ event_id: string }>("SELECT p.event_id FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? AND p.user_id=?"),
   eventNextInSeries: read<EventNextSeriesRow>("SELECT id FROM events WHERE series_id=? AND status='scheduled' LIMIT 1"),
   eventFlipLive: write("UPDATE events SET status='live',started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='scheduled'"),
-  eventsPrune: write("DELETE FROM events WHERE status IN ('completed','cancelled') AND scheduled_at < ?"),
+  eventsPrune: write("DELETE FROM events WHERE status IN ('completed','cancelled','live') AND COALESCE(started_at, scheduled_at) < ?"),
   participantGet: read<ParticipantRow>("SELECT * FROM event_participants WHERE event_id=? AND user_id=?"),
   participantInsert: write("INSERT INTO event_participants(event_id,user_id,joined_at,waitlist) VALUES(?,?,?,?)"),
   participantDelete: write("DELETE FROM event_participants WHERE event_id=? AND user_id=?"),
