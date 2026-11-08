@@ -1,4 +1,4 @@
-import { logger } from "../lib/logger.ts";
+import { logger } from "./logger.ts";
 
 type DurationStats = { n: number; sum: number; max: number };
 const counts = new Map<string, number>();

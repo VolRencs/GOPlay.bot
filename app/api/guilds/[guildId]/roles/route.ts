@@ -5,10 +5,9 @@ import { rolesQueries } from "#db/queries.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { logger } from "#lib/logger.ts";
-import { BUTTON_STYLE_IDS, buttonStyleId, type ButtonStyleName } from "#lib/constants.ts";
+import { BUTTON_STYLE_IDS, buttonStyleId, REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT, type ButtonStyleName } from "#lib/constants.ts";
 import { roleModeLabels, roleStyleLabels } from "#lib/labels.ts";
 import { roleRef } from "#lib/format.ts";
-import { REACTION_OPTION_LIMIT, SELECT_OPTION_LIMIT } from "#lib/constants.ts";
 import { toDto as toRolePanelDto, type RolePanelInput, type RolePanelRowDto } from "#contracts/roles.ts";
 import { stripVariationSelectors, toDiscordEmoji, toDiscordReaction } from "goemoji/discord";
 
