@@ -39,7 +39,7 @@
   и писать в журнал через `src/lib/dashboard-audit.ts`, где это уместно.
 - Панели дашборда: `src/components/dashboard/*.tsx` + типы в `types.ts`.
 - Поля и лимиты embed: `src/contracts/embeds.ts`; композеры сообщений и событий используют общую модель.
-- Музыка (`src/lib/player/`):Resolver не выходит за allowlist YouTube-доменов;
+- Музыка (`src/lib/player/`): резолвер не выходит за allowlist YouTube-доменов;
   новые источники — только с аналогичными ограничениями (см. SSRF-комментарии).
 
 ## Тесты
