@@ -44,6 +44,12 @@ test("background upload keeps settings and enables the image", async () => {
   assert.equal(updated.message, "Custom");
   assert.equal(updated.imageEnabled, true);
   assert.equal(updated.backgroundPath, "/uploads/welcome/g1-welcome.jpg");
+
+  welcomeQueries.clearBackground.run(Date.now(), "g1");
+  const cleared = welcomeState("g1").state;
+  assert.equal(cleared.backgroundPath, null);
+  assert.equal(cleared.imageEnabled, true);
+  assert.equal(cleared.message, "Custom");
 });
 
 test("logging state merges defaults and diff", () => {

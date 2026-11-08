@@ -870,6 +870,21 @@
   border-radius: var(--r-2);
 }
 
+.welcome-bg-status {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 8, 20, .55);
+  color: #f8fafc;
+  font-size: .82rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.welcome-bg-status.is-error { color: #fecaca; }
+
 .preview-hit {
   position: absolute;
   cursor: grab;
@@ -975,6 +990,39 @@
   opacity: 0;
   pointer-events: none;
 }
+
+.file-pick.is-busy { opacity: .7; }
+
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem .7rem;
+}
+
+.upload-progress {
+  display: grid;
+  gap: .3rem;
+  width: min(100%, 22rem);
+  margin-top: .5rem;
+}
+
+.upload-progress-bar {
+  height: 7px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .1);
+  border-radius: var(--r-full);
+}
+
+.upload-progress-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--violet), #7dd3fc);
+  border-radius: inherit;
+  transition: width .2s linear;
+}
+
+.upload-progress small { color: var(--muted); font-size: .78rem; }
 
 .variables-card {
   display: grid;

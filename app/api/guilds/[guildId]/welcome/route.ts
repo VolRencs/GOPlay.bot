@@ -63,6 +63,18 @@ export const PUT = settingsPutRoute<WelcomeDto>({
   saveMissing: true,
 });
 
+export const DELETE = guildRoute(async (_request, { guildId, user }) => {
+  const hadBackground = Boolean(welcomeState(guildId).state.backgroundPath);
+  welcomeQueries.clearBackground.run(Date.now(), guildId);
+  try {
+    await deleteWelcomeBackgrounds(guildId);
+  } catch (error) {
+    logger.warn("[WELCOME] Не удалось удалить файлы фона", guildId, error);
+  }
+  if (hadBackground) recordDashboardChange(guildId, user, AUDIT_SECTION.welcome, "Удалён фон картинки приветствия.");
+  return NextResponse.json({ ok: true, backgroundPath: null, removed: hadBackground });
+});
+
 export const POST = guildRoute(async (request, { guildId, user }) => {
   const oversized = rejectOversized(request, 6 * 1024 * 1024);
   if (oversized) return oversized;

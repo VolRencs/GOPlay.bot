@@ -40,6 +40,7 @@ export function WelcomePreview({ message, config: committed, background, enabled
   const [size, setSize] = useState<{ width: number; height: number }>({ width: DESIGN_W, height: DESIGN_H });
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [snap, setSnap] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
+  const [bgState, setBgState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [live, setLive] = useState(committed);
   const pendingRef = useRef<Partial<WelcomeImageConfig>>({});
   const commitTimer = useRef<number | null>(null);
@@ -65,12 +66,22 @@ export function WelcomePreview({ message, config: committed, background, enabled
   }, []);
 
   useEffect(() => {
-    if (!background) { setSize({ width: DESIGN_W, height: DESIGN_H }); return; }
+    if (!background) {
+      setSize({ width: DESIGN_W, height: DESIGN_H });
+      setBgState("idle");
+      return;
+    }
     let cancelled = false;
+    setBgState("loading");
     const img = new Image();
-    img.onload = () => { if (!cancelled) setSize({ width: img.naturalWidth || DESIGN_W, height: img.naturalHeight || DESIGN_H }); };
+    img.onload = () => {
+      if (cancelled) return;
+      setSize({ width: img.naturalWidth || DESIGN_W, height: img.naturalHeight || DESIGN_H });
+      setBgState("ready");
+    };
+    img.onerror = () => { if (!cancelled) setBgState("error"); };
     img.src = background;
-    return () => { cancelled = true; img.onload = null; };
+    return () => { cancelled = true; img.onload = null; img.onerror = null; };
   }, [background]);
 
   const render = (text: string) => renderWelcomeTemplate(text, welcomePreviewValues);
@@ -181,6 +192,8 @@ export function WelcomePreview({ message, config: committed, background, enabled
           onPointerCancel={endDrag}
         >
           <div className="canvas-svg" dangerouslySetInnerHTML={{ __html: svg }}/>
+          {bgState === "loading" && <div className="welcome-bg-status" role="status">Загружаем фон…</div>}
+          {bgState === "error" && <div className="welcome-bg-status is-error" role="alert">Не удалось загрузить фон</div>}
           {snap.x && <i className="drag-guide guide-v"/>}
           {snap.y && <i className="drag-guide guide-h"/>}
           <div

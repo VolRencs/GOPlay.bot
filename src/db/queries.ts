@@ -19,6 +19,7 @@ export const welcomeQueries = {
     ["guild_id"],
     ["background_path=excluded.background_path", "image_enabled=excluded.image_enabled", "updated_at=excluded.updated_at"],
   ),
+  clearBackground: write("UPDATE welcome_settings SET background_path=NULL, updated_at=? WHERE guild_id=?"),
 };
 
 export const automodQueries = {
