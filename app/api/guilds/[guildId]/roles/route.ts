@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server.js";
 import { botTokenError, discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
+import { assignableRoles } from "#lib/discord-api.ts";
 import { withTransaction } from "#db/database.ts";
 import { rolesQueries } from "#db/queries.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
@@ -37,9 +38,8 @@ async function assignableRoleIds(guildId: string, roleIds: string[]): Promise<Se
     if (!rolesResponse.ok || !memberResponse.ok) return null;
     const roles = await rolesResponse.json() as DiscordRole[];
     const botRoles = new Set((await memberResponse.json() as DiscordMember).roles);
-    const highest = roles.reduce((position, role) => botRoles.has(role.id) ? Math.max(position, role.position) : position, 0);
-    const byId = new Map(roles.map(role => [role.id, role]));
-    return new Set(roleIds.filter(id => { const role = byId.get(id); return Boolean(role && !role.managed && role.position < highest); }));
+    const assignable = new Set(assignableRoles(roles, botRoles).map(role => role.id));
+    return new Set(roleIds.filter(id => assignable.has(id)));
   } catch { return null; }
 }
 

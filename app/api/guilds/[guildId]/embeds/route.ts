@@ -10,11 +10,10 @@ import { channelRef } from "#lib/format.ts";
 import { cleanupUnusedUploads, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
 import { logger } from "#lib/logger.ts";
 import { BRAND_COLOR, colorNumberToHex } from "#lib/colors.ts";
-import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
+import { AssetError, collectFormAssets, persistUploadedAssets, type UploadAssetSet } from "#lib/assets.ts";
 import { embedCharacterCount, EMBED_LIMITS, normalizeEmbedContent, sendingToDto, toDiscordEmbed, toDto as toEmbedDto, type EmbedContent, type EmbedsGetDto } from "#contracts/embeds.ts";
 
 type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedContent };
-
 
 function draftImageNames(payloadJson:string,guildId:string) {
   const payload=safeJson<{author?:{iconUrl?:string};thumbnail?:{url?:string};image?:{url?:string}}>(payloadJson,{});
@@ -93,24 +92,22 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if(embedCharacterCount(payload)>EMBED_LIMITS.total)return jsonError("Сообщение слишком большое для Discord: сократите текст или количество полей.");
   type EmbedTarget = "author" | "thumbnail" | "image";
   const setAsset=(target:EmbedTarget,url:string)=>{if(target==="author"&&payload.author)payload.author.iconUrl=url;if(target==="thumbnail")payload.thumbnail={url};if(target==="image")payload.image={url};};
-  let assets: StoredAsset<EmbedTarget>[];
-  let originals: { target: EmbedTarget; url: string }[];
+  let uploads: UploadAssetSet<EmbedTarget>;
   try {
-    assets=await collectNewUploads<EmbedTarget>(form,[{formKey:"authorFile",target:"author"},{formKey:"thumbnailFile",target:"thumbnail"},{formKey:"imageFile",target:"image"}],setAsset);
-    const stored=await reattachStoredAssets<EmbedTarget>({
+    uploads=await collectFormAssets<EmbedTarget>({
+      form,
+      specs:[{formKey:"authorFile",target:"author"},{formKey:"thumbnailFile",target:"thumbnail"},{formKey:"imageFile",target:"image"}],
       targets:["author","image","thumbnail"],
       urlOf:target=>target==="author"?payload.author?.iconUrl:target==="image"?payload.image?.url:payload.thumbnail?.url,
-      skipTargets:assets.map(asset=>asset.target),
       prefix:embedUploadPrefix(guildId),
       dir:embedUploadsDir(guildId),
       setAsset,
     });
-    assets=[...assets,...stored.assets];
-    originals=stored.originals;
   } catch (error) {
     if (!(error instanceof AssetError)) throw error;
     return jsonError(error.message);
   }
+  const { assets, originals } = uploads;
   const persistAssets=async()=>persistUploadedAssets(embedUploadsDir(guildId),embedUploadPrefix(guildId),assets,originals,setAsset);
   const mode=data.mode==="text"?"text":"embed";
   if(mode==="text"&&(payload.description?.length??0)>2000)return jsonError("Текст сообщения не должен превышать 2000 символов.");

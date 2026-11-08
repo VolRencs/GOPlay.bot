@@ -1,4 +1,3 @@
-
 export const notifyModes = ["off", "dm", "channel"] as const;
 export type NotifyMode = (typeof notifyModes)[number];
 

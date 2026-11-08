@@ -9,7 +9,7 @@ import { guildLang } from "#lib/i18n/bot.ts";
 import { buttonStyleId } from "#lib/constants.ts";
 import { eventQueries } from "#db/queries.ts";
 import { cleanupUnusedUploads, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
-import { AssetError, collectNewUploads, persistUploadedAssets, reattachStoredAssets, type StoredAsset } from "#lib/assets.ts";
+import { AssetError, collectFormAssets, persistUploadedAssets, type StoredAsset, type UploadAssetSet } from "#lib/assets.ts";
 import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "#lib/events.ts";
 import type { EventListDto } from "#contracts/events.ts";
 import { embedCharacterCount, EMBED_LIMITS } from "#contracts/embeds.ts";
@@ -94,24 +94,22 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const embed = input.embed;
   const setAsset = (target: EventImageTarget, url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
   const fieldUrl = (target: EventImageTarget) => target === "thumbnail" ? embed.thumbnail?.url : embed.image?.url;
-  let assets: StoredAsset<EventImageTarget>[];
-  let originals: { target: EventImageTarget; url: string }[];
+  let uploads: UploadAssetSet<EventImageTarget>;
   try {
-    assets = await collectNewUploads<EventImageTarget>(form, [{ formKey: "thumbnailFile", target: "thumbnail" }, { formKey: "imageFile", target: "image" }], setAsset);
-    const stored = await reattachStoredAssets<EventImageTarget>({
+    uploads = await collectFormAssets<EventImageTarget>({
+      form,
+      specs: [{ formKey: "thumbnailFile", target: "thumbnail" }, { formKey: "imageFile", target: "image" }],
       targets: ["thumbnail", "image"],
       urlOf: fieldUrl,
-      skipTargets: assets.map(asset => asset.target),
       prefix: eventUploadPrefix(guildId),
       dir: eventUploadsDir(guildId),
       setAsset,
     });
-    assets = [...assets, ...stored.assets];
-    originals = stored.originals;
   } catch (error) {
     if (!(error instanceof AssetError)) throw error;
     return jsonError(error.message);
   }
+  const { assets, originals } = uploads;
   const persistAssets = async () => persistUploadedAssets(eventUploadsDir(guildId), eventUploadPrefix(guildId), assets, originals, setAsset);
 
   let saved: EventRow;

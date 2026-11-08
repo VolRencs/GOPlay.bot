@@ -1,4 +1,3 @@
-
 import { type Guild } from "discord.js";
 import { AudioPlayerStatus, NoSubscriberBehavior, VoiceConnectionStatus, createAudioPlayer, entersState, joinVoiceChannel, type VoiceConnection } from "@discordjs/voice";
 import { setTimeout as delay } from "node:timers/promises";

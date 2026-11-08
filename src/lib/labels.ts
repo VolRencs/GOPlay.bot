@@ -1,4 +1,3 @@
-
 import type { Bi, Locale } from "./i18n/core.ts";
 import { MAX_MUSIC_LEAVE_SECONDS, MIN_MUSIC_LEAVE_SECONDS } from "./constants.ts";
 

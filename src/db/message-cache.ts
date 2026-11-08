@@ -50,7 +50,6 @@ export function flushMessageCache(): void {
   }
 }
 
-
 export function forgetGuildMessages(guildId: string): void {
   for (const [messageId, entry] of pending) if (entry.guildId === guildId) pending.delete(messageId);
 }

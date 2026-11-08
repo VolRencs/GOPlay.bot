@@ -2,6 +2,7 @@ import { NextResponse } from "next/server.js";
 import { botTokenError, discordFetch, guildRoute, jsonError } from "#lib/guild-access.ts";
 import { SERVER_FALLBACK_NAME } from "#lib/constants.ts";
 import { ttlCacheAsync } from "#lib/cache.ts";
+import { assignableRoles } from "#lib/discord-api.ts";
 import type { ResourcesGet } from "#contracts/dashboard.ts";
 
 type DiscordChannel = { id: string; name: string; type: number; position: number };
@@ -28,8 +29,7 @@ async function loadResources(guildId: string, botUserId: string): Promise<Resour
   const categories = allChannels.filter(channel => channel.type === 4).sort((a, b) => a.position - b.position).map(({ id, name }) => ({ id, name }));
   const allRoles = await rolesResponse.json() as DiscordRole[];
   const botRoleIds = new Set((await botMemberResponse.json() as DiscordMember).roles);
-  const botHighestPosition = allRoles.reduce((highest, role) => botRoleIds.has(role.id) ? Math.max(highest, role.position) : highest, 0);
-  const roles = allRoles.filter(role => !role.managed && role.name !== "@everyone" && role.position < botHighestPosition).sort((a, b) => b.position - a.position).map(({ id, name }) => ({ id, name }));
+  const roles = assignableRoles(allRoles, botRoleIds).filter(role => role.name !== "@everyone").sort((a, b) => b.position - a.position).map(({ id, name }) => ({ id, name }));
   const emojis = emojisResponse.ok ? (await emojisResponse.json() as DiscordEmoji[]).filter(emoji => emoji.id && emoji.name).map(emoji => ({ id: emoji.id!, name: emoji.name!, animated: emoji.animated, value: `<${emoji.animated ? "a" : ""}:${emoji.name!}:${emoji.id!}>` })) : [];
   const guild = guildResponse.ok ? await guildResponse.json() as { name?: string; icon?: string | null; approximate_member_count?: number; approximate_presence_count?: number } : {};
   return { channels, voiceChannels, categories, roles, emojis, server: { name: guild.name ?? SERVER_FALLBACK_NAME, icon: guild.icon ?? null }, stats: { members: guild.approximate_member_count ?? null, online: guild.approximate_presence_count ?? null } };

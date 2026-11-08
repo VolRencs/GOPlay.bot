@@ -25,7 +25,6 @@ const memberTotal = ttlCacheAsync<string, number>(async () => {
   return guilds.reduce((sum, g) => sum + (g.approximate_member_count ?? 0), 0);
 }, 300_000);
 
-
 export const GET = adminRoute(async () => {
   const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString().slice(0, 10);
   const guildCount = Number(adminQueries.guildCount.get()?.c ?? 0);

@@ -21,7 +21,6 @@ const channelNames = ttlCacheAsync<string, Record<string, string>>(async guildId
   return Object.fromEntries(channels.map(channel => [channel.id, channel.name]));
 }, DAY_MS, true);
 
-
 export const GET = guildRoute(async (request, { guildId }) => {
   const lang = guildLang(guildId);
   const requested = new URL(request.url).searchParams.get("period");

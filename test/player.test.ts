@@ -10,7 +10,6 @@ const {
   ffmpegArgs, ytdlpArgsFor,
 } = await import("../src/lib/player/index.ts");
 
-
 const entry = (i: number) => `{"_type":"url","id":"v${i}","url":"https://www.youtube.com/watch?v=v${i}","title":"трек ${i} — портреты"}`;
 const playlist = `{"_type":"playlist","title":"Mix - портреты","entries":[${Array.from({ length: 50 }, (_, i) => entry(i)).join(",")}]}`;
 const single = `{"id":"bWDu7-jNMbo","title":"портреты (Acoustic)","duration":212.08,"webpage_url":"https://www.youtube.com/watch?v=bWDu7-jNMbo"}`;
@@ -77,7 +76,6 @@ test("переход к автору трека: только другой ка�
   assert.equal(pickFollowTarget("vcA", "vcB", ["vcB", "vcA"]), "vcB");
 });
 
-
 test("аргументы стрима: -ss до -i у прямого URL, труба без -ss, seek через --download-sections", () => {
   const resumed = ffmpegArgs("https://rX---sn.googlevideo.com/videoplayback?id=x", 95);
   const ss = resumed.indexOf("-ss");
@@ -94,7 +92,6 @@ test("аргументы стрима: -ss до -i у прямого URL, тру
   assert.equal(sections.includes("--no-playlist"), true);
   assert.equal(ytdlpArgsFor(0, "q").includes("--download-sections"), false);
 });
-
 
 test("конец трека и цикл повтора off → track → queue → off", () => {
   assert.equal(isNaturalEnd(60, 240), false);

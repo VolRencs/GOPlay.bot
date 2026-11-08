@@ -1,5 +1,12 @@
 import { setTimeout as delay } from "node:timers/promises";
 
+type DiscordRole = { id: string; name?: string; managed: boolean; position: number };
+
+export function assignableRoles<T extends DiscordRole>(roles: readonly T[], botRoleIds: ReadonlySet<string>): T[] {
+  const highest = roles.reduce((position, role) => botRoleIds.has(role.id) ? Math.max(position, role.position) : position, 0);
+  return roles.filter(role => !role.managed && role.position < highest);
+}
+
 export class DiscordRateLimitError extends Error {
   readonly retryAfterMs: number;
   constructor(retryAfterMs: number) { super("Discord rate limit reached"); this.retryAfterMs = retryAfterMs; }

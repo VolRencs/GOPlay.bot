@@ -24,3 +24,10 @@ export const guildIconUrl = (guildId: string, icon: string | null | undefined, s
 export const channelRef = (id: string): string => `<#${id}>`;
 export const roleRef = (id: string): string => `<@&${id}>`;
 export const userRef = (id: string): string => `<@${id}>`;
+
+export function progressBar(current: number, total: number, width: number, fullWhenZero = false): string {
+  const filled = total > 0
+    ? Math.min(width, Math.max(0, Math.round((current / total) * width)))
+    : fullWhenZero ? width : 0;
+  return "▰".repeat(filled) + "▱".repeat(width - filled);
+}

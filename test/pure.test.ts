@@ -12,7 +12,6 @@ const { extractFilenames, embedUploadPrefix } = await import("../src/lib/uploads
 const { clampNumber } = await import("../src/lib/constants.ts");
 const { db } = await import("../src/db/database.ts");
 
-
 test("isMissingDiscordResource различает коды и источники", () => {
   assert.equal(isMissingDiscordResource({ code: 10008 }), true);
   assert.equal(isMissingDiscordResource({ rawError: { code: 10003 } }), true);

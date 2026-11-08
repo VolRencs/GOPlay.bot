@@ -1,4 +1,3 @@
-
 import type { ServerEmoji as GoEmoji } from "goemoji";
 
 export type Channel = { id: string; name: string };

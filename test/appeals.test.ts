@@ -25,7 +25,6 @@ punishment(10, "g1", "u1", "ban");
 punishment(13, "g1", "u1", "ban");
 punishment(14, "g1", "u1", "automod");
 
-
 test("create appeal: happy path copies the punishment type and starts pending", () => {
   const result = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 1, reason: "Я не отправлял это сообщение." });
   assert.ok(result.ok);

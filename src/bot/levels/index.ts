@@ -9,7 +9,7 @@ import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import { levelsTr } from "../../lib/i18n/bot/levels.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
-import { userRef } from "../../lib/format.ts";
+import { progressBar, userRef } from "../../lib/format.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { fetchMember } from "../utils/members.ts";
 
@@ -187,11 +187,6 @@ export function registerLevels(client: Client): void {
   setInterval(() => guard("LEVELS:VOICE", () => tickVoice(client)), VOICE_INTERVAL).unref();
 }
 
-function progressBar(current: number, needed: number): string {
-  const filled = needed > 0 ? Math.min(BAR_SIZE, Math.max(0, Math.round((current / needed) * BAR_SIZE))) : BAR_SIZE;
-  return "▰".repeat(filled) + "▱".repeat(BAR_SIZE - filled);
-}
-
 export async function handleLevelCommand(i: Interaction): Promise<boolean> {
   if (!i.isChatInputCommand() || (i.commandName !== "lvl" && i.commandName !== "top")) return false;
   const t = guildTr(levelsTr, i.guildId ?? "");
@@ -232,7 +227,7 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
         { name: t("fieldLevel"), value: String(progress.level), inline: true },
         { name: t("fieldRank"), value: t("rankValue", { rank: String(rank) }), inline: true },
         { name: t("fieldTotalXp"), value: String(xp), inline: true },
-        { name: t("fieldProgress"), value: progress.needed > 0 ? `${progressBar(progress.current, progress.needed)}\n${t("progressValue", { a: String(progress.current), b: String(progress.needed) })}` : t("maxLevelValue"), inline: false },
+        { name: t("fieldProgress"), value: progress.needed > 0 ? `${progressBar(progress.current, progress.needed, BAR_SIZE, true)}\n${t("progressValue", { a: String(progress.current), b: String(progress.needed) })}` : t("maxLevelValue"), inline: false },
         { name: t("fieldMessages"), value: String(row?.messages ?? 0), inline: true },
         { name: t("fieldVoice"), value: t("voiceTime", { h: String(Math.floor(voiceSeconds / 3600)), m: String(Math.floor((voiceSeconds % 3600) / 60)) }), inline: true },
       );

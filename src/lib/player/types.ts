@@ -1,4 +1,3 @@
-
 export const MAX_QUEUE = 50;
 export const MAX_PLAYLIST = 100;
 export const MAX_DURATION_SECONDS = 2 * 60 * 60;

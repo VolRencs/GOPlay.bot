@@ -15,7 +15,7 @@ import { fmtTime, getQueueSnapshot, type LoopMode, type Track } from "../../lib/
 import { trFor } from "../../lib/i18n/bot.ts";
 import type { Locale } from "../../lib/i18n/core.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
-import { userRef } from "../../lib/format.ts";
+import { progressBar, userRef } from "../../lib/format.ts";
 
 const QUEUE_PAGE_SIZE = 10;
 
@@ -31,13 +31,6 @@ type MusicPanelState = {
   paused: boolean;
   loopMode: LoopMode;
   positionSec: number;
-};
-
-const progressBar = (position: number, duration: number): string => {
-  const width = 14;
-  const ratio = duration > 0 ? Math.min(1, Math.max(0, position / duration)) : 0;
-  const filled = Math.round(ratio * width);
-  return `${"▰".repeat(filled)}${"▱".repeat(width - filled)}`;
 };
 
 type QueueView = { content: string; page: number; pages: number };
@@ -70,7 +63,7 @@ export function renderMusicPanel(state: MusicPanelState, lang: Locale) {
   const time = duration > 0 ? `${fmtTime(position)} / ${fmtTime(duration)}` : fmtTime(position);
   const title = `## ${state.paused ? "⏸️" : "▶️"} ${trackLabel(state.current.title, 220)}`;
   const meta = `-# ${time} · ${t("panelRequestedBy")}: ${userRef(state.current.requestedBy)} · ${t("panelLoopField")}: ${loopLabel}`;
-  const progress = duration > 0 ? `\n\`${progressBar(position, duration)}\`` : "";
+  const progress = duration > 0 ? `\n\`${progressBar(position, duration, 14)}\`` : "";
   const body = `${title}\n${meta}${progress}`;
   const queueText = state.queueLength
     ? `${t("panelUpNextCount", { n: String(state.queueLength) })}\n${state.queuePreview.map((track, index) => {

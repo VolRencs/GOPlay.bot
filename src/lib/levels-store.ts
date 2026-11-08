@@ -4,7 +4,6 @@ import { parseStringArray } from "./json.ts";
 import { levelDefaults, levelRanges, notifyModes, type LevelReward, type LevelSettings } from "./levels.ts";
 import type { LevelSettingsRow } from "../db/rows.ts";
 
-
 const clampInt = (value: unknown, fallback: number, range: { min: number; max: number }): number => clampNumber(value, fallback, range.min, range.max, "integer");
 
 export function levelSettingsFromRow(row: LevelSettingsRow | undefined): LevelSettings {

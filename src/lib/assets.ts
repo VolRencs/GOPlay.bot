@@ -26,7 +26,7 @@ function extMatchesMime(filename: string, mime: string): boolean {
   return false;
 }
 
-export async function collectNewUploads<T extends string>(form: FormData | null, specs: readonly { formKey: string; target: T }[], setAsset: (target: T, url: string) => void): Promise<StoredAsset<T>[]> {
+async function collectNewUploads<T extends string>(form: FormData | null, specs: readonly { formKey: string; target: T }[], setAsset: (target: T, url: string) => void): Promise<StoredAsset<T>[]> {
   const assets: StoredAsset<T>[] = [];
   for (const { formKey, target } of specs) {
     const file = form?.get(formKey);
@@ -69,6 +69,32 @@ export async function reattachStoredAssets<T extends string>(opts: {
     assets.push({ target, filename, file: new File([new Uint8Array(bytes)], filename, { type: extMime(filename) }), bytes });
   }
   return { assets, originals };
+}
+
+export type UploadAssetSet<T extends string> = {
+  assets: StoredAsset<T>[];
+  originals: { target: T; url: string }[];
+};
+
+export async function collectFormAssets<T extends string>(input: {
+  form: FormData | null;
+  specs: readonly { formKey: string; target: T }[];
+  targets: readonly T[];
+  urlOf: (target: T) => string | undefined;
+  prefix: string;
+  dir: string;
+  setAsset: (target: T, url: string) => void;
+}): Promise<UploadAssetSet<T>> {
+  const assets = await collectNewUploads(input.form, input.specs, input.setAsset);
+  const stored = await reattachStoredAssets<T>({
+    targets: input.targets,
+    urlOf: input.urlOf,
+    skipTargets: assets.map(asset => asset.target),
+    prefix: input.prefix,
+    dir: input.dir,
+    setAsset: input.setAsset,
+  });
+  return { assets: [...assets, ...stored.assets], originals: stored.originals };
 }
 
 export async function persistUploadedAssets<T extends string>(dir: string, prefix: string, assets: readonly StoredAsset<T>[], originals: readonly OriginalAsset<T>[], setAsset: (target: T, url: string) => void): Promise<void> {
