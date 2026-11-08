@@ -6,9 +6,7 @@ import { DEFAULT_MUSIC_LEAVE_SECONDS } from "./constants.ts";
 import type { MusicDomain } from "../contracts/music.ts";
 import type { MusicSettingsRow } from "../db/rows.ts";
 
-type MusicSettings = MusicDomain;
-
-export function musicSettingsFromRow(row: MusicSettingsRow | undefined): MusicSettings {
+export function musicSettingsFromRow(row: MusicSettingsRow | undefined): MusicDomain {
   return {
     command_channel_id: row?.command_channel_id ?? null,
     voice_channel_ids: parseStringArray(row?.voice_channel_ids_json),
@@ -19,13 +17,13 @@ export function musicSettingsFromRow(row: MusicSettingsRow | undefined): MusicSe
   };
 }
 
-function loadMusicSettings(guildId: string): MusicSettings {
+function loadMusicSettings(guildId: string): MusicDomain {
   return musicSettingsFromRow(stmt.musicSettings.get(guildId));
 }
 
-const settingsCache = ttlCacheSync<string, MusicSettings>(loadMusicSettings, 10_000);
+const settingsCache = ttlCacheSync<string, MusicDomain>(loadMusicSettings, 10_000);
 
-export function musicSettingsFor(guildId: string): MusicSettings {
+export function musicSettingsFor(guildId: string): MusicDomain {
   return settingsCache.get(guildId);
 }
 

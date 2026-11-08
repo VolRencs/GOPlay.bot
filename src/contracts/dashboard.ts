@@ -4,8 +4,8 @@ import type { ServerEmoji as GoEmoji } from "goemoji";
 export type Channel = { id: string; name: string };
 export type Role = { id: string; name: string };
 export type ServerEmoji = GoEmoji & { value: string };
-export type ServerStats = { members: number | null; online: number | null };
-export type ServerIdentity = { name: string; icon: string | null };
+type ServerStats = { members: number | null; online: number | null };
+type ServerIdentity = { name: string; icon: string | null };
 
 export type ResourcesGet = {
   channels: Channel[];
@@ -72,7 +72,7 @@ export type AdminDataDto = {
   guilds: AdminGuildDto[];
 };
 
-export type AuditEntryDto = {
+type AuditEntryDto = {
   id: number;
   userName: string;
   section: string;

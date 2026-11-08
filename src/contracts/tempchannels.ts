@@ -18,7 +18,7 @@ export type TempPresetDto = {
 };
 
 export type TempchannelsDto = { presets: TempPresetDto[] };
-export type TempPresetInput = { name: string; triggerChannelIds: string[]; config: TempChannelConfigDto };
+type TempPresetInput = { name: string; triggerChannelIds: string[]; config: TempChannelConfigDto };
 export type TempPutBody = { presets: TempPresetInput[] };
 
 export const defaultTempConfig: TempChannelConfigDto = {

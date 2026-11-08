@@ -14,7 +14,7 @@ export type RolePanelRowDto = {
   buttonColor: string | null;
 };
 
-export type RolePanelOptionInput = {
+type RolePanelOptionInput = {
   roleId: string;
   label?: string;
   emoji?: string;

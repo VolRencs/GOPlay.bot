@@ -24,7 +24,7 @@ export type WelcomeDto = {
   goodbyeMessage: string;
 };
 
-export type WelcomeInput = Omit<WelcomeDto, "backgroundPath">;
+type WelcomeInput = Omit<WelcomeDto, "backgroundPath">;
 
 export const welcomeDefaults: WelcomeDto = {
   enabled: false,

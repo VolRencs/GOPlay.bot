@@ -18,7 +18,7 @@ export type LevelRewardDto = { level: number; roleId: string };
 
 export type LevelsDto = { settings: LevelSettingsDto; rewards: LevelRewardDto[] };
 
-export type LevelsDomain = { settings: LevelSettings; rewards: LevelReward[] };
+type LevelsDomain = { settings: LevelSettings; rewards: LevelReward[] };
 
 export const levelRangesDto = {
   xpPerMessage: levelRanges.xp_per_message,

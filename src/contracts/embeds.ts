@@ -3,7 +3,7 @@ import { safeJson } from "../lib/json.ts";
 // Shared embed model for message and event composers; Discord limits live here.
 export type EmbedField = { name: string; value: string; inline?: boolean };
 
-export type EmbedAuthor = { name?: string; url?: string; iconUrl?: string };
+type EmbedAuthor = { name?: string; url?: string; iconUrl?: string };
 
 export type EmbedContent = { title?: string; description?: string; color?: number; footer?: { text?: string }; author?: EmbedAuthor; image?: { url?: string }; thumbnail?: { url?: string }; fields?: EmbedField[] };
 
@@ -115,7 +115,7 @@ export function toDiscordEmbed(content: EmbedContent): DiscordEmbed {
   };
 }
 
-export function parseEmbedJson(raw: string | null | undefined): EmbedContent {
+function parseEmbedJson(raw: string | null | undefined): EmbedContent {
   return normalizeEmbedContent(safeJson<unknown>(raw, {})).content;
 }
 
