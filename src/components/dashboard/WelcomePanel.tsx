@@ -70,6 +70,7 @@ export function WelcomeSettings() {
     if (sent.ok) {
       patch(current => ({ ...current, backgroundPath: sent.data.backgroundPath, imageEnabled: true }));
       setBgTimestamp(Date.now());
+      clearLocalPreview();
       notify("Фон загружен и включён.");
     } else {
       clearLocalPreview();

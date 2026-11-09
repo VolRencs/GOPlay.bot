@@ -191,8 +191,8 @@ importers:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
       welcome-render:
-        specifier: https://github.com/VolRencs/welcome-render/releases/download/v0.1.0/welcome-render-0.1.0.tgz
-        version: https://github.com/VolRencs/welcome-render/releases/download/v0.1.0/welcome-render-0.1.0.tgz
+        specifier: https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz
+        version: https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
@@ -1052,9 +1052,9 @@ packages:
     resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
     engines: {node: '>=18.17'}
 
-  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.1.0/welcome-render-0.1.0.tgz:
-    resolution: {integrity: sha512-QtWh+a40c8t3DhKQrU0gCRp+Y3LWJmEi9k+6zfOgl6wDMAurU8DsYGWkZGpRdhokEQ4ukcmXgOWt1uBS0tn8Tw==, tarball: https://github.com/VolRencs/welcome-render/releases/download/v0.1.0/welcome-render-0.1.0.tgz}
-    version: 0.1.0
+  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz:
+    resolution: {integrity: sha512-6TdHjCuBY2tZva6UD32tTceHQbyofqYI5ghO+wOXwmq2MN76FP9fNBBik1daVyY+7ooExz6CTCRDKAaNweZSIw==, tarball: https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz}
+    version: 0.2.0
     engines: {node: '>=26.0.0'}
     cpu: [x64]
     os: [linux]
@@ -1725,7 +1725,7 @@ snapshots:
 
   undici@6.29.1: {}
 
-  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.1.0/welcome-render-0.1.0.tgz: {}
+  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz: {}
 
   ws@8.22.1: {}
 

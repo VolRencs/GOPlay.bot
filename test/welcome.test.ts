@@ -27,7 +27,8 @@ test("welcomeLayout: сохраняет SVG-правило scaleX для раз�
 });
 
 test("clampImageSize: ограничивает максимальную сторону пропорционально", () => {
-  assert.deepEqual(clampImageSize(8000, 4000), { width: 4096, height: 2048 });
+  assert.deepEqual(clampImageSize(8000, 4000), { width: 2560, height: 1280 });
+  assert.deepEqual(clampImageSize(2560, 2560), { width: 2000, height: 2000 });
   assert.deepEqual(clampImageSize(900, 480), { width: 900, height: 480 });
   assert.deepEqual(clampImageSize(0, 0), { width: 1, height: 1 });
 });
@@ -37,7 +38,32 @@ test("imageSize: читает PNG и клампит пропорциональн
   Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
   png.writeUInt32BE(8000, 16);
   png.writeUInt32BE(4000, 20);
-  assert.deepEqual(imageSize(png), { width: 4096, height: 2048 });
+  assert.deepEqual(imageSize(png), { width: 2560, height: 1280 });
+});
+
+test("imageSize: учитывает EXIF orientation JPEG", () => {
+  const app1 = Buffer.alloc(36);
+  app1[0] = 0xff; app1[1] = 0xe1;
+  app1.writeUInt16BE(34, 2);
+  app1.write("Exif\0\0", 4, "latin1");
+  const tiff = 10;
+  app1.write("MM", tiff, "latin1");
+  app1.writeUInt16BE(42, tiff + 2);
+  app1.writeUInt32BE(8, tiff + 4);
+  app1.writeUInt16BE(1, tiff + 8);
+  app1.writeUInt16BE(0x0112, tiff + 10);
+  app1.writeUInt16BE(3, tiff + 12);
+  app1.writeUInt32BE(1, tiff + 14);
+  app1.writeUInt16BE(6, tiff + 18);
+  app1.writeUInt32BE(0, tiff + 22);
+  const sof = Buffer.alloc(19);
+  sof[0] = 0xff; sof[1] = 0xc0;
+  sof.writeUInt16BE(17, 2);
+  sof[4] = 8;
+  sof.writeUInt16BE(200, 5);
+  sof.writeUInt16BE(400, 7);
+  const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8]), app1, sof, Buffer.alloc(16)]);
+  assert.deepEqual(imageSize(jpeg), { width: 200, height: 400 });
 });
 
 test("buildWelcomeSvg: использует те же координаты, что native-рендер", () => {

@@ -46,6 +46,8 @@ export function WelcomePreview({ message, config: committed, background, enabled
   const commitTimer = useRef<number | null>(null);
   const committedRef = useRef(committed);
   committedRef.current = committed;
+  const gestureRef = useRef(gesture);
+  gestureRef.current = gesture;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -59,7 +61,7 @@ export function WelcomePreview({ message, config: committed, background, enabled
     if (commitTimer.current === null) commitTimer.current = window.setTimeout(() => { commitTimer.current = null; flushPending(); }, 120);
   };
 
-  useEffect(() => { if (!gesture) setLive(committed); }, [committed, gesture]);
+  useEffect(() => { if (!gestureRef.current) setLive(committed); }, [committed]);
   useEffect(() => () => {
     if (commitTimer.current !== null) { clearTimeout(commitTimer.current); commitTimer.current = null; }
     flushPending();
@@ -200,9 +202,9 @@ export function WelcomePreview({ message, config: committed, background, enabled
             className={`preview-hit hit-avatar${gesture?.kind === "move" && gesture.target === "avatar" ? " grabbed" : ""}${gesture?.kind === "resize" ? " grabbed" : ""}`}
             onPointerDown={e => startMove(e, "avatar")}
             style={{
-              left: `${(live.avatarX - live.avatarWidth / 2) / 9}%`,
+              left: `${((live.avatarX - live.avatarWidth / 2) / DESIGN_W) * 100}%`,
               top: `${((live.avatarY * scaleY - (live.avatarHeight * scaleX) / 2) / size.height) * 100}%`,
-              width: `${live.avatarWidth / 9}%`,
+              width: `${(live.avatarWidth / DESIGN_W) * 100}%`,
               height: `${((live.avatarHeight * scaleX) / size.height) * 100}%`,
             }}
           >
@@ -215,7 +217,7 @@ export function WelcomePreview({ message, config: committed, background, enabled
               key={target}
               className={`preview-hit hit-text${gesture?.kind === "move" && gesture.target === target ? " grabbed" : ""}`}
               onPointerDown={e => startMove(e, target)}
-              style={{ left: `${tx / 9}%`, top: `${((ty * scaleY - fontSize * scaleX * 1.2) / size.height) * 100}%`, width: "56%", height: `${((fontSize * scaleX * 1.7) / size.height) * 100}%` }}
+              style={{ left: `${(tx / DESIGN_W) * 100}%`, top: `${((ty * scaleY - fontSize * scaleX * 1.2) / size.height) * 100}%`, width: "56%", height: `${((fontSize * scaleX * 1.7) / size.height) * 100}%` }}
             />
           ))}
         </div>

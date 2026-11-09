@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server.js";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
 import { welcomeQueries } from "#db/queries.ts";
 import { fromDto, welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
-import { parseImageConfig } from "#lib/welcome.ts";
+import { MAX_IMAGE_DIMENSION, MAX_IMAGE_PIXELS, parseImageConfig } from "#lib/welcome.ts";
+import { normalizeWelcomeImage } from "#lib/welcome-render.ts";
 import { deleteWelcomeBackgrounds, rejectOversized, WELCOME_IMAGE_EXTENSIONS, WELCOME_UPLOAD_PREFIX, welcomeUploadsDir } from "#lib/uploads.ts";
 import { recordDashboardChange } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { logger } from "#lib/logger.ts";
 import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { welcomeState, welcomeView } from "#lib/settings-views.ts";
+
+export const runtime = "nodejs";
 
 export const GET = settingsGetRoute(guildId => welcomeState(guildId).state);
 
@@ -82,19 +85,41 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if (!form) return jsonError("Некорректный запрос.");
   const file = form.get("background");
   if (!(file instanceof File)) return jsonError("Выберите изображение");
-  const ext = WELCOME_IMAGE_EXTENSIONS[file.type];
-  if (!ext || file.size > 5 * 1024 * 1024) return jsonError("Допустимы PNG, JPG или WEBP до 5 МБ");
+  if (!WELCOME_IMAGE_EXTENSIONS[file.type] || file.size > 5 * 1024 * 1024) return jsonError("Допустимы PNG, JPG или WEBP до 5 МБ");
+  let normalized;
+  try {
+    normalized = await normalizeWelcomeImage(Buffer.from(await file.arrayBuffer()), {
+      maxDimension: MAX_IMAGE_DIMENSION,
+      maxPixels: MAX_IMAGE_PIXELS,
+      format: "jpeg",
+      quality: 88,
+    });
+  } catch (error) {
+    logger.warn("[WELCOME] Не удалось обработать фон", guildId, error);
+    const unavailable = (error as { code?: string }).code === "NATIVE_LOAD";
+    return jsonError(unavailable ? "Обработка изображений недоступна на сервере." : "Не удалось обработать изображение. Загрузите другой файл.", unavailable ? 503 : 400);
+  }
   const dir = welcomeUploadsDir(); await mkdir(dir, { recursive: true });
+  const ext = normalized.format === "jpeg" ? "jpg" : "png";
   const filename = `${guildId}-welcome.${ext}`, path = join(dir, filename), storedPath = `${WELCOME_UPLOAD_PREFIX}${filename}`;
-  await writeFile(path, Buffer.from(await file.arrayBuffer()));
-  await deleteWelcomeBackgrounds(guildId, filename);
+  const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await writeFile(temporary, normalized.data);
+    await rename(temporary, path);
+  } catch (error) {
+    await unlink(temporary).catch(() => null);
+    logger.error("[WELCOME] Не удалось сохранить фон", guildId, error);
+    return jsonError("Не удалось сохранить фон. Попробуйте ещё раз.", 500);
+  }
   const welcomeInput = { ...welcomeDefaults, imageEnabled: true };
   welcomeQueries.backgroundUpsert.run({ ...fromDto(welcomeInput), guild_id: guildId, background_path: storedPath, updated_at: Date.now() });
   const saved = welcomeState(guildId).state;
   if (saved.backgroundPath !== storedPath || !saved.imageEnabled) {
     logger.error("[WELCOME] Не удалось сохранить фон в базе", guildId, { backgroundPath: saved.backgroundPath, imageEnabled: saved.imageEnabled });
+    if (saved.backgroundPath !== storedPath) await unlink(path).catch(() => null);
     return jsonError("Не удалось сохранить фон. Попробуйте ещё раз.", 500);
   }
+  await deleteWelcomeBackgrounds(guildId, filename).catch(error => logger.warn("[WELCOME] Не удалось удалить старый фон", guildId, error));
   recordDashboardChange(guildId, user, AUDIT_SECTION.welcome, "Загружен новый фон картинки приветствия.");
   return NextResponse.json({ ok: true, backgroundPath: storedPath, imageEnabled: true });
 });

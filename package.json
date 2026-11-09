@@ -31,7 +31,7 @@
     "next": "^16.4.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "welcome-render": "https://github.com/VolRencs/welcome-render/releases/download/v0.1.0/welcome-render-0.1.0.tgz"
+    "welcome-render": "https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

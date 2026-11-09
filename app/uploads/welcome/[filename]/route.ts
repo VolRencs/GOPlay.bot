@@ -10,5 +10,5 @@ export async function GET(_: Request, context: RouteContext<"/uploads/welcome/[f
   if (!isSnowflake(guildId)) return new Response(null, { status: 404 });
   const access = await authorize(guildId);
   if (!access.ok) return new Response(null, { status: access.status });
-  return serveUploadFile(welcomeUploadsDir(), filename, type, "private, max-age=31536000, immutable", { "x-content-type-options": "nosniff" });
+  return serveUploadFile(welcomeUploadsDir(), filename, type, "private, no-cache", { "x-content-type-options": "nosniff" });
 }

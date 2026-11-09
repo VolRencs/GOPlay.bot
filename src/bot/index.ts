@@ -19,6 +19,7 @@ import { registerMusic } from "./music/index.ts";
 import { commands } from "./commands.ts";
 import { handleReaction } from "./self-roles.ts";
 import { sendMemberEvent } from "./welcome.ts";
+import { getWelcomeRenderer } from "../lib/welcome-render.ts";
 import { registerLevels } from "./levels/index.ts";
 import { stopAndLeave } from "../lib/player/index.ts";
 import { startHeartbeat } from "./heartbeat.ts";
@@ -39,6 +40,8 @@ registerLoggingEvents(client);
 once(client, Events.ClientReady, "CLIENT_READY", async c => {
   startHeartbeat();
   logger.info("Бот готов:", c.user.username);
+  try { await getWelcomeRenderer(); }
+  catch (error) { logger.error("[WELCOME] Рендер картинок недоступен", error); }
   try {
     await new REST().setToken(token).put(Routes.applicationCommands(c.user.id), { body: commands });
   } catch (error) {

@@ -122,19 +122,61 @@ export function welcomeValues(input: { name: string; username?: string; userId?:
 
 const escapeXml = (value: string) => value.replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[c] ?? c);
 
-const MAX_IMAGE_DIMENSION = 4096;
+export const MAX_IMAGE_DIMENSION = 2560;
+export const MAX_IMAGE_PIXELS = 4_000_000;
 
 export function clampImageSize(width: number, height: number): { width: number; height: number } {
   const w = Math.max(1, Math.round(width));
   const h = Math.max(1, Math.round(height));
-  const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(w, h));
+  const pixelScale = Math.sqrt(MAX_IMAGE_PIXELS / Math.max(1, w * h));
+  const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(w, h), pixelScale);
   return { width: Math.max(1, Math.round(w * scale)), height: Math.max(1, Math.round(h * scale)) };
+}
+
+function jpegExifOrientation(data: Buffer, offset: number, length: number): number {
+  if (length < 6 || data.subarray(offset, offset + 6).toString("latin1") !== "Exif\0\0") return 1;
+  const tiff = offset + 6;
+  const end = Math.min(data.length, offset + length);
+  try {
+    const order = data.subarray(tiff, tiff + 2).toString("latin1");
+    if (order !== "II" && order !== "MM") return 1;
+    const little = order === "II";
+    const readU16 = (position: number) => {
+      if (position < tiff || position + 2 > end) throw new Error("exif");
+      return little ? data.readUInt16LE(position) : data.readUInt16BE(position);
+    };
+    const readU32 = (position: number) => {
+      if (position < tiff || position + 4 > end) throw new Error("exif");
+      return little ? data.readUInt32LE(position) : data.readUInt32BE(position);
+    };
+    if (readU16(tiff + 2) !== 42) return 1;
+    const ifd = tiff + readU32(tiff + 4);
+    const count = readU16(ifd);
+    for (let index = 0; index < count; index += 1) {
+      const entry = ifd + 2 + index * 12;
+      if (readU16(entry) !== 0x0112) continue;
+      const kind = readU16(entry + 2);
+      if (kind === 3) {
+        const value = readU16(entry + 8);
+        return value >= 1 && value <= 8 ? value : 1;
+      }
+      if (kind === 4) {
+        const value = readU32(entry + 8);
+        return value >= 1 && value <= 8 ? value : 1;
+      }
+      return 1;
+    }
+  } catch {  }
+  return 1;
+}
+
+function isJpegSof(marker: number): boolean {
+  return (marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf);
 }
 
 export function imageSize(data: Buffer, fallback = { width: WELCOME_DESIGN.width, height: WELCOME_DESIGN.height }): { width: number; height: number } {
   try {
     if (data.length >= 24 && data.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return clampImageSize(data.readUInt32BE(16), data.readUInt32BE(20));
-    if (data.length >= 10 && data.subarray(0, 3).toString() === "GIF") return clampImageSize(data.readUInt16LE(6), data.readUInt16LE(8));
     if (data.length >= 30 && data.subarray(0, 4).toString() === "RIFF" && data.subarray(8, 12).toString() === "WEBP") {
       const fourcc = data.subarray(12, 16).toString();
       if (fourcc === "VP8X") return clampImageSize(data.readUIntLE(24, 3) + 1, data.readUIntLE(27, 3) + 1);
@@ -142,7 +184,22 @@ export function imageSize(data: Buffer, fallback = { width: WELCOME_DESIGN.width
       if (fourcc === "VP8 " && data.length >= 32) return clampImageSize(data.readUIntLE(26, 3) + 1, data.readUIntLE(29, 3) + 1);
       return fallback;
     }
-    if (data.length >= 12 && data[0] === 0xff && data[1] === 0xd8) for (let i = 2; i < data.length - 9;) { if (data[i] !== 0xff) { i++; continue; } const marker=data[i+1] ?? 0, length=data.readUInt16BE(i+2); if (marker >= 0xc0 && marker <= 0xc3) return clampImageSize(data.readUInt16BE(i+7), data.readUInt16BE(i+5)); i += 2 + length; }
+    if (data.length >= 12 && data[0] === 0xff && data[1] === 0xd8) {
+      let orientation = 1;
+      for (let i = 2; i < data.length - 9;) {
+        if (data[i] !== 0xff) { i++; continue; }
+        const marker = data[i + 1] ?? 0;
+        const length = data.readUInt16BE(i + 2);
+        if (length < 2) break;
+        if (marker === 0xe1 && length > 2) orientation = jpegExifOrientation(data, i + 4, length - 2);
+        if (isJpegSof(marker)) {
+          const width = data.readUInt16BE(i + 7);
+          const height = data.readUInt16BE(i + 5);
+          return orientation >= 5 && orientation <= 8 ? clampImageSize(height, width) : clampImageSize(width, height);
+        }
+        i += 2 + length;
+      }
+    }
   } catch {  }
   return fallback;
 }
@@ -151,7 +208,7 @@ export function buildWelcomeSvg(input: { backgroundHref?: string | null; backgro
   const layout = welcomeLayout(input.config, input.backgroundWidth, input.backgroundHeight);
   const { avatar, title, subtitle } = layout;
   const bg = input.backgroundHref
-    ? `<image href="${escapeXml(input.backgroundHref)}" width="${layout.width}" height="${layout.height}"/>`
+    ? `<image href="${escapeXml(input.backgroundHref)}" width="${layout.width}" height="${layout.height}" preserveAspectRatio="xMidYMid slice"/>`
     : `<defs><linearGradient id="g"><stop stop-color="#111827"/><stop offset="1" stop-color="#312e81"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/>`;
   const avatarMarkup = `<clipPath id="c"><ellipse cx="${avatar.cx}" cy="${avatar.cy}" rx="${avatar.rx}" ry="${avatar.ry}"/></clipPath>`
     + `<image href="${escapeXml(input.avatarHref)}" x="${avatar.cx - avatar.rx}" y="${avatar.cy - avatar.ry}" width="${avatar.rx * 2}" height="${avatar.ry * 2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#c)"/>`;
