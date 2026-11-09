@@ -15,10 +15,9 @@ export const GET = settingsGetRoute(guildId => toMusicDto(musicSettingsFor(guild
 
 export const PUT = settingsPutRoute<MusicDto>({
   load: guildId => musicState(guildId),
-  parse: (body, guildId) => {
+  parse: (body, _guildId, current) => {
     const value = body as Partial<MusicDto> | null;
     if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, response: jsonError("Некорректное тело запроса.") };
-    const current = musicState(guildId).state;
 
     const ids = value.voiceChannelIds ?? [];
     const roles = value.allowedRoleIds ?? [];

@@ -46,9 +46,9 @@ export const stmt = {
   ),
   hourlyMetric: upsert<GuildHourlyMessageRow>(
     "guild_hourly_messages",
-    ["guild_id", "day", "hour", "messages"],
+    ["guild_id", "day", "hour", "messages", "joins", "leaves"],
     ["guild_id", "day", "hour"],
-    ["messages=messages+excluded.messages"],
+    ["messages=messages+excluded.messages", "joins=joins+excluded.joins", "leaves=leaves+excluded.leaves"],
   ),
   cleanupChannelStats: write("DELETE FROM guild_daily_channel_stats WHERE day<?"),
   cleanupUserStats: write("DELETE FROM guild_daily_user_stats WHERE day<?"),
@@ -73,7 +73,7 @@ export const stmt = {
   warnDelete: write("DELETE FROM moderation_actions WHERE guild_id=? AND type='warn' AND (? IS NULL OR user_id=?)"),
   appealDeleteForWarns: write("DELETE FROM appeals WHERE punishment_id IN (SELECT id FROM moderation_actions WHERE guild_id=? AND type='warn' AND (? IS NULL OR user_id=?))"),
   dataVersion: read<DataVersionRow>("PRAGMA data_version"),
-  panelReactions: read<ReactionPanelRow>("SELECT id,role_mode,message_id FROM self_role_panels WHERE guild_id=? AND style='reaction'"),
+  panelReactions: read<ReactionPanelRow>("SELECT p.id,p.role_mode,p.message_id,o.role_id,o.emoji FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? AND p.style='reaction' ORDER BY p.id"),
   messageUpsert: upsert<MessageCacheRow>(
     "message_cache",
     ["message_id", "guild_id", "content", "created_at"],

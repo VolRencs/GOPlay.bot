@@ -1,9 +1,8 @@
 import type { GuildMember, MessageReaction, PartialMessageReaction, PartialUser, User } from "discord.js";
 import { setTimeout as delay } from "node:timers/promises";
 import { normalizeEmojiText, sameEmojiValue } from "goemoji/discord";
-import { stmt } from "../db/statements.ts";
 import { count } from "../lib/perf.ts";
-import { reactionPanel } from "./config-cache.ts";
+import { cachedPanel, reactionPanel } from "./config-cache.ts";
 import { fetchMember } from "./utils/members.ts";
 import { automodTr, guildLang } from "../lib/i18n/bot.ts";
 
@@ -25,10 +24,10 @@ async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 async function applyPanelRole(guildId: string, panelId: number, roleId: string, member: GuildMember) {
   return withRoleLock(`${guildId}:${member.id}`, async () => {
-    const panel = stmt.panel.get(panelId, guildId);
+    const panel = cachedPanel(guildId, panelId);
     const role = member.guild.roles.cache.get(roleId);
     if (!panel || !role || role.managed || !role.editable) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
-    const options = stmt.panelOptionEmoji.all(panelId);
+    const options = panel.options;
     if (!options.some(option => option.role_id === roleId)) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
     const has = member.roles.cache.has(roleId);
     const action = panel.role_mode === "add" ? "add" : panel.role_mode === "remove" ? "remove" : has ? "remove" : "add";
@@ -45,8 +44,7 @@ export function applyPanelRoleSafe(guildId: string, panelId: number, roleId: str
 }
 
 export function panelNotifies(guildId: string, panelId: number): boolean {
-  const panel = stmt.panel.get(panelId, guildId);
-  return Boolean(panel?.notify_enabled);
+  return Boolean(cachedPanel(guildId, panelId)?.notify_enabled);
 }
 
 function samePanelEmoji(saved: string | null, name: string | null, identifier: string) { if (!saved) return normalizeEmojiText(name ?? "") === normalizeEmojiText("✅"); return sameEmojiValue(saved, name, identifier); }

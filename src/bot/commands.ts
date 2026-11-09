@@ -1,5 +1,5 @@
 import { ApplicationCommandOptionType, ChannelType, EmbedBuilder, MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
-import { commandsTr, guildLang, trFor } from "../lib/i18n/bot.ts";
+import { commandsTr, guildLang, guildTr } from "../lib/i18n/bot.ts";
 import { BRAND_COLOR } from "../lib/colors.ts";
 import { roleRef, userRef } from "../lib/format.ts";
 import { trModeration } from "../lib/i18n/bot/moderation.ts";
@@ -45,13 +45,12 @@ const handlers: Record<string, CommandHandler> = {
   ping: async i => { await i.reply(`🏓 ${i.client.ws.ping}ms`); },
   help: async i => {
     const cmdLang = guildLang(i.guildId ?? "");
-    const tC = trFor(commandsTr, cmdLang);
+    const tC = guildTr(commandsTr, i.guildId ?? "");
     const lines = commands.map(c => tC("helpCommand", { name: c.name, desc: cmdLang === "en" ? commandDescriptionsEn[c.name] ?? c.description : c.description })).join("\n");
     await i.reply({ embeds: [new EmbedBuilder().setTitle(tC("helpTitle")).setDescription(lines)], flags: MessageFlags.Ephemeral });
   },
   user: async i => {
-    const cmdLang = guildLang(i.guildId ?? "");
-    const tC = trFor(commandsTr, cmdLang);
+    const tC = guildTr(commandsTr, i.guildId ?? "");
     const user = i.options.getUser("user") ?? i.user;
     const member = i.guild?.members.cache.get(user.id);
     const fields = [{ name: "ID", value: user.id, inline: true }, { name: tC("accountCreated"), value: `<t:${Math.floor(user.createdTimestamp / 1000)}:d>`, inline: true }];
@@ -59,8 +58,7 @@ const handlers: Record<string, CommandHandler> = {
     await i.reply({ embeds: [new EmbedBuilder().setTitle(user.username).setThumbnail(user.displayAvatarURL({ size: 256 })).setColor(BRAND_COLOR).addFields(fields)] });
   },
   server: async i => {
-    const cmdLang = guildLang(i.guildId ?? "");
-    const tC = trFor(commandsTr, cmdLang);
+    const tC = guildTr(commandsTr, i.guildId ?? "");
     const guild = i.guild;
     if (!guild) { await i.reply({ content: trModeration(guildLang(i.guildId ?? ""), "notGuild"), flags: MessageFlags.Ephemeral }); return; }
     const embed = new EmbedBuilder().setTitle(guild.name).setThumbnail(guild.iconURL()).setColor(BRAND_COLOR)

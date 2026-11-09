@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { apiSend } from "./api.ts";
+import { useApiLoad } from "./hooks.ts";
 import type { PanelFail, PanelNotify, ResourcesGet } from "./types.ts";
 
 type ChangeEntry = { dirty: boolean; save: (report?: boolean) => Promise<boolean>; discard: () => void };
@@ -30,9 +31,6 @@ let toastSeq = 0;
 
 export function DashboardProvider({ guildId, children }: { guildId: string; children: React.ReactNode }) {
   const [resources, setResources] = useState<ResourcesGet | null>(null);
-  const [resourcesError, setResourcesError] = useState<string | null>(null);
-  const [resourcesGeneration, setResourcesGeneration] = useState(0);
-  const [loading, setLoading] = useState(true);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
@@ -57,23 +55,11 @@ export function DashboardProvider({ guildId, children }: { guildId: string; chil
   const notify = useCallback<PanelNotify>((message, tone) => pushToast(message, tone ?? "ok"), [pushToast]);
   const fail = useCallback<PanelFail>(message => pushToast(message, "error"), [pushToast]);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setResourcesError(null);
-    void apiSend<ResourcesGet>(`/api/guilds/${guildId}/resources`, {}, "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу.").then(result => {
-      if (!active) return;
-      if (result.ok) setResources(result.data);
-      else {
-        setResourcesError(result.error);
-        fail(result.error);
-      }
-      setLoading(false);
-    });
-    return () => { active = false; };
-  }, [guildId, fail, resourcesGeneration]);
-
-  const reloadResources = useCallback(() => setResourcesGeneration(value => value + 1), []);
+  const { loading, error: resourcesError, reload: reloadResources } = useApiLoad<ResourcesGet>({
+    request: signal => apiSend<ResourcesGet>(`/api/guilds/${guildId}/resources`, { signal }, "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу."),
+    onData: setResources,
+    onError: fail,
+  }, [guildId, fail]);
 
   const changes = useRef(new Map<string, ChangeRef>());
   const [changeVersion, setChangeVersion] = useState(0);

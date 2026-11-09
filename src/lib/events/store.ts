@@ -34,6 +34,10 @@ export function eventParticipants(eventId: string): ParticipantRow[] {
   return stmt.participantsOf.all(eventId);
 }
 
+export function guildNameFor(guildId: string): string | null {
+  return stmt.guildName.get(guildId)?.name ?? null;
+}
+
 export function joinEvent(eventId: string, userId: string, guildId?: string): JoinResult {
   const lang = guildLang(guildId ?? "");
   return withTransaction(() => {
@@ -47,7 +51,12 @@ export function joinEvent(eventId: string, userId: string, guildId?: string): Jo
     const limitReached = event.max_participants > 0 && counts.joined >= event.max_participants;
     if (limitReached && !event.waitlist_enabled) return { ok: false, error: eventsTr(lang, "evFull") };
     stmt.participantInsert.run(eventId, userId, Date.now(), limitReached ? 1 : 0);
-    return { ok: true, action: limitReached ? "waitlisted" : "joined", state: limitReached ? "waitlisted" : "joined", counts: eventCounts(eventId) };
+    return {
+      ok: true,
+      action: limitReached ? "waitlisted" : "joined",
+      state: limitReached ? "waitlisted" : "joined",
+      counts: { joined: counts.joined + (limitReached ? 0 : 1), waitlist: counts.waitlist + (limitReached ? 1 : 0) },
+    };
   });
 }
 
@@ -59,16 +68,24 @@ export function leaveEvent(eventId: string, userId: string, guildId?: string): L
     if (event.status !== "scheduled" && event.status !== "live") return { ok: false, error: eventsTr(lang, "evRegClosed") };
     const row = stmt.participantGet.get(eventId, userId);
     if (!row) return { ok: true, action: "not_registered", promotedUserId: null, counts: eventCounts(eventId) };
+    const counts = eventCounts(eventId);
     stmt.participantDelete.run(eventId, userId);
     let promotedUserId: string | null = null;
-    if (!row.waitlist) promotedUserId = promoteFromWaitlist(event);
-    return { ok: true, action: row.waitlist ? "left_waitlist" : promotedUserId ? "promoted" : "left", promotedUserId, counts: eventCounts(eventId) };
+    if (!row.waitlist) promotedUserId = promoteFromWaitlist(event, counts.joined - 1);
+    return {
+      ok: true,
+      action: row.waitlist ? "left_waitlist" : promotedUserId ? "promoted" : "left",
+      promotedUserId,
+      counts: {
+        joined: counts.joined - (row.waitlist ? 0 : 1) + (promotedUserId ? 1 : 0),
+        waitlist: counts.waitlist - (row.waitlist ? 1 : 0) - (promotedUserId ? 1 : 0),
+      },
+    };
   });
 }
 
-function promoteFromWaitlist(event: EventRow): string | null {
+function promoteFromWaitlist(event: EventRow, joined: number): string | null {
   if (!event.waitlist_enabled || event.max_participants <= 0) return null;
-  const joined = eventCounts(event.id).joined;
   if (joined >= event.max_participants) return null;
   const next = stmt.eventNextWaitlisted.get(event.id);
   if (!next) return null;
@@ -82,20 +99,23 @@ export function removeParticipant(eventId: string, userId: string, guildId?: str
     if (!event || (guildId !== undefined && event.guild_id !== guildId)) return null;
     const row = stmt.participantGet.get(eventId, userId);
     if (!row) return null;
+    const counts = eventCounts(event.id);
     stmt.participantDelete.run(eventId, userId);
-    const promotedUserId = row.waitlist ? null : promoteFromWaitlist(event);
+    const promotedUserId = row.waitlist ? null : promoteFromWaitlist(event, counts.joined - 1);
     return { action: promotedUserId ? "promoted" : "removed", promotedUserId };
   });
 }
 
 export function removeParticipantFromGuild(guildId: string, userId: string): { eventId: string; promotedUserId: string | null }[] {
-  const rows = stmt.eventsOfUserInGuild.all(guildId, userId);
-  const results: { eventId: string; promotedUserId: string | null }[] = [];
-  for (const row of rows) {
-    const result = removeParticipant(row.event_id, userId);
-    if (result) results.push({ eventId: row.event_id, promotedUserId: result.promotedUserId });
-  }
-  return results;
+  return withTransaction(() => {
+    const rows = stmt.eventsOfUserInGuild.all(guildId, userId);
+    const results: { eventId: string; promotedUserId: string | null }[] = [];
+    for (const row of rows) {
+      const result = removeParticipant(row.event_id, userId);
+      if (result) results.push({ eventId: row.event_id, promotedUserId: result.promotedUserId });
+    }
+    return results;
+  });
 }
 
 function recomputeReminders(event: EventRow) {
@@ -117,11 +137,12 @@ export function dueReminders(at: number): { id: number; event_id: string }[] {
   return stmt.remindersDue.all(at);
 }
 
-export function transitionDueEvents(now: number): { changed: EventRow[]; created: EventRow[] } {
+export function transitionDueEvents(now: number, guildAllowed?: (guildId: string) => boolean): { changed: EventRow[]; created: EventRow[] } {
   const changed: EventRow[] = [];
   const created: EventRow[] = [];
   withTransaction(() => {
     for (const event of stmt.eventsDueLive.all(now)) {
+      if (guildAllowed && !guildAllowed(event.guild_id)) continue;
       const result = stmt.eventFlipLive.run(now, now, event.id);
       if (Number(result.changes) === 0) continue;
       const updated: EventRow = { ...event, status: "live", started_at: event.started_at ?? now, updated_at: now };
@@ -267,10 +288,10 @@ export async function applyEventRole(guildId: string, userId: string, roleId: st
   }
 }
 
-export async function sendReminderDm(userId: string, event: EventRow): Promise<boolean> {
+export async function sendReminderDm(userId: string, event: EventRow, guildName?: string | null): Promise<boolean> {
   const embed = parseEventEmbed(event.embed_json);
   const at = Math.floor(event.scheduled_at / 1000);
-  const guild = stmt.guildName.get(event.guild_id)?.name;
+  const guild = guildName === undefined ? stmt.guildName.get(event.guild_id)?.name : guildName;
   const lang = guildLang(event.guild_id);
   const serverPart = guild ? " " + eventsTr(lang, "onServer").replace("{s}", guild) : "";
   const content = `⏰ **${eventsTr(lang, "reminderTitle")}**${serverPart}

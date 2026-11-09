@@ -41,8 +41,17 @@ export const GET = guildRoute(async (request, { guildId }) => {
   let points: { label: string; messages: number }[];
   if (period === "24h") {
     const rows = statsQueries.hourly.all(guildId, iso(nowMs - DAY_MS));
-    const byHour = new Map(rows.map(row => [`${row.day}:${row.hour}`, row.messages]));
-    points = Array.from({ length: 24 }, (_, i) => { const t = new Date(nowMs - (23 - i) * 3_600_000); return { label: `${String(t.getUTCHours()).padStart(2, "0")}:00`, messages: byHour.get(`${iso(t.getTime())}:${t.getUTCHours()}`) ?? 0 }; });
+    const byHour = new Map(rows.map(row => [`${row.day}:${row.hour}`, row]));
+    let joins = 0, leaves = 0;
+    points = Array.from({ length: 24 }, (_, i) => {
+      const t = new Date(nowMs - (23 - i) * 3_600_000);
+      const row = byHour.get(`${iso(t.getTime())}:${t.getUTCHours()}`);
+      joins += row?.joins ?? 0;
+      leaves += row?.leaves ?? 0;
+      return { label: `${String(t.getUTCHours()).padStart(2, "0")}:00`, messages: row?.messages ?? 0 };
+    });
+    totals.joins = joins;
+    totals.leaves = leaves;
   } else {
     points = days.map(day => ({ label: formatDay(day), messages: byDay.get(day)?.messages ?? 0 }));
   }

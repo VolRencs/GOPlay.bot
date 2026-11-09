@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server.js";
-import { botTokenError, DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError, readFormDataJson, requireBotToken } from "#lib/guild-access.ts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { withTransaction } from "#db/database.ts";
 import { deleteEmbedSendings, embedsQueries } from "#db/queries.ts";
@@ -10,7 +10,7 @@ import { channelRef } from "#lib/format.ts";
 import { cleanupUnusedUploads, embedUploadPrefix, embedUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
 import { logger } from "#lib/logger.ts";
 import { BRAND_COLOR, colorNumberToHex } from "#lib/colors.ts";
-import { AssetError, collectFormAssets, persistUploadedAssets, type UploadAssetSet } from "#lib/assets.ts";
+import { AssetError, collectFormAssets, discordMessageBody, persistUploadedAssets, type UploadAssetSet } from "#lib/assets.ts";
 import { embedCharacterCount, EMBED_LIMITS, normalizeEmbedContent, sendingToDto, toDiscordEmbed, toDto as toEmbedDto, type EmbedContent, type EmbedsGetDto } from "#contracts/embeds.ts";
 
 type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedContent };
@@ -72,14 +72,9 @@ export const GET = guildRoute(async (request, { guildId }) => {
 
 export const POST = guildRoute(async (request, { guildId, user }) => {
   const oversized=rejectOversized(request); if(oversized) return oversized;
-  const form=request.headers.get("content-type")?.includes("multipart/form-data")?await request.formData():null;
-  let data:RequestData;
-  try {
-    const serialized=form?.get("data");
-    data=(form?JSON.parse(typeof serialized==="string"?serialized:"{}"):await request.json()) as RequestData;
-  } catch {
-    return jsonError("Не удалось прочитать данные сообщения. Попробуйте выбрать изображение заново.");
-  }
+  const parsedBody=await readFormDataJson<RequestData>(request);
+  if(!parsedBody)return jsonError("Не удалось прочитать данные сообщения. Попробуйте выбрать изображение заново.");
+  const { form, data } = parsedBody;
   if(!data||typeof data!=="object")return jsonError("Некорректные данные сообщения.");
   if(!data.payload||typeof data.payload!=="object"||Array.isArray(data.payload))return jsonError("Некорректные данные сообщения.");
   if(data.id!==undefined&&(!Number.isInteger(data.id)||data.id<1))return jsonError("Некорректный идентификатор шаблона.");
@@ -128,10 +123,9 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   const current=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
   if(data.updateMessage&&(!current?.channel_id||!current.message_id))return jsonError("Сначала отправьте шаблон в канал — обновлять пока нечего.");
-  const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const token=process.env.DISCORD_TOKEN; if(!token)return botTokenError();
+  const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const tokenError=requireBotToken(); if(tokenError)return tokenError;
   const discordPayload=toDiscordEmbed(payload);
-  const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[discordPayload],allowed_mentions:{parse:[]}}; let body:BodyInit=JSON.stringify(bodyData), headers:Record<string,string>={"content-type":"application/json"};
-  if(assets.length) { const multipart=new FormData(); multipart.set("payload_json",JSON.stringify(bodyData)); assets.forEach((asset,i)=>multipart.append(`files[${i}]`,asset.file,asset.filename)); body=multipart; headers={}; }
+  const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[discordPayload],allowed_mentions:{parse:[]}}; const { body, headers } = discordMessageBody(bodyData, assets);
   const endpoint=`/channels/${channelId}/messages${data.updateMessage?`/${current!.message_id}`:""}`;
   let sent: Response | null = null; try { sent=await discordFetch(endpoint,{method:data.updateMessage?"PATCH":"POST",headers,body}); } catch {  }
   if(!sent?.ok)return jsonError(data.updateMessage?"Не удалось обновить опубликованное сообщение":"Не удалось отправить сообщение в выбранный канал", 502); const message=await sent.json() as {id:string};
@@ -154,11 +148,26 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
 
 export const DELETE = guildRoute(async (request, { guildId, user }) => {
   const url=new URL(request.url); const sendingId=Number(url.searchParams.get("sendingId")); const id=Number(url.searchParams.get("id"));
-  if(Number.isInteger(sendingId)&&sendingId>0){const sending=embedsQueries.sendingById.get(sendingId,guildId);if(!sending)return jsonError("Отправка не найдена.", 404);const token=process.env.DISCORD_TOKEN;if(token){await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`,{method:"DELETE"}).catch(()=>null);}embedsQueries.sendingDelete.run(sendingId,guildId);recordDashboardChange(guildId,user,AUDIT_SECTION.embeds,`Удалено отправленное сообщение embed в канале ${channelRef(sending.channel_id)}`);return NextResponse.json({ok:true});}
+  if (Number.isInteger(sendingId) && sendingId > 0) {
+    const sending = embedsQueries.sendingById.get(sendingId, guildId);
+    if (!sending) return jsonError("Отправка не найдена.", 404);
+    const tokenError = requireBotToken();
+    if (tokenError) return tokenError;
+    let result: Response;
+    try {
+      result = await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`, { method: "DELETE" });
+    } catch {
+      return jsonError("Не удалось удалить сообщение в Discord.", 502);
+    }
+    if (!result.ok && result.status !== 404) return jsonError("Не удалось удалить сообщение в Discord.", 502);
+    embedsQueries.sendingDelete.run(sendingId, guildId);
+    recordDashboardChange(guildId, user, AUDIT_SECTION.embeds, `Удалено отправленное сообщение embed в канале ${channelRef(sending.channel_id)}`);
+    return NextResponse.json({ ok: true });
+  }
   if(!Number.isInteger(id)||id<1)return jsonError("Некорректный идентификатор сообщения.");
   const item=embedsQueries.byId.get(id,guildId);
   if(!item)return jsonError("Сообщение не найдено.", 404);
-  if(item.channel_id&&item.message_id){const token=process.env.DISCORD_TOKEN;if(!token)return botTokenError();let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
+  if(item.channel_id&&item.message_id){const tokenError=requireBotToken();if(tokenError)return tokenError;let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
   embedsQueries.sendingsByEmbedDelete.run(id,guildId);
   embedsQueries.delete.run(id,guildId);
   after(() => cleanupUnusedDraftImages(guildId));

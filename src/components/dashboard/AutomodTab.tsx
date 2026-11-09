@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { defaultRule, type AutomodGetDto, type AutomodRuleDto, type AutomodSecurityInput } from "#contracts/automod.ts";
 import { AutoModSettings } from "./AutomodPanel.tsx";
 import { apiJson, apiSend } from "./api.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
+import { useApiLoad } from "./hooks.ts";
 import { SectionError, SectionLoading, stableStringify } from "./ui.tsx";
 
 export function AutomodTab() {
@@ -14,31 +15,19 @@ export function AutomodTab() {
   const [protectedChannelId, setProtectedChannelId] = useState<string | null>(null);
   const [savedRules, setSavedRules] = useState<Record<string, AutomodRuleDto> | null>(null);
   const [savedSecurity, setSavedSecurity] = useState<{ roles: string[]; channel: string | null } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadGeneration, setLoadGeneration] = useState(0);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setLoadError(null);
-    void apiSend<AutomodGetDto>(`/api/guilds/${guildId}/automod`, {}, "Не удалось загрузить автомодерацию.").then(result => {
-      if (!active) return;
-      if (result.ok) {
-        const nextRules = Object.fromEntries(result.data.rules.map(rule => [rule.kind, rule]));
-        setRules(nextRules);
-        setIgnoredRoleIds(result.data.ignoredRoleIds);
-        setProtectedChannelId(result.data.protectedChannelId);
-        setSavedRules(nextRules);
-        setSavedSecurity({ roles: result.data.ignoredRoleIds, channel: result.data.protectedChannelId });
-      } else {
-        setLoadError(result.error);
-        fail(result.error);
-      }
-      setLoading(false);
-    });
-    return () => { active = false; };
-  }, [guildId, fail, loadGeneration]);
+  const { loading, error: loadError, reload } = useApiLoad<AutomodGetDto>({
+    request: signal => apiSend<AutomodGetDto>(`/api/guilds/${guildId}/automod`, { signal }, "Не удалось загрузить автомодерацию."),
+    onData: data => {
+      const nextRules = Object.fromEntries(data.rules.map(rule => [rule.kind, rule]));
+      setRules(nextRules);
+      setIgnoredRoleIds(data.ignoredRoleIds);
+      setProtectedChannelId(data.protectedChannelId);
+      setSavedRules(nextRules);
+      setSavedSecurity({ roles: data.ignoredRoleIds, channel: data.protectedChannelId });
+    },
+    onError: fail,
+  }, [guildId, fail]);
 
   const ruleDirty = (kind: string) => savedRules !== null && (savedRules[kind] === undefined || stableStringify(savedRules[kind]) !== stableStringify(rules[kind]));
   const rulesDirty = Object.keys(rules).some(ruleDirty);
@@ -84,7 +73,7 @@ export function AutomodTab() {
   useRegisterChanges("automod", { dirty, save, discard });
 
   if (loading) return <SectionLoading/>;
-  if (loadError) return <SectionError message={loadError} onRetry={() => setLoadGeneration(value => value + 1)}/>;
+  if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
   return <AutoModSettings
     channels={resources?.channels ?? []}
     roles={resources?.roles ?? []}

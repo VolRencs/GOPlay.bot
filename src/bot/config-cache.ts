@@ -5,6 +5,7 @@ import { ttlCacheSync } from "../lib/cache.ts";
 import { guildLang, invalidateGuildLang } from "../lib/i18n/bot.ts";
 import { invalidateAutoroleSettings } from "../lib/autorole.ts";
 import { invalidateMusicSettings } from "../lib/music-settings.ts";
+import { invalidateWelcomeSettings } from "./welcome.ts";
 import type { Rule } from "./automod/detectors.ts";
 
 export type CachedRule = {
@@ -90,10 +91,35 @@ type ReactionPanel = { id: number; role_mode: string; options: { role_id: string
 const reactionPanelCache = ttlCacheSync<string, Map<string, ReactionPanel>>((guildId) => {
   const panels = new Map<string, ReactionPanel>();
   for (const row of stmt.panelReactions.all(guildId)) {
-    panels.set(row.message_id, { id: row.id, role_mode: row.role_mode, options: stmt.panelOptionEmoji.all(row.id) });
+    let panel = panels.get(row.message_id);
+    if (!panel) {
+      panel = { id: row.id, role_mode: row.role_mode, options: [] };
+      panels.set(row.message_id, panel);
+    }
+    if (row.role_id !== null) panel.options.push({ role_id: row.role_id, emoji: row.emoji });
   }
   return panels;
 }, PANEL_TTL);
+
+type CachedPanel = {
+  role_limit: number;
+  role_mode: string;
+  notify_enabled: number;
+  notify_template: string;
+  options: { role_id: string; emoji: string | null }[];
+};
+
+const panelInfoCache = ttlCacheSync<string, CachedPanel | null>((key) => {
+  const separator = key.indexOf(":");
+  const guildId = key.slice(0, separator);
+  const panelId = Number(key.slice(separator + 1));
+  const panel = stmt.panel.get(panelId, guildId);
+  return panel ? { ...panel, options: stmt.panelOptionEmoji.all(panelId) } : null;
+}, PANEL_TTL);
+
+export function cachedPanel(guildId: string, panelId: number): CachedPanel | null {
+  return panelInfoCache.get(`${guildId}:${panelId}`);
+}
 
 export function reactionPanel(guildId: string, messageId: string): ReactionPanel | undefined {
   return reactionPanelCache.get(guildId).get(messageId);
@@ -108,4 +134,5 @@ export function purgeConfigCaches(guildId: string) {
   invalidateAutoroleSettings(guildId);
   invalidateGuildLang(guildId);
   invalidateMusicSettings(guildId);
+  invalidateWelcomeSettings(guildId);
 }

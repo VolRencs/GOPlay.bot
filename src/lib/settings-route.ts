@@ -8,7 +8,7 @@ type ParseResult<T> = { ok: true; value: T } | { ok: false; response: Response }
 
 type SettingsPutConfig<T> = {
   load(guildId: string): Loaded<T>;
-  parse(body: unknown, guildId: string): ParseResult<T>;
+  parse(body: unknown, guildId: string, current: T): ParseResult<T>;
   view(state: T): Record<string, unknown>;
   save(guildId: string, state: T): void;
   section: string;
@@ -23,9 +23,9 @@ export function settingsGetRoute<T>(load: (guildId: string) => T) {
 
 export function settingsPutRoute<T>(config: SettingsPutConfig<T>) {
   return guildRoute(async (request, { guildId, user }) => {
-    const parsed = config.parse(await readJson<unknown>(request), guildId);
-    if (!parsed.ok) return parsed.response;
     const current = config.load(guildId);
+    const parsed = config.parse(await readJson<unknown>(request), guildId, current.state);
+    if (!parsed.ok) return parsed.response;
     const next = parsed.value;
     const before = config.view(current.state);
     const after = config.view(next);

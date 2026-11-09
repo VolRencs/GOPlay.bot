@@ -1,40 +1,7 @@
-import { BarChart3, Bot, CalendarDays, Gavel, History, Medal, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, Image as ImageIcon } from "lucide-react";
+import { Bot } from "lucide-react";
+import { TAB_GROUPS, TAB_META } from "./dashboard/tab-meta.ts";
 
-const sidebarGroups = [
-  {
-    label: "Обзор",
-    items: [
-      { icon: BarChart3, label: "Статистика", active: true },
-      { icon: History, label: "Журнал изменений" },
-      { icon: Settings, label: "Настройки" },
-    ],
-  },
-  {
-    label: "Сообщество",
-    items: [
-      { icon: Sparkles, label: "Приветствие" },
-      { icon: Tags, label: "Роли" },
-      { icon: Medal, label: "Уровни" },
-      { icon: CalendarDays, label: "События" },
-    ],
-  },
-  {
-    label: "Модерация",
-    items: [
-      { icon: ShieldCheck, label: "Автомодерация" },
-      { icon: ScrollText, label: "Логи" },
-      { icon: Gavel, label: "Апелляции" },
-      { icon: Mic2, label: "Временные каналы" },
-    ],
-  },
-  {
-    label: "Контент",
-    items: [
-      { icon: ImageIcon, label: "Embeds" },
-      { icon: Music, label: "Музыка" },
-    ],
-  },
-] as const;
+const activeTab = "stats";
 
 const statCards = [
   { label: "Участники", value: "1 284", hint: "сейчас на сервере" },
@@ -64,14 +31,14 @@ export function HeroPanelPreview() {
         <aside className="sidebar">
           <div className="brand"><Bot size={22} /> GOPlay</div>
           <div className="sidebar-groups">
-            {sidebarGroups.map((group) => <section className="sidebar-group" key={group.label}>
+            {TAB_GROUPS.map((group) => <section className="sidebar-group" key={group.label}>
               <p className="sidebar-group-label">{group.label}</p>
               <div className="sidebar-group-items">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = "active" in item && item.active;
-                  return <span className={active ? "nav-item active" : "nav-item"} key={item.label}>
-                    <Icon size={18} />{item.label}
+                {group.keys.map((key) => {
+                  const Icon = TAB_META[key].icon;
+                  const active = key === activeTab;
+                  return <span className={active ? "nav-item active" : "nav-item"} key={key}>
+                    <Icon size={18} />{TAB_META[key].nav}
                   </span>;
                 })}
               </div>
@@ -85,8 +52,8 @@ export function HeroPanelPreview() {
               <div className="server-heading-icon"><Bot size={24} /></div>
               <div className="server-heading-copy">
                 <p className="eyebrow">GOPLAY · GOPlay</p>
-                <h1>Статистика сервера</h1>
-                <p className="page-description">Активность, участники и действия модерации за выбранный период.</p>
+                <h1>{TAB_META[activeTab].title}</h1>
+                <p className="page-description">{TAB_META[activeTab].description}</p>
               </div>
             </div>
           </header>

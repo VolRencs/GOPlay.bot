@@ -25,16 +25,18 @@ function ensureFlushTimer(): void {
 }
 
 let flushFailures = 0;
+const PRUNE_EVERY = 100;
+const writesSincePrune = new Map<string, number>();
 export function flushMessageCache(): void {
   if (!pending.size) return;
   const entries = [...pending.entries()];
   pending.clear();
-  const touchedGuilds = new Set<string>();
+  const touchedGuilds = new Map<string, number>();
   try {
     withTransaction(() => {
       for (const [messageId, entry] of entries) {
         stmt.messageUpsert.run({ message_id: messageId, guild_id: entry.guildId, content: entry.content, created_at: entry.createdAt });
-        touchedGuilds.add(entry.guildId);
+        touchedGuilds.set(entry.guildId, (touchedGuilds.get(entry.guildId) ?? 0) + 1);
       }
     });
   } catch (error) {
@@ -44,7 +46,13 @@ export function flushMessageCache(): void {
   }
   flushFailures = 0;
   try {
-    for (const guildId of touchedGuilds) enforceMessageCap(guildId);
+    for (const [guildId, added] of touchedGuilds) {
+      const total = (writesSincePrune.get(guildId) ?? 0) + added;
+      if (total >= PRUNE_EVERY) {
+        writesSincePrune.set(guildId, 0);
+        enforceMessageCap(guildId);
+      } else writesSincePrune.set(guildId, total);
+    }
   } catch (error) {
     logger.warn("[CACHE] Не удалось обрезать кэш сообщений", error);
   }

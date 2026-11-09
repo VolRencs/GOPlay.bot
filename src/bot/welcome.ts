@@ -5,8 +5,15 @@ import type { WelcomeDomain } from "../contracts/welcome.ts";
 import { stmt } from "../db/statements.ts";
 import { resolveChannel } from "./logging/index.ts";
 import { logger } from "../lib/logger.ts";
+import { ttlCacheSync } from "../lib/cache.ts";
 import { time } from "../lib/perf.ts";
 import { userRef } from "../lib/format.ts";
+
+const welcomeSettingsCache = ttlCacheSync<string, WelcomeDomain | null>(guildId => stmt.welcomeSettings.get(guildId) ?? null, 10_000);
+
+export function invalidateWelcomeSettings(guildId: string): void {
+  welcomeSettingsCache.delete(guildId);
+}
 
 function memberTemplate(template: string, member: GuildMember) {
   return renderWelcomeTemplate(template.replace(/\r\n?/g, "\n"), {
@@ -38,7 +45,7 @@ async function renderMemberImage(member: GuildMember, setting: WelcomeDomain, ev
 }
 
 export async function sendMemberEvent(member: GuildMember, event: "welcome" | "goodbye") {
-  const setting = stmt.welcomeSettings.get(member.guild.id);
+  const setting = welcomeSettingsCache.get(member.guild.id);
   const welcome = event === "welcome";
   const enabled = welcome ? setting?.enabled : setting?.goodbye_enabled;
   const channelId = welcome ? setting?.channel_id : setting?.goodbye_channel_id;

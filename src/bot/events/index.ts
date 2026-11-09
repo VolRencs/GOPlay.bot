@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, type Client, type Interaction } from "discord.js";
-import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
+import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, guildNameFor, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { logger } from "../../lib/logger.ts";
 import { guard, isMissingDiscordResource } from "../../lib/errors.ts";
@@ -27,7 +27,6 @@ async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
 
 export function registerEvents(client: Client) {
   client.on(Events.InteractionCreate, (i) => guard("EVENTS", () => handleInteraction(i)));
-  client.on(Events.MessageDelete, (message) => { if (message.guildId) guard("EVENTS:DETACH", () => detachEventMessage(message.id)); });
   client.on(Events.GuildMemberRemove, (member) => guard("EVENTS:GONE", () => {
     for (const result of removeParticipantFromGuild(member.guild.id, member.user.id)) {
       const event = getEvent(result.eventId);
@@ -38,7 +37,7 @@ export function registerEvents(client: Client) {
       void refreshMessage(member.guild.id, result.eventId);
     }
   }));
-  setInterval(() => void tick(), 30_000).unref();
+  setInterval(() => void tick(client), 30_000).unref();
 }
 
 async function handleInteraction(i: Interaction) {
@@ -49,16 +48,17 @@ async function handleInteraction(i: Interaction) {
   const event = getEventInGuild(i.guildId ?? "", eventId);
   const tr = guildTr(eventsTr, event?.guild_id ?? i.guildId ?? "");
   if (!event) return i.reply({ content: tr("notFound"), flags: MessageFlags.Ephemeral }).catch(() => null);
-  const result = key === "join" ? joinEvent(eventId, i.user.id, event.guild_id) : leaveEvent(eventId, i.user.id, event.guild_id);
-  if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral }).catch(() => null);
   if (key === "join") {
+    const result = joinEvent(eventId, i.user.id, event.guild_id);
+    if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral }).catch(() => null);
     await i.reply({ content: result.action === "waitlisted" ? tr("waitlisted") : result.action === "already_joined" ? tr("alreadyJoined") : tr("joined"), flags: MessageFlags.Ephemeral }).catch(() => null);
-    await applyEventRole(event.guild_id, i.user.id, event.event_role_id, true);
+    if (result.state === "joined") await applyEventRole(event.guild_id, i.user.id, event.event_role_id, true);
   } else {
-    const promotedUserId = "promotedUserId" in result ? result.promotedUserId : null;
-    await i.reply({ content: result.action === "not_registered" ? tr("notRegistered") : result.action === "left_waitlist" ? tr("leftWaitlist") : "promotedUserId" in result && result.promotedUserId ? tr("leftPromoted") : tr("left"), flags: MessageFlags.Ephemeral }).catch(() => null);
+    const result = leaveEvent(eventId, i.user.id, event.guild_id);
+    if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral }).catch(() => null);
+    await i.reply({ content: result.action === "not_registered" ? tr("notRegistered") : result.action === "left_waitlist" ? tr("leftWaitlist") : result.promotedUserId ? tr("leftPromoted") : tr("left"), flags: MessageFlags.Ephemeral }).catch(() => null);
     await applyEventRole(event.guild_id, i.user.id, event.event_role_id, false);
-    if (promotedUserId) await applyEventRole(event.guild_id, promotedUserId, event.event_role_id, true);
+    if (result.promotedUserId) await applyEventRole(event.guild_id, result.promotedUserId, event.event_role_id, true);
   }
   void refreshMessage(event.guild_id, event.id);
 }
@@ -112,24 +112,26 @@ async function refreshMessageNow(guildId: string, eventId: string) {
 const REMINDER_CONCURRENCY = 5;
 async function sendReminders(event: EventRow): Promise<void> {
   const participants = eventParticipants(event.id);
+  const guildName = guildNameFor(event.guild_id);
   for (let i = 0; i < participants.length; i += REMINDER_CONCURRENCY) {
-    await Promise.allSettled(participants.slice(i, i + REMINDER_CONCURRENCY).map(p => sendReminderDm(p.user_id, event)));
+    await Promise.allSettled(participants.slice(i, i + REMINDER_CONCURRENCY).map(p => sendReminderDm(p.user_id, event, guildName)));
   }
 }
 
 let ticking = false;
-async function tick() {
+async function tick(client: Client) {
   if (ticking) return;
   ticking = true;
   try {
     const now = Date.now();
+    const inGuild = (guildId: string) => client.guilds.cache.has(guildId);
     for (const reminder of dueReminders(now)) {
       if (!claimReminder(reminder.id, now)) continue;
       const event = getEvent(reminder.event_id);
-      if (!event || event.status !== "scheduled") continue;
+      if (!event || event.status !== "scheduled" || !inGuild(event.guild_id)) continue;
       guard("EVENTS:REMIND", () => sendReminders(event));
     }
-    const { changed, created } = transitionDueEvents(now);
+    const { changed, created } = transitionDueEvents(now, inGuild);
     for (const follower of created) await publishEventMessage(follower);
     for (const event of changed) void refreshMessage(event.guild_id, event.id);
   } catch (error) {

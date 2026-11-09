@@ -1,5 +1,7 @@
 import { AuditLogEvent, Events, type Client, type GuildBasedChannel, type Message } from "discord.js";
 import { stmt } from "../../db/statements.ts";
+import { withTransaction } from "../../db/database.ts";
+import { detachEventMessage } from "../../lib/events.ts";
 import { forgetMessage, messageContent, rememberMessage } from "../../db/message-cache.ts";
 import { guard } from "../../lib/errors.ts";
 import { recordPunishmentAndOffer } from "../moderation/index.ts";
@@ -50,13 +52,16 @@ export function registerLoggingEvents(client: Client) {
   });
 
   on(client, Events.GuildMemberUpdate, "MEMBER_UPDATE", async (oldMember, newMember) => {
-    const fullNew = newMember.partial ? await newMember.fetch().catch(() => newMember) : newMember;
-    const fullOld = oldMember?.partial ? await oldMember.fetch().catch(() => oldMember) : oldMember;
+    const fullNew = newMember.partial ? await newMember.fetch().catch(() => null) : newMember;
+    if (!fullNew) return;
+    const fullOld = oldMember?.partial ? await oldMember.fetch().catch(() => null) : oldMember;
     const t = guildTr(logTr, fullNew.guild.id);
-    const { added, removed } = memberRoleDiff(fullOld?.roles.cache.keys() ?? [], fullNew.roles.cache.keys(), fullNew.guild.id);
+    const { added, removed } = fullOld
+      ? memberRoleDiff(fullOld.roles.cache.keys(), fullNew.roles.cache.keys(), fullNew.guild.id)
+      : { added: [] as string[], removed: [] as string[] };
     const logRoles = (actor?: string) => logAction({ guildId: fullNew.guild.id, type: "member_roles", targetId: fullNew.id, moderatorId: actor, details: t("rolesPrefix") + [...added.map(id => t("roleGivenPart", { id })), ...removed.map(id => t("roleRemovedPart", { id }))].join(", ") });
     if (added.length || removed.length) void auditActor(fullNew.guild, AuditLogEvent.MemberRoleUpdate, fullNew.id, { retries: 0 }).then(logRoles, () => logRoles()).catch(() => null);
-    if (!isBotAction(fullNew.guild.id, "member_timeout", fullNew.id) && fullOld?.communicationDisabledUntilTimestamp !== fullNew.communicationDisabledUntilTimestamp) {
+    if (fullOld && !isBotAction(fullNew.guild.id, "member_timeout", fullNew.id) && fullOld.communicationDisabledUntilTimestamp !== fullNew.communicationDisabledUntilTimestamp) {
       const isSet = Boolean(fullNew.communicationDisabledUntilTimestamp);
       const logTimeout = (actor?: string) => logAction({ guildId: fullNew.guild.id, type: "member_timeout", targetId: fullNew.id, moderatorId: actor, details: isSet ? t("timeoutSet") : t("timeoutCleared") });
       void auditFind(fullNew.guild, AuditLogEvent.MemberUpdate, fullNew.id, { priority: isSet, retries: 1, retryDelay: 800 }).then(entry => {
@@ -95,14 +100,19 @@ export function registerLoggingEvents(client: Client) {
   on(client, Events.MessageDelete, "MESSAGE_DELETE", async message => {
     count("events.message_delete");
     if (!message.guild) return;
-    const deleted = stmt.panelDelete.run(message.guild.id, message.channelId, message.id);
-    if (deleted.changes > 0) invalidateReactionPanels(message.guild.id);
-    stmt.embedDetach.run(Date.now(), message.guild.id, message.channelId, message.id);
+    const guildId = message.guild.id;
+    const { deleted, content: cachedContent } = withTransaction(() => {
+      const deleted = stmt.panelDelete.run(guildId, message.channelId, message.id);
+      stmt.embedDetach.run(Date.now(), guildId, message.channelId, message.id);
+      detachEventMessage(message.id);
+      return { deleted, content: forgetMessage(message.id) };
+    });
+    if (deleted.changes > 0) invalidateReactionPanels(guildId);
     const lang = guildLang(message.guild.id);
     const t = trFor(logTr, lang);
     const authorId = message.author?.id ?? t("unknownExecutor");
     const actor = await auditActor(message.guild, AuditLogEvent.MessageDelete, authorId, { retries: 0 });
-    const content = (forgetMessage(message.id) ?? message.content ?? "").trim();
+    const content = (cachedContent ?? message.content ?? "").trim();
     let details = t("channelField", { channel: channelRef(message.channelId) });
     if (content) details += `\n${t("contentLabel", { content: content.slice(0, 500) })}`;
     const embeds = message.embeds.map(embed => renderEmbed(embed, lang)).filter(Boolean);

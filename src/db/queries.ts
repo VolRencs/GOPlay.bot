@@ -76,7 +76,7 @@ export function deleteEmbedSendings(ids: readonly number[]) {
 
 export const statsQueries = {
   daily: read<{ day: string; joins: number; leaves: number; messages: number; moderation: number }>("SELECT day,joins,leaves,messages,moderation FROM guild_daily_metrics WHERE guild_id=? AND day>=? ORDER BY day"),
-  hourly: read<{ day: string; hour: number; messages: number }>("SELECT day,hour,messages FROM guild_hourly_messages WHERE guild_id=? AND day>=? ORDER BY day,hour"),
+  hourly: read<{ day: string; hour: number; messages: number; joins: number; leaves: number }>("SELECT day,hour,messages,joins,leaves FROM guild_hourly_messages WHERE guild_id=? AND day>=? ORDER BY day,hour"),
   moderation: read<{ type: string; count: number }>("SELECT type,COUNT(*) AS count FROM moderation_actions WHERE guild_id=? AND created_at>? GROUP BY type ORDER BY count DESC"),
   topChannels: read<{ id: string; messages: number }>("SELECT channel_id AS id,SUM(messages) AS messages FROM guild_daily_channel_stats WHERE guild_id=? AND day>=? GROUP BY channel_id ORDER BY messages DESC LIMIT 5"),
   topUsers: read<{ id: string; messages: number }>("SELECT user_id AS id,SUM(messages) AS messages FROM guild_daily_user_stats WHERE guild_id=? AND day>=? GROUP BY user_id ORDER BY messages DESC LIMIT 5"),
@@ -90,7 +90,6 @@ export const auditQueries = {
 };
 
 export const adminQueries = {
-  guildCount: read<{ c: number }>("SELECT COUNT(*) AS c FROM guilds"),
   activity7d: read<{ m: number; mod: number }>("SELECT COALESCE(SUM(messages),0) AS m, COALESCE(SUM(moderation),0) AS mod FROM guild_daily_metrics WHERE day>=?"),
   guilds: read<{ id: string; name: string }>("SELECT id,name FROM guilds ORDER BY name"),
   messages: read<{ guild_id: string; m: number }>("SELECT guild_id,SUM(messages) AS m FROM guild_daily_metrics GROUP BY guild_id"),

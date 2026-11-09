@@ -47,7 +47,7 @@ export type SelfRolePanelReadRow = {
 export type SelfRoleOptionEmojiRow = { role_id: string; emoji: string | null };
 export type MessageContentRow = { content: string };
 
-export type ReactionPanelRow = { id: number; role_mode: string; message_id: string };
+export type ReactionPanelRow = { id: number; role_mode: string; message_id: string; role_id: string | null; emoji: string | null };
 
 export type MusicSessionRow = {
   guild_id: string;
@@ -185,4 +185,6 @@ export type GuildHourlyMessageRow = {
   day: string;
   hour: number;
   messages: number;
+  joins: number;
+  leaves: number;
 };

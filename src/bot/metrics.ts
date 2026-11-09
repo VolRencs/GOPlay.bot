@@ -10,14 +10,13 @@ type Counts = Record<MetricKey, number>;
 const pending = new Map<string, Map<string, Counts>>();
 const channelCounts = new Map<string, Map<string, number>>();
 const userCounts = new Map<string, Map<string, number>>();
-const hourlyCounts = new Map<string, Map<number, number>>();
+type HourlyCounts = { messages: number; joins: number; leaves: number };
+const hourlyCounts = new Map<string, Map<number, HourlyCounts>>();
 
 let timer: ReturnType<typeof setInterval> | null = null;
 const FLUSH_INTERVAL = 5_000;
 const RETENTION_DAYS = 31;
 const CLEANUP_INTERVAL = 10 * 60_000;
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 function countsFor(guildId: string, day: string): Counts {
   return pending.getOrInsertComputed(guildId, () => new Map()).getOrInsertComputed(day, () => ({ joins: 0, leaves: 0, messages: 0, moderation: 0 }));
@@ -28,7 +27,13 @@ function ensureTimer() {
 }
 
 export function addMetric(guildId: string, metric: MetricKey) {
-  countsFor(guildId, today())[metric] += 1;
+  const date = new Date();
+  const day = date.toISOString().slice(0, 10);
+  countsFor(guildId, day)[metric] += 1;
+  if (metric === "joins" || metric === "leaves") {
+    const hours = hourlyCounts.getOrInsertComputed(`${guildId}:${day}`, () => new Map<number, HourlyCounts>());
+    hours.getOrInsertComputed(date.getUTCHours(), () => ({ messages: 0, joins: 0, leaves: 0 }))[metric] += 1;
+  }
   ensureTimer();
 }
 
@@ -42,8 +47,8 @@ export function addMessage(guildId: string, channelId: string, userId: string, a
   channels.set(channelId, (channels.get(channelId) ?? 0) + 1);
   const byUser = userCounts.getOrInsertComputed(key, () => new Map<string, number>());
   byUser.set(userId, (byUser.get(userId) ?? 0) + 1);
-  const hours = hourlyCounts.getOrInsertComputed(key, () => new Map<number, number>());
-  hours.set(hour, (hours.get(hour) ?? 0) + 1);
+  const hours = hourlyCounts.getOrInsertComputed(key, () => new Map<number, HourlyCounts>());
+  hours.getOrInsertComputed(hour, () => ({ messages: 0, joins: 0, leaves: 0 })).messages += 1;
   ensureTimer();
 }
 
@@ -90,7 +95,7 @@ function commitWindow(rows: FlushRow[]): void {
       const byUser = userCounts.get(row.key);
       if (byUser) for (const [userId, messages] of byUser) stmt.userMetric.run({ guild_id: row.guildId, day: row.day, user_id: userId, messages });
       const hours = hourlyCounts.get(row.key);
-      if (hours) for (const [hour, messages] of hours) stmt.hourlyMetric.run({ guild_id: row.guildId, day: row.day, hour, messages });
+      if (hours) for (const [hour, hourly] of hours) stmt.hourlyMetric.run({ guild_id: row.guildId, day: row.day, hour, messages: hourly.messages, joins: hourly.joins, leaves: hourly.leaves });
     }
   });
 }
@@ -110,9 +115,11 @@ function evictDeadGuildKeys(): Set<string> | null {
 setInterval(() => {
   try {
     const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);
-    for (const cleanup of [stmt.cleanupChannelStats, stmt.cleanupUserStats, stmt.cleanupHourlyStats, stmt.cleanupDailyStats]) cleanup.run(cutoff);
-    stmt.moderationPrune.run(Date.now() - MODERATION_RETENTION_DAYS * 86_400_000);
-    pruneOldEvents();
+    withTransaction(() => {
+      for (const cleanup of [stmt.cleanupChannelStats, stmt.cleanupUserStats, stmt.cleanupHourlyStats, stmt.cleanupDailyStats]) cleanup.run(cutoff);
+      stmt.moderationPrune.run(Date.now() - MODERATION_RETENTION_DAYS * 86_400_000);
+      pruneOldEvents();
+    });
   } catch (error) {
     logger.warn("Очистка статистики не удалась", error);
   }

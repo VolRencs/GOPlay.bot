@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server.js";
-import { botTokenError, discordFetch, guildMemberNamesFor, guildRoute, isSnowflake, jsonError } from "#lib/guild-access.ts";
+import { discordFetch, guildMemberNamesFor, guildRoute, isSnowflake, jsonError, readFormDataJson, requireBotToken } from "#lib/guild-access.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { channelRef, formatTime, roleRef, userRef } from "#lib/format.ts";
@@ -9,7 +9,7 @@ import { guildLang } from "#lib/i18n/bot.ts";
 import { buttonStyleId } from "#lib/constants.ts";
 import { eventQueries } from "#db/queries.ts";
 import { cleanupUnusedUploads, eventUploadPrefix, eventUploadsDir, extractFilenames, rejectOversized } from "#lib/uploads.ts";
-import { AssetError, collectFormAssets, persistUploadedAssets, type StoredAsset, type UploadAssetSet } from "#lib/assets.ts";
+import { AssetError, collectFormAssets, discordMessageBody, persistUploadedAssets, type StoredAsset, type UploadAssetSet } from "#lib/assets.ts";
 import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "#lib/events.ts";
 import type { EventListDto } from "#contracts/events.ts";
 import { embedCharacterCount, EMBED_LIMITS } from "#contracts/embeds.ts";
@@ -31,15 +31,7 @@ type SendResult = { id: string } | { status: number };
 async function sendOrEdit(channelId: string, messageId: string | null, embed: EventEmbedPayload, buttons: RenderedEventButton[], eventId: string, files: readonly StoredAsset<EventImageTarget>[]): Promise<SendResult> {
   const components = buttons.length ? [{ type: 1, components: buttons.map(b => ({ type: 2, style: buttonStyleId(b.style), label: buttonLabel(b), custom_id: `event:${b.key}:${eventId}`, disabled: Boolean(b.disabled) })) }] : [];
   const bodyData = { embeds: [embed], components, allowed_mentions: { parse: [] } };
-  let body: BodyInit = JSON.stringify(bodyData);
-  let headers: Record<string, string> = { "content-type": "application/json" };
-  if (files.length) {
-    const multipart = new FormData();
-    multipart.set("payload_json", JSON.stringify(bodyData));
-    files.forEach((asset, index) => multipart.append(`files[${index}]`, asset.file, asset.filename));
-    body = multipart;
-    headers = {};
-  }
+  const { body, headers } = discordMessageBody(bodyData, files);
   try {
     const response = await discordFetch(`/channels/${channelId}/messages${messageId ? `/${messageId}` : ""}`, { method: messageId ? "PATCH" : "POST", headers, body });
     if (!response.ok) return { status: response.status };
@@ -75,21 +67,16 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const lang = guildLang(guildId);
   const oversized = rejectOversized(request);
   if (oversized) return oversized;
-  const form = request.headers.get("content-type")?.includes("multipart/form-data") ? await request.formData() : null;
-  let data: Record<string, unknown>;
-  try {
-    const serialized = form?.get("data");
-    data = (form ? JSON.parse(typeof serialized === "string" ? serialized : "{}") : await request.json()) as Record<string, unknown>;
-  } catch {
-    return jsonError("Не удалось прочитать данные события.");
-  }
+  const parsedBody = await readFormDataJson<Record<string, unknown>>(request);
+  if (!parsedBody) return jsonError("Не удалось прочитать данные события.");
+  const { form, data } = parsedBody;
   const input = clampEventInput(data);
   if ("error" in input) return jsonError(input.error);
   const id = typeof data.id === "string" && data.id.length ? data.id : null;
   const current = id ? getEventInGuild(guildId, id) : undefined;
   if (id && !current) return jsonError("Событие не найдено.", 404);
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) return botTokenError();
+  const tokenError = requireBotToken();
+  if (tokenError) return tokenError;
 
   const embed = input.embed;
   const setAsset = (target: EventImageTarget, url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
@@ -113,7 +100,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const persistAssets = async () => persistUploadedAssets(eventUploadsDir(guildId), eventUploadPrefix(guildId), assets, originals, setAsset);
 
   let saved: EventRow;
-  let messageId: string | null;
   let warning: string | null = null;
   const counts = current ? eventCounts(current.id) : { joined: 0, waitlist: 0 };
   const renderable: RenderableEvent = { status: input.status, scheduledAt: input.scheduledAt, maxParticipants: input.maxParticipants, registrationEnabled: input.registrationEnabled, waitlistEnabled: input.waitlistEnabled };
@@ -123,18 +109,22 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if (current) {
     const sync = await syncDiscord(current, input.channelId, rendered, buttons, assets);
     warning = sync.warning;
-    saved = current;
-    messageId = sync.messageId;
+    await persistAssets();
+    const updated = updateEvent(guildId, current.id, { ...input, messageId: sync.messageId });
+    if (!updated) return jsonError("Событие было удалено во время сохранения.", 409);
+    saved = updated;
   } else {
-    saved = insertEvent(guildId, { ...input, id: crypto.randomUUID(), messageId: null });
-    const sent = await sendOrEdit(input.channelId, null, rendered, buttons, saved.id, assets);
-    if (!("id" in sent)) { deleteEvent(guildId, saved.id); return jsonError("Не удалось отправить сообщение в выбранный канал.", 502); }
-    messageId = sent.id;
+    const id = crypto.randomUUID();
+    const sent = await sendOrEdit(input.channelId, null, rendered, buttons, id, assets);
+    if (!("id" in sent)) return jsonError("Не удалось отправить сообщение в выбранный канал.", 502);
+    await persistAssets();
+    try {
+      saved = insertEvent(guildId, { ...input, id, messageId: sent.id });
+    } catch (error) {
+      await discordFetch(`/channels/${input.channelId}/messages/${sent.id}`, { method: "DELETE" }).catch(() => null);
+      throw error;
+    }
   }
-  await persistAssets();
-  const updated = updateEvent(guildId, saved.id, { ...input, messageId });
-  if (!updated) return jsonError("Событие было удалено во время сохранения.", 409);
-  saved = updated;
   after(() => cleanupUnusedEventImages(guildId));
   const title = embed.title ?? "без названия";
   if (current) {

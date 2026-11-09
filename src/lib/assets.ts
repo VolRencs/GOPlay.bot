@@ -15,6 +15,15 @@ export class AssetError extends Error {}
 export type StoredAsset<T extends string> = { target: T; filename: string; file: File; bytes: Buffer };
 type OriginalAsset<T extends string> = { target: T; url: string };
 
+// Discord accepts files either as JSON or as multipart with payload_json.
+export function discordMessageBody(bodyData: unknown, files: readonly { file: Blob; filename: string }[]): { body: BodyInit; headers: Record<string, string> } {
+  if (!files.length) return { body: JSON.stringify(bodyData), headers: { "content-type": "application/json" } };
+  const multipart = new FormData();
+  multipart.set("payload_json", JSON.stringify(bodyData));
+  files.forEach((asset, index) => multipart.append(`files[${index}]`, asset.file, asset.filename));
+  return { body: multipart, headers: {} };
+}
+
 const safeName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "image";
 
 function extMatchesMime(filename: string, mime: string): boolean {

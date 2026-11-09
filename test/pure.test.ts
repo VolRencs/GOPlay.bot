@@ -68,7 +68,8 @@ test("schema: создаёт прикладные таблицы и не сод�
   assert.ok(!columns("message_cache").includes("channel_id"));
   assert.ok(!columns("music_sessions").includes("updated_at"));
   const migrations = (db.prepare("SELECT name FROM _migrations").all() as { name: string }[]).map(row => row.name);
-  assert.deepEqual(migrations, ["001_init.sql"]);
+  assert.deepEqual(migrations, ["001_init.sql", "002_hourly_member_metrics.sql"]);
+  assert.deepEqual(columns("guild_hourly_messages"), ["guild_id", "day", "hour", "messages", "joins", "leaves"]);
 });
 
 test("clampNumber: кламп, fallback и режимы округления/целочисленности", () => {

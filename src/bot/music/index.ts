@@ -52,12 +52,8 @@ export function registerMusic(client: Client): void {
     const target = pickFollowTarget(guild.members.me?.voice.channelId ?? null, requesterVc, musicSettingsFor(guildId).voice_channel_ids);
     if (!target) return;
     const channel = guild.channels.cache.get(target);
-    if (!channel?.isVoiceBased()) {
-      logger.info("[MUSIC] Не переехал к автору: канал недоступен или нет прав", guildId, target);
-      return;
-    }
-    const perms = canConnectAndSpeak(channel, guild.members.me);
-    if (!perms.connect || !perms.speak) {
+    const perms = channel?.isVoiceBased() ? canConnectAndSpeak(channel, guild.members.me) : null;
+    if (!perms?.connect || !perms?.speak) {
       logger.info("[MUSIC] Не переехал к автору: канал недоступен или нет прав", guildId, target);
       return;
     }
@@ -255,14 +251,19 @@ function queuePageButtons(prefix: string, page: number, pages: number, t: Return
   ];
 }
 
+type QueueComponents = ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>[];
+
+async function sendQueuePayload(i: ButtonInteraction, content: string, components: QueueComponents, update: boolean): Promise<void> {
+  if (update) await i.update({ content, components }).catch(() => null);
+  else await i.reply({ content, components, flags: MessageFlags.Ephemeral }).catch(() => null);
+}
+
 async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", requestedPage: number, update: boolean): Promise<void> {
   const t = musicTFor(i.guildId ?? "");
   const removing = action === "remove";
   const { queue } = getQueueSnapshot(i.guildId!);
   if (!queue.length) {
-    const payload = { content: t("queueEmpty"), components: [] };
-    if (update) await i.update(payload).catch(() => null);
-    else await i.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => null);
+    await sendQueuePayload(i, t("queueEmpty"), [], update);
     return;
   }
   const pages = Math.max(1, Math.ceil(queue.length / SELECT_OPTION_LIMIT));
@@ -284,21 +285,17 @@ async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", re
   if (pages > 1) {
     components.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(...queuePageButtons(`music:${action}:`, page, pages, t)));
   }
-  const payload = { content: prompt, components };
-  if (update) await i.update(payload).catch(() => null);
-  else await i.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => null);
+  await sendQueuePayload(i, prompt, components, update);
 }
 
 async function openQueueView(i: ButtonInteraction, requestedPage: number, update: boolean): Promise<void> {
   const t = musicTFor(i.guildId ?? "");
   const view = queueView(i.guildId!, guildLang(i.guildId!), requestedPage);
-  const components: ActionRowBuilder<ButtonBuilder>[] = [];
+  const components: QueueComponents = [];
   if (view.pages > 1) {
-    components.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...queuePageButtons("music:queue:", view.page, view.pages, t)));
+    components.push(new ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>().addComponents(...queuePageButtons("music:queue:", view.page, view.pages, t)));
   }
-  const payload = { content: view.content, components };
-  if (update) await i.update(payload).catch(() => null);
-  else await i.reply({ ...payload, flags: MessageFlags.Ephemeral }).catch(() => null);
+  await sendQueuePayload(i, view.content, components, update);
 }
 
 async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { stableJson } from "../../lib/json.ts";
 import { useAsyncAction, useObjectUrl } from "./ui.tsx";
 import type { ApiResult } from "./api.ts";
@@ -32,6 +32,40 @@ export function useApiResource<T>(enabled: boolean, load: (signal: AbortSignal) 
     return () => { active = false; controller.abort(); };
   }, [enabled, depsKey, generation]);
   return { data, setData, reload: () => setGeneration(value => value + 1) };
+}
+
+export function useApiLoad<T>(
+  options: {
+    request: (signal: AbortSignal) => Promise<ApiResult<T>>;
+    onData: (data: T) => void;
+    onError?: (error: string) => void;
+  },
+  deps: readonly unknown[],
+) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [generation, setGeneration] = useState(0);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const depsKey = stableJson(deps);
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    void optionsRef.current.request(controller.signal).then(result => {
+      if (!active) return;
+      if (result.ok) optionsRef.current.onData(result.data);
+      else {
+        setError(result.error);
+        optionsRef.current.onError?.(result.error);
+      }
+      setLoading(false);
+    });
+    return () => { active = false; controller.abort(); };
+  }, [depsKey, generation]);
+  const reload = useCallback(() => setGeneration(value => value + 1), []);
+  return { loading, error, reload };
 }
 
 export function usePanelAction(options: { onDone: PanelNotify; onError: PanelFail }) {

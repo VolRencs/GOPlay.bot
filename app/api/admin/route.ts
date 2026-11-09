@@ -27,10 +27,10 @@ const memberTotal = ttlCacheAsync<string, number>(async () => {
 
 export const GET = adminRoute(async () => {
   const cutoff = new Date(Date.now() - 7 * DAY_MS).toISOString().slice(0, 10);
-  const guildCount = Number(adminQueries.guildCount.get()?.c ?? 0);
   const activity = adminQueries.activity7d.get(cutoff)!;
   const members = await memberTotal.get("total").catch(() => null);
   const rows = adminQueries.guilds.all();
+  const guildCount = rows.length;
   const messages = new Map(adminQueries.messages.all().map(r => [r.guild_id, Number(r.m)]));
   const panels = new Map(adminQueries.panels.all().map(r => [r.guild_id, Number(r.c)]));
   const events = new Map(adminQueries.events.all().map(r => [r.guild_id, Number(r.c)]));

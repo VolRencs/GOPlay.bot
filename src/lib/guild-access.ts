@@ -177,6 +177,22 @@ export const jsonError = (message: string, status = 400) => Response.json({ erro
 
 export const botTokenError = () => jsonError(BOT_TOKEN_ERROR, 503);
 
+export function requireBotToken(): Response | null {
+  return process.env.DISCORD_TOKEN ? null : botTokenError();
+}
+
+// Unified multipart/JSON parsing for routes that optionally carry files.
+export async function readFormDataJson<T>(request: Request): Promise<{ form: FormData | null; data: T } | null> {
+  try {
+    const form = request.headers.get("content-type")?.includes("multipart/form-data") ? await request.formData() : null;
+    const serialized = form?.get("data");
+    const data = (form ? JSON.parse(typeof serialized === "string" ? serialized : "{}") : await request.json()) as T;
+    return { form, data };
+  } catch {
+    return null;
+  }
+}
+
 // Content-Length is untrusted; read manually so chunked bodies cannot bypass the cap.
 const MAX_JSON_BYTES = 1024 * 1024;
 export async function readJsonRecord(request: Request): Promise<Record<string, unknown> | null> {

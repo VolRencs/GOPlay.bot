@@ -1,6 +1,6 @@
 export {
   applyEventRole, claimReminder, clampEventInput, deleteEvent, deleteEventsByGuild, detachEventMessage,
-  dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, insertEvent, joinEvent, leaveEvent,
+  dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, guildNameFor, insertEvent, joinEvent, leaveEvent,
   listEvents, removeParticipant, removeParticipantFromGuild, sendReminderDm, transitionDueEvents,
   updateEvent, updateEventMessage,
 } from "./events/store.ts";

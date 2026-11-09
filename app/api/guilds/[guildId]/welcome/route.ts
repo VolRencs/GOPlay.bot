@@ -78,7 +78,9 @@ export const DELETE = guildRoute(async (_request, { guildId, user }) => {
 export const POST = guildRoute(async (request, { guildId, user }) => {
   const oversized = rejectOversized(request, 6 * 1024 * 1024);
   if (oversized) return oversized;
-  const form = await request.formData(), file = form.get("background");
+  const form = await request.formData().catch(() => null);
+  if (!form) return jsonError("Некорректный запрос.");
+  const file = form.get("background");
   if (!(file instanceof File)) return jsonError("Выберите изображение");
   const ext = WELCOME_IMAGE_EXTENSIONS[file.type];
   if (!ext || file.size > 5 * 1024 * 1024) return jsonError("Допустимы PNG, JPG или WEBP до 5 МБ");

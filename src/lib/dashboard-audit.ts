@@ -1,4 +1,4 @@
-import { db } from "../db/database.ts";
+import { db, withTransaction } from "../db/database.ts";
 import { logger } from "./logger.ts";
 import { stableJson } from "./json.ts";
 
@@ -9,16 +9,20 @@ const insertStmt = db.prepare(
 );
 
 const RETENTION = 1000;
+const PRUNE_EVERY = 25;
+const pendingPrune = new Map<string, number>();
 const pruneStmt = db.prepare(
   "DELETE FROM dashboard_audit WHERE guild_id=? AND created_at < (SELECT created_at FROM dashboard_audit WHERE guild_id=? ORDER BY created_at DESC LIMIT 1 OFFSET ?)",
 );
 
 export function recordDashboardChange(guildId: string, actor: AuditActor, section: string, summary: string) {
+  const count = (pendingPrune.get(guildId) ?? 0) + 1;
   try {
-    insertStmt.run(guildId, actor.id.slice(0, 100), actor.name.slice(0, 100), section.slice(0, 50), summary.slice(0, 500), Date.now());
-    try {
-      pruneStmt.run(guildId, guildId, RETENTION);
-    } catch {  }
+    withTransaction(() => {
+      insertStmt.run(guildId, actor.id.slice(0, 100), actor.name.slice(0, 100), section.slice(0, 50), summary.slice(0, 500), Date.now());
+      if (count >= PRUNE_EVERY) pruneStmt.run(guildId, guildId, RETENTION);
+    });
+    pendingPrune.set(guildId, count >= PRUNE_EVERY ? 0 : count);
   } catch (error) {
     logger.warn("[AUDIT] Не удалось записать изменение", guildId, section, error);
   }

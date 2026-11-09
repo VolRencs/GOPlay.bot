@@ -23,17 +23,17 @@ export function channelOptions(channels: Channel[], emptyLabel: string) {
   return [{ value: "", label: emptyLabel }, ...channels.map(c => ({ value: c.id, label: `# ${c.name}` }))];
 }
 
-function ColorRow({ color, onChange }: { color: string; onChange: (color: string) => void }) {
+export function ColorRow({ color, onChange, label = "Цвет", presets = true }: { color: string; onChange: (color: string) => void; label?: string; presets?: boolean }) {
   return (
     <div className="color-field">
-      <span>Цвет</span>
-      <div className="color-presets">
+      <span>{label}</span>
+      {presets && <div className="color-presets">
         {COLOR_PRESETS.map(preset => (
           <button key={preset} type="button" className={`color-preset ${color === preset ? "active" : ""}`} style={{ background: preset }} onClick={() => onChange(preset)} aria-label={`Цвет ${preset}`}/>
         ))}
-      </div>
+      </div>}
       <span className="color-swatch" style={{ background: color }} title={color}>
-        <input type="color" value={color} onChange={e => onChange(e.target.value)} aria-label="Свой цвет"/>
+        <input type="color" value={color} onChange={e => onChange(e.target.value)} aria-label={label}/>
       </span>
       <code>{color}</code>
     </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WelcomeImageConfig } from "#lib/welcome.ts";
 import { welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
 import { WelcomePreview } from "./WelcomePreview.tsx";
-import { CardHeader, SectionError, SectionLoading, channelOptions, confirmAction, NumberField, SaveButton, Select } from "./ui.tsx";
+import { CardHeader, SectionError, SectionLoading, channelOptions, ColorRow, confirmAction, NumberField, SaveButton, Select } from "./ui.tsx";
 import { apiMutate, apiUpload, type UploadProgress } from "./api.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
@@ -158,8 +158,6 @@ function MemberEvent({ title, event, channels, value, onChange, onUpload, onRemo
   </section>;
 }
 
-function ColorField({label,value,onChange}:{label:string;value:string;onChange:(value:string)=>void}) { return <label className="color-field"><span>{label}</span><span className="color-swatch" style={{background:value}} title={value}><input type="color" value={value} onChange={e=>onChange(e.target.value)} aria-label={label}/></span><code>{value}</code></label>; }
-
 function EditorNumber({ label, field, value, min, max, onChange }: { label: string; field: keyof WelcomeImageConfig; value: WelcomeImageConfig; min: number; max: number; onChange: (value: WelcomeImageConfig) => void }) {
   return <NumberField label={label} min={min} max={max} value={value[field] as number} onChange={next => onChange({ ...value, [field]: next })}/>;
 }
@@ -178,7 +176,7 @@ function ImageEditor({value,onChange}:{value:WelcomeImageConfig;onChange:(value:
     <EditorGroup title="Текст на картинке">
       <label>Ник<input value={value.title} maxLength={120} onChange={e=>onChange({...value,title:e.target.value})}/></label>
       <label>Нижний текст<input value={value.subtitle} maxLength={180} onChange={e=>onChange({...value,subtitle:e.target.value})}/></label>
-      <div className="image-editor-colors"><ColorField label="Цвет ника" value={value.titleColor} onChange={titleColor=>onChange({...value,titleColor})}/><ColorField label="Цвет нижнего текста" value={value.subtitleColor} onChange={subtitleColor=>onChange({...value,subtitleColor})}/></div>
+      <div className="image-editor-colors"><ColorRow label="Цвет ника" color={value.titleColor} onChange={titleColor=>onChange({...value,titleColor})} presets={false}/><ColorRow label="Цвет нижнего текста" color={value.subtitleColor} onChange={subtitleColor=>onChange({...value,subtitleColor})} presets={false}/></div>
     </EditorGroup>
     <EditorGroup title="Положение и размер аватара">
       <div className="coordinate-grid">

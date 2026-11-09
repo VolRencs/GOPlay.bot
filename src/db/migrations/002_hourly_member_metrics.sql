@@ -1,0 +1,2 @@
+ALTER TABLE guild_hourly_messages ADD COLUMN joins INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE guild_hourly_messages ADD COLUMN leaves INTEGER NOT NULL DEFAULT 0;

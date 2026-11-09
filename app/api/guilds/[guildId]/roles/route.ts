@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server.js";
-import { botTokenError, discordFetch, guildRoute, isSnowflake, jsonError, readJson } from "#lib/guild-access.ts";
+import { discordFetch, guildRoute, isSnowflake, jsonError, readJson, requireBotToken } from "#lib/guild-access.ts";
 import { assignableRoles } from "#lib/discord-api.ts";
 import { withTransaction } from "#db/database.ts";
 import { rolesQueries } from "#db/queries.ts";
@@ -59,8 +59,8 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   if (!tpl?.name) return jsonError("Шаблон не найден", 404);
   if (!value.channelId || !value.messageId) return jsonError("Выберите уже отправленное сообщение.");
   const embed = { channel_id: value.channelId, message_id: value.messageId, name: tpl.name };
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) return botTokenError();
+  const tokenError = requireBotToken();
+  if (tokenError) return tokenError;
   const assignable = await assignableRoleIds(guildId, options.map(o => o.roleId));
   if (assignable === null) return jsonError("Не удалось проверить иерархию ролей в Discord.", 502);
   if (options.some(o => !assignable.has(o.roleId))) return jsonError("Некоторые роли нельзя выдавать: переместите роль бота выше них в Discord.");
@@ -82,6 +82,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   let beforePanel: { title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null } | undefined;
   let beforeRoleIds: string[] = [];
   if (value.panelId) {
+    if (!Number.isInteger(value.panelId) || value.panelId < 1) return jsonError("Некорректная панель.");
     beforePanel = rolesQueries.panelGet.get(value.panelId, guildId);
     if (!beforePanel) return jsonError("Панель не найдена", 404);
     panelId = value.panelId;
@@ -164,8 +165,8 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   if (!Number.isInteger(id) || id < 1) return jsonError("Некорректный идентификатор панели.");
   const panel = rolesQueries.forDelete.get(id, guildId);
   if (!panel) return jsonError("Панель не найдена.", 404);
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) return botTokenError();
+  const tokenError = requireBotToken();
+  if (tokenError) return tokenError;
   const headers = { "content-type": "application/json" };
   let response: Response | undefined;
   try {

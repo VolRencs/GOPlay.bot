@@ -1,7 +1,7 @@
 "use client";
 
 import { lazy, type ComponentType } from "react";
-import { BarChart3, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, ScrollText, Settings, ShieldCheck, Sparkles, Tags, type LucideIcon } from "lucide-react";
+import { TAB_META, type TabKey } from "./tab-meta.ts";
 
 const StatsTab = lazy(() => import("./StatsPanel.tsx").then(module => ({ default: module.ServerStatistics })));
 const WelcomeTab = lazy(() => import("./WelcomePanel.tsx").then(module => ({ default: module.WelcomeSettings })));
@@ -27,39 +27,25 @@ function SettingsTab() {
   return <section className="panel-stack"><BotLanguageTab/><CleanupTab/></section>;
 }
 
-export type TabKey = "stats" | "welcome" | "automod" | "roles" | "levels" | "embeds" | "music" | "events" | "logging" | "tempchannels" | "appeals" | "audit" | "settings";
+export { TAB_GROUPS, isTabKey } from "./tab-meta.ts";
+export type { TabKey } from "./tab-meta.ts";
 
-type TabDefinition = {
-  nav: string;
-  title: string;
-  description: string;
-  icon: LucideIcon;
+type TabDefinition = (typeof TAB_META)[TabKey] & {
   component: ComponentType;
 };
 
 export const TAB_DEFS: Record<TabKey, TabDefinition> = {
-  stats: { nav: "Статистика", title: "Статистика сервера", description: "Активность, участники и действия модерации за выбранный период.", icon: BarChart3, component: StatsTab },
-  welcome: { nav: "Приветствие", title: "Приветствие", description: "Текст, оформление и персональная картинка для входа и прощания.", icon: Sparkles, component: WelcomeTab },
-  automod: { nav: "Автомодерация", title: "Автомодерация", description: "Правила против спама и ссылок, исключения и защищённый канал.", icon: ShieldCheck, component: AutomodTab },
-  roles: { nav: "Роли", title: "Самовыдача ролей", description: "Панели с кнопками, меню и реакциями, а также автороль при входе.", icon: Tags, component: RolesTab },
-  levels: { nav: "Уровни", title: "Уровни и опыт", description: "Начисление XP, награды за уровни и уведомления о повышении.", icon: Medal, component: LevelsTab },
-  embeds: { nav: "Embeds", title: "Конструктор embeds", description: "Шаблоны сообщений, медиа и публикация в каналы сервера.", icon: Image, component: EmbedsTab },
-  music: { nav: "Музыка", title: "Музыка", description: "Доступ к /play, разрешённые каналы и автовыход плеера.", icon: Music, component: MusicTab },
-  events: { nav: "События", title: "События", description: "Ивенты, регистрация, очередь ожидания и напоминания участникам.", icon: CalendarDays, component: EventsTab },
-  logging: { nav: "Логи", title: "Логирование", description: "Канал журнала и категории событий, которые нужно записывать.", icon: ScrollText, component: LoggingTab },
-  tempchannels: { nav: "Временные каналы", title: "Временные каналы", description: "Шаблоны приватных голосовых комнат и права их владельцев.", icon: Mic2, component: TempChannelsTab },
-  appeals: { nav: "Апелляции", title: "Апелляции", description: "Оспаривание наказаний, комментарии модераторов и статусы.", icon: Gavel, component: AppealsTab },
-  audit: { nav: "Журнал изменений", title: "Журнал изменений", description: "Кто и когда менял настройки сервера в панели.", icon: History, component: AuditTab },
-  settings: { nav: "Настройки", title: "Настройки", description: "Язык бота и очистка данных сервера.", icon: Settings, component: SettingsTab },
+  stats: { ...TAB_META.stats, component: StatsTab },
+  welcome: { ...TAB_META.welcome, component: WelcomeTab },
+  automod: { ...TAB_META.automod, component: AutomodTab },
+  roles: { ...TAB_META.roles, component: RolesTab },
+  levels: { ...TAB_META.levels, component: LevelsTab },
+  embeds: { ...TAB_META.embeds, component: EmbedsTab },
+  music: { ...TAB_META.music, component: MusicTab },
+  events: { ...TAB_META.events, component: EventsTab },
+  logging: { ...TAB_META.logging, component: LoggingTab },
+  tempchannels: { ...TAB_META.tempchannels, component: TempChannelsTab },
+  appeals: { ...TAB_META.appeals, component: AppealsTab },
+  audit: { ...TAB_META.audit, component: AuditTab },
+  settings: { ...TAB_META.settings, component: SettingsTab },
 };
-
-export const TAB_GROUPS: readonly { label: string; keys: readonly TabKey[] }[] = [
-  { label: "Обзор", keys: ["stats", "audit", "settings"] },
-  { label: "Сообщество", keys: ["welcome", "roles", "levels", "events"] },
-  { label: "Модерация", keys: ["automod", "logging", "appeals", "tempchannels"] },
-  { label: "Контент", keys: ["embeds", "music"] },
-];
-
-export function isTabKey(value: string): value is TabKey {
-  return Object.hasOwn(TAB_DEFS, value);
-}
