@@ -49,7 +49,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Linux x64 (glibc)**, **Node ≥ 26**, **pnpm 12.18.0**,
+Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.18.0**,
 **ffmpeg with libopus**, **yt-dlp** in PATH.
 
 ```bash

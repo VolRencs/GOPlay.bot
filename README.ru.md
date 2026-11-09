@@ -50,7 +50,7 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Быстрый старт (локально)
 
-Требования: **Linux x64 (glibc)**, **Node ≥ 26**, **pnpm 12.18.0**,
+Требования: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.18.0**,
 **ffmpeg с libopus**, **yt-dlp** в PATH.
 
 ```bash
