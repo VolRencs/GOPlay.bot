@@ -4,7 +4,7 @@ import { aliveGuildIds, isForeignKeyError, stmt } from "../../db/statements.ts";
 import { logger } from "../../lib/logger.ts";
 import { failInteraction, guard } from "../../lib/errors.ts";
 import { ttlCacheSync } from "../../lib/cache.ts";
-import { levelFromXp, levelProgress, type LevelReward, type LevelSettings } from "../../lib/levels.ts";
+import { levelFromXp, levelProgress, rewardForLevel, type LevelReward, type LevelSettings } from "../../lib/levels.ts";
 import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import { levelsTr } from "../../lib/i18n/bot/levels.ts";
@@ -111,22 +111,17 @@ function tickVoice(client: Client): void {
   }
 }
 
-function targetReward(rewards: LevelReward[], level: number): LevelReward | undefined {
-  let target: LevelReward | undefined;
-  for (const reward of rewards) if (reward.level <= level && (!target || reward.level > target.level)) target = reward;
-  return target;
-}
-
 async function applyRewards(guild: Guild, userId: string, level: number, rewards: LevelReward[]): Promise<void> {
+  const target = rewardForLevel(rewards, level);
+  if (!target) return;
   const member = await fetchMember(guild, userId);
   if (!member) return;
-  const target = targetReward(rewards, level);
   for (const reward of rewards) {
-    if (reward === target || reward.level > level || !member.roles.cache.has(reward.role_id)) continue;
+    if (reward.level >= target.level || !member.roles.cache.has(reward.role_id)) continue;
     const role = guild.roles.cache.get(reward.role_id);
     if (role?.editable) await member.roles.remove(role).catch(error => logger.warn("[LEVELS] Не удалось снять роль награды", guild.id, error));
   }
-  if (!target || member.roles.cache.has(target.role_id)) return;
+  if (member.roles.cache.has(target.role_id)) return;
   const role = guild.roles.cache.get(target.role_id);
   if (!role || !role.editable) { logger.warn("[LEVELS] Роль награды недоступна или выше роли бота", guild.id, target.role_id); return; }
   await member.roles.add(role).catch(error => logger.warn("[LEVELS] Не удалось выдать роль за уровень", guild.id, error));

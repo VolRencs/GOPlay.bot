@@ -17,6 +17,10 @@ export type LevelSettings = {
 
 export type LevelReward = { level: number; role_id: string };
 
+export function rewardForLevel(rewards: readonly LevelReward[], level: number): LevelReward | undefined {
+  return rewards.find(reward => reward.level === level);
+}
+
 export const levelRanges = {
   xp_per_message: { min: 0, max: 100 },
   message_cooldown_seconds: { min: 0, max: 3600 },
