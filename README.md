@@ -25,7 +25,7 @@ Node's native TypeScript type stripping and
 | Tab | What it does |
 |---|---|
 | Stats | Members/online, channels, roles, activity |
-| Welcome | Text + image for new members and farewells (templates like `{user}`, `{server}`, `{count}`…; rendered via resvg) |
+| Welcome | Text + image for new members and farewells (templates like `{user}`, `{server}`, `{count}`…; rendered via the native `welcome-render` package) |
 | Automod | Rules against spam, links, invites, flooding and duplicates; ignored roles, protected channel, punishment escalation |
 | Roles | Self-assignable roles via buttons, selects and reactions |
 | Levels | XP for messages and voice time, anti-farm rules (cooldown, min length, 2+ members in voice), level reward roles, notifications to a channel or DMs; `/lvl` and `/top` commands |
@@ -49,8 +49,8 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Node ≥ 26**, **pnpm 12.18.0**, **ffmpeg with libopus**,
-**yt-dlp** in PATH.
+Requirements: **Linux x64 (glibc)**, **Node ≥ 26**, **pnpm 12.18.0**,
+**ffmpeg with libopus**, **yt-dlp** in PATH.
 
 ```bash
 # 1. System dependencies (Debian/Ubuntu)

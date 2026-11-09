@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { buildWelcomeSvg, renderWelcomeTemplate, WELCOME_DESIGN, welcomePreviewValues, type WelcomeImageConfig } from "#lib/welcome.ts";
+import { buildWelcomeSvg, clampImageSize, renderWelcomeTemplate, WELCOME_DESIGN, welcomePreviewValues, type WelcomeImageConfig } from "#lib/welcome.ts";
 
 const { width: DESIGN_W, height: DESIGN_H } = WELCOME_DESIGN;
 const CENTER_X = DESIGN_W / 2;
@@ -76,7 +76,7 @@ export function WelcomePreview({ message, config: committed, background, enabled
     const img = new Image();
     img.onload = () => {
       if (cancelled) return;
-      setSize({ width: img.naturalWidth || DESIGN_W, height: img.naturalHeight || DESIGN_H });
+      setSize(clampImageSize(img.naturalWidth || DESIGN_W, img.naturalHeight || DESIGN_H));
       setBgState("ready");
     };
     img.onerror = () => { if (!cancelled) setBgState("error"); };

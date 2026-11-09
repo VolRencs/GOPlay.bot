@@ -24,14 +24,14 @@
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.2",
-    "@resvg/resvg-js": "2.6.2",
     "better-auth": "^1.7.18",
     "discord.js": "^14.28.1",
     "goemoji": "^0.3.1",
     "lucide-react": "^1.70.0",
     "next": "^16.4.5",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "welcome-render": "https://github.com/VolRencs/welcome-render/releases/download/v0.1.0/welcome-render-0.1.0.tgz"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
