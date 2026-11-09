@@ -69,6 +69,8 @@ export function parseImageConfig(value: unknown): WelcomeImageConfig {
 export function welcomeLayout(config: WelcomeImageConfig, width: number, height: number): WelcomeLayout {
   const scaleX = width / WELCOME_DESIGN.width;
   const scaleY = height / WELCOME_DESIGN.height;
+  // Sizes follow scaleX (as the SVG preview always has), positions use both
+  // axes. This keeps circles circular on non-16:9 backgrounds.
   const avatarWidth = config.avatarWidth * scaleX;
   const avatarHeight = config.avatarHeight * scaleX;
   return {
