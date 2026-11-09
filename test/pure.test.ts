@@ -10,6 +10,7 @@ const { parseActions } = await import("../src/lib/json.ts");
 const { automodDefaultActions } = await import("../src/lib/automod.ts");
 const { extractFilenames, embedUploadPrefix } = await import("../src/lib/uploads.ts");
 const { clampNumber } = await import("../src/lib/constants.ts");
+const { cleanupTargets } = await import("../src/lib/labels.ts");
 const { db } = await import("../src/db/database.ts");
 
 test("isMissingDiscordResource различает коды и источники", () => {
@@ -70,6 +71,11 @@ test("schema: создаёт прикладные таблицы и не сод�
   const migrations = (db.prepare("SELECT name FROM _migrations").all() as { name: string }[]).map(row => row.name);
   assert.deepEqual(migrations, ["001_init.sql", "002_hourly_member_metrics.sql"]);
   assert.deepEqual(columns("guild_hourly_messages"), ["guild_id", "day", "hour", "messages", "joins", "leaves"]);
+});
+
+test("очистка данных сервера не удаляет настройки музыки", () => {
+  const keys: string[] = cleanupTargets.map(target => target.key);
+  assert.equal(keys.includes("music"), false);
 });
 
 test("clampNumber: кламп, fallback и режимы округления/целочисленности", () => {

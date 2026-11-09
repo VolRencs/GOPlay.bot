@@ -36,7 +36,7 @@ async function withNormalizeSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function welcomeRenderModule(): Promise<typeof import("welcome-render")> {
+async function welcomeRenderModule(): Promise<typeof import("welcome-render")> {
   if (modulePromise) return modulePromise;
   modulePromise = importModule(PACKAGE).catch((error: unknown) => {
     modulePromise = undefined;

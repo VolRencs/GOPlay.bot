@@ -8,7 +8,7 @@ import type { CleanupTarget } from "./labels.ts";
 
 const statsDeletes = [stmt.cleanupStatsMetrics, stmt.cleanupStatsChannelStats, stmt.cleanupStatsUserStats, stmt.cleanupStatsHourlyMessages];
 
-const WIPE_TARGETS: CleanupTarget[] = ["audit", "appeals", "warns", "stats", "events", "music", "levels"];
+const WIPE_TARGETS: CleanupTarget[] = ["audit", "appeals", "warns", "stats", "events", "levels"];
 
 export function runCleanupTarget(guildId: string, target: CleanupTarget): number {
   if (target === "audit") return withTransaction(() => Number(stmt.cleanupAudit.run(guildId).changes));
@@ -18,7 +18,6 @@ export function runCleanupTarget(guildId: string, target: CleanupTarget): number
     return removed;
   });
   if (target === "warns") return clearWarns(guildId, null);
-  if (target === "music") { invalidateMusicSettings(guildId); return Number(stmt.cleanupMusic.run(guildId).changes); }
   if (target === "levels") return Number(stmt.cleanupLevels.run(guildId).changes);
   if (target === "events") return deleteEventsByGuild(guildId);
   return withTransaction(() => {
@@ -36,6 +35,8 @@ function purgeMessageCache(guildId: string) {
 export function wipeGuildData(guildId: string) {
   withTransaction(() => {
     for (const target of WIPE_TARGETS) runCleanupTarget(guildId, target);
+    invalidateMusicSettings(guildId);
+    stmt.cleanupMusic.run(guildId);
     purgeMessageCache(guildId);
     stmt.cleanupGuild.run(guildId);
   });

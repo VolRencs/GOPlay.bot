@@ -2,7 +2,7 @@ import { BarChart3, CalendarDays, Gavel, History, Image, Medal, Mic2, Music, Scr
 
 export type TabKey = "stats" | "welcome" | "automod" | "roles" | "levels" | "embeds" | "music" | "events" | "logging" | "tempchannels" | "appeals" | "audit" | "settings";
 
-export type TabMeta = {
+type TabMeta = {
   nav: string;
   title: string;
   description: string;
