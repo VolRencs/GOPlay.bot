@@ -59,8 +59,8 @@ function getRenderer(): Promise<WelcomeRenderer> {
     systemFonts: true,
     cacheBytes: 64 * 1024 * 1024,
     // Uploads are limited to 5 MB by the dashboard, but not by dimensions.
-    // 8K / 32 MP lets large photos decode instead of falling back to a gradient.
-    maxDimension: 8192,
+    // 16K / 32 MP lets large photos decode instead of falling back to a gradient.
+    maxDimension: 16_384,
     maxPixels: 32 * 1024 * 1024,
   }));
 }
