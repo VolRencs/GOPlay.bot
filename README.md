@@ -30,7 +30,7 @@ Node's native TypeScript type stripping and
 | Roles | Self-assignable roles via buttons, selects and reactions |
 | Levels | XP for messages and voice time, anti-farm rules (cooldown, min length, 2+ members in voice), level reward roles, notifications to a channel or DMs; `/lvl` and `/top` commands |
 | Embeds | Embed message builder, media attachments, templates |
-| Music | YouTube in a voice channel: `yt-dlp → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
+| Music | YouTube in a voice channel: native `ytrust → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
 | Events | Event creation, participants, reminders |
 | Logs | Modlog: joins/leaves, message edits/deletes, channels, bans, etc. |
 | Temp channels | Private voice channels on joining a hub channel |
@@ -50,13 +50,13 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 ## Quickstart (local)
 
 Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.18.0**,
-**ffmpeg with libopus**, **yt-dlp** in PATH.
+**ffmpeg with libopus**. The native `ytrust` module is installed by `pnpm`.
 
 ```bash
 # 1. System dependencies (Debian/Ubuntu)
 sudo apt install ffmpeg
 ffmpeg -encoders | grep opus        # must find libopus
-# yt-dlp: https://github.com/yt-dlp/yt-dlp#installation
+# yt-dlp is no longer required: ytrust is a native pnpm dependency
 
 # 2. Project dependencies
 pnpm i --frozen-lockfile
@@ -98,9 +98,12 @@ pnpm test    # node --test test/*.test.ts
 | `DEBUG` | optional | `1` enables info logs, default `0` |
 | `DASHBOARD_ALLOWED_DISCORD_IDS` | optional | Dashboard allowlist (empty = anyone managing the server) |
 | `ADMIN_DISCORD_IDS` | needed for `/admin` | Owner IDs, comma-separated, otherwise 403 for everyone |
-| `YT_DLP_PATH` | optional | Path to `yt-dlp` (defaults to PATH lookup) |
 | `FFMPEG_PATH` | optional | Path to `ffmpeg` (defaults to PATH lookup) |
-| `YT_DLP_EXTRA_ARGS` | optional | Extra yt-dlp flags, e.g. `--cookies /path/to/cookies.txt` |
+| `YTRUST_COOKIES` | recommended | Path to a Netscape `cookies.txt`; required on most hosts for bot-check/age-restricted videos |
+| `YTRUST_COOKIES_FROM_BROWSER` | alternative | Load cookies from a browser profile, e.g. `firefox` |
+| `YTRUST_PROXY` | optional | Proxy for YouTube requests, e.g. `socks5://127.0.0.1:1080` |
+| `YTRUST_TIMEOUT` | optional | HTTP timeout in seconds, default `15` |
+| `YTRUST_SOLVER_THREADS` | optional | Max challenge-solver workers, `1`–`4` (default: CPU count) |
 
 Never commit `.env`, `cookies.txt`, `*.pem` / `*.key`.
 Detailed instructions are in the [`.env.example`](.env.example) header.
@@ -131,7 +134,7 @@ src/bot/              Bot entry point (index.ts) + modules:
 src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/001_init.sql
 src/lib/              Shared logic: auth, guild-access, settings-route/views, automod, welcome,
                       colors/format, appeals, levels, events, uploads,
-                      player/* (yt-dlp/ffmpeg stack), i18n
+                      player/* (ytrust/ffmpeg stack), i18n
 src/components/       React: user-menu + dashboard/* (tab panels)
 scripts/              migrate-auth.ts, run-both.ts (bot + web runner)
 deploy/               nginx-ip-https.conf (reverse-proxy example)
@@ -159,16 +162,16 @@ pnpm start
 ## FAQ
 
 - **`Sign in to confirm you're not a bot` on `/play`** — a YouTube restriction.
-  Provide cookies: `YT_DLP_EXTRA_ARGS=--cookies /path/to/cookies.txt`
+  Provide cookies: `YTRUST_COOKIES=/path/to/cookies.txt`
   (keep the file out of git).
+- **`missingMusicBackend`** — the native `ytrust` addon could not load.
+  Run `pnpm i` and make sure the host is Linux x64 with glibc 2.35+.
 - **`missingFfmpeg` / `missingOpus`** — install ffmpeg with libopus,
-  or set `FFMPEG_PATH` / `YT_DLP_PATH` explicitly.
+  or set `FFMPEG_PATH` explicitly.
 - **`/admin` returns 403** — fill in `ADMIN_DISCORD_IDS` with your Discord ID
   (Developer Mode → Copy User ID).
 - **Self-assignable roles don't work** — the bot's role must be above the grantable
   roles in the server hierarchy (the bot logs a warning).
-- **Paths with spaces in `YT_DLP_EXTRA_ARGS`** — not supported
-  (naive whitespace split), use space-free paths.
 
 ## Contributing and security
 
@@ -182,3 +185,4 @@ Copyright (C) 2026 VolRen.
 
 - Fonts in `public/fonts/` — Onest 2.001 and Geist Mono, both under the SIL Open Font License.
 - `public/bot-logo.avif`, `app/icon.png` — original project assets.
+- `ytrust` (YouTube resolver) — GPL-3.0.

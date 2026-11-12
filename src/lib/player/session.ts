@@ -5,7 +5,7 @@ import { logger } from "../logger.ts";
 import { count } from "../perf.ts";
 import { ACTIVE_STREAM_LIMIT, activeStreamCount, startAudioStream, type StreamHandle } from "./streamer.ts";
 import { hydrateTrackMeta, isAllowedMediaUrl, setHydrateHooks } from "./resolver.ts";
-import { moveWithinList, MAX_QUEUE, MAX_DURATION_SECONDS, isNaturalEnd, nextLoopMode, partitionByIndices, shuffleWithin, type LoopMode, type StreamOutcome, type Track } from "./types.ts";
+import { moveWithinList, MAX_QUEUE, MAX_DURATION_SECONDS, isNaturalEnd, isRetryableFailure, nextLoopMode, partitionByIndices, shuffleWithin, type LoopMode, type StreamOutcome, type Track } from "./types.ts";
 import { musicSettingsFor } from "../music-settings.ts";
 
 type Session = {
@@ -21,6 +21,7 @@ type Session = {
   skipFlag: boolean;
   generation: number;
   handle: StreamHandle | null;
+  outcomeClaimed: boolean;
   failedStarts: number;
   resumesLeft: number;
   lastResumeSec: number;
@@ -123,6 +124,7 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     idleSince: null,
     activityTimer: null,
     skipFlag: false, generation: 0, handle: null,
+    outcomeClaimed: false,
     failedStarts: 0, resumesLeft: 0, lastResumeSec: 0, restarted: false,
   };
   sessions.set(guildId, session);
@@ -187,6 +189,7 @@ export function shuffleQueue(guildId: string): void {
   const s = sessions.get(guildId);
   if (!s) return;
   shuffleWithin(s.queue);
+  prefetchNext(guildId);
   notify(guildId);
 }
 
@@ -196,6 +199,7 @@ export function removeQueueTracks(guildId: string, indices: number[]): Track[] {
   const [kept, gone] = partitionByIndices(s.queue, indices);
   if (!gone.length) return [];
   s.queue = kept;
+  prefetchNext(guildId);
   notify(guildId);
   return gone;
 }
@@ -204,7 +208,7 @@ export function moveQueueTrack(guildId: string, from: number, to: number): numbe
   const s = sessions.get(guildId);
   if (!s) return -1;
   const at = moveWithinList(s.queue, from, to);
-  if (at >= 0) notify(guildId);
+  if (at >= 0) { prefetchNext(guildId); notify(guildId); }
   return at;
 }
 
@@ -256,11 +260,20 @@ export function playNext(guildId: string): Track | null {
   return next;
 }
 
-const RESUME_BUDGET = 2;
+const RESUME_BUDGET = 1;
 const RESUME_MIN_PROGRESS = 5;
-const OUTCOME_RACE_MS = 250;
+const OUTCOME_RACE_MS = 1_500;
+const RETRY_DELAY_MS = 400;
 
-function launch(s: Session, track: Track, offsetSec: number): void {
+function scheduleLaunch(s: Session, track: Track, offsetSec: number, forceRefresh: boolean): void {
+  const generation = s.generation;
+  setTimeout(() => {
+    if (sessions.get(s.guildId) !== s || s.generation !== generation || s.current !== track) return;
+    launch(s, track, offsetSec, forceRefresh);
+  }, RETRY_DELAY_MS).unref();
+}
+
+function launch(s: Session, track: Track, offsetSec: number, forceRefresh = false): void {
   if (track.duration && track.duration > MAX_DURATION_SECONDS) {
     logger.warn("[MUSIC] Трек длиннее лимита — пропускаю", s.guildId, track.title);
     advance(s, null);
@@ -283,13 +296,20 @@ function launch(s: Session, track: Track, offsetSec: number): void {
         setTimeout(retry, 1_000).unref();
         return;
       }
-      launch(s, track, offsetSec);
+      launch(s, track, offsetSec, forceRefresh);
     };
     setTimeout(retry, 1_000).unref();
     return;
   }
   s.handle?.cancel();
-  s.handle = startAudioStream({ track, player: s.player, offsetSec });
+  s.outcomeClaimed = false;
+  const handle = startAudioStream({ track, player: s.player, offsetSec, forceRefresh, onMetadata: () => notify(s.guildId) });
+  s.handle = handle;
+  void handle.outcome.then(() => {
+    if (sessions.get(s.guildId) !== s || s.current !== track || s.handle !== handle) return;
+    if (s.player.state.status !== AudioPlayerStatus.Idle) return;
+    void handleIdle(s, 0);
+  });
 }
 
 async function handleIdle(s: Session, playedMs: number): Promise<void> {
@@ -299,7 +319,14 @@ async function handleIdle(s: Session, playedMs: number): Promise<void> {
     ? await Promise.race([s.handle.outcome, delay(OUTCOME_RACE_MS, null)])
     : null;
   if (sessions.get(s.guildId) !== s || s.current !== finished) return;
+  if (s.outcomeClaimed) return;
+  s.outcomeClaimed = true;
   if (s.skipFlag) { s.skipFlag = false; advance(s, finished, false); return; }
+  if (outcome?.kind === "source-error" && outcome.code === "TOO_LONG") {
+    logger.info("[MUSIC] Трек длиннее лимита — пропускаю", s.guildId, finished?.title ?? "");
+    advance(s, finished, false);
+    return;
+  }
 
   const naturalEnd = !outcome || (outcome.kind === "eof" && isNaturalEnd(playedSec, finished?.duration));
   if (finished && s.loopMode === "track" && naturalEnd) { launch(s, finished, 0); return; }
@@ -308,19 +335,23 @@ async function handleIdle(s: Session, playedMs: number): Promise<void> {
 }
 
 function tryResumeOrForward(s: Session, track: Track, playedSec: number, outcome: StreamOutcome): void {
+  if (!isRetryableFailure(outcome)) {
+    failForward(s, outcome.kind === "source-error" ? outcome.detail || "источник недоступен" : outcome.kind);
+    return;
+  }
   if (s.resumesLeft > 0 && (playedSec >= s.lastResumeSec + RESUME_MIN_PROGRESS || playedSec < RESUME_MIN_PROGRESS)) {
     s.resumesLeft--;
     s.lastResumeSec = Math.max(s.lastResumeSec, playedSec);
     count("music.resume");
     logger.warn("[MUSIC] Стрим прервался рано — резюм с позиции", s.guildId, track.title, `${Math.floor(playedSec)}c`, outcome.kind, "detail" in outcome ? outcome.detail : "");
-    launch(s, track, playedSec);
+    scheduleLaunch(s, track, playedSec, true);
     return;
   }
   if (!s.restarted) {
     s.restarted = true;
-    s.resumesLeft = RESUME_BUDGET;
+    s.resumesLeft = 0;
     s.lastResumeSec = 0;
-    launch(s, track, 0);
+    scheduleLaunch(s, track, 0, true);
     return;
   }
   failForward(s, outcome.kind === "source-error" ? outcome.detail || "источник умер"
@@ -342,7 +373,10 @@ function failForward(s: Session, reason: string): void {
 }
 
 function advance(s: Session, finished: Track | null, requeue = true): void {
-  if (requeue && s.loopMode === "queue" && finished) s.queue.push(finished);
+  if (requeue && s.loopMode === "queue" && finished) {
+    if (s.queue.length < MAX_QUEUE) s.queue.push(finished);
+    else logger.warn("[MUSIC] Очередь заполнена — трек не возвращён в конец", s.guildId, finished.title);
+  }
   if (s.queue.length > 0) { playNext(s.guildId); return; }
   s.current = null;
   refreshActivityTimer(s);

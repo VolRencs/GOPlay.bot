@@ -36,6 +36,7 @@ export function registerMusic(client: Client): void {
   setInterval(() => {
     const now = Date.now();
     for (const [key, pending] of pendingMoves) if (now - pending.at > PENDING_MOVE_TTL_MS) pendingMoves.delete(key);
+    for (const [key, pending] of pendingRemovals) if (now - pending.at > PENDING_MOVE_TTL_MS) pendingRemovals.delete(key);
   }, 60_000).unref();
   setPlayerEnvironment({
     humansInBotChannel: guildId => {
@@ -145,7 +146,7 @@ async function refreshPanelNow(guildId: string): Promise<void> {
   const channelId = ref?.channelId ?? getSessionTextChannelId(guildId);
   if (!channelId) return;
   const channel = await resolveChannel(channelId);
-  if (!channel) return;
+  if (!channel) { forgetPanel(guildId); return; }
   const payload = renderMusicPanel(state, guildLang(guildId));
   if (ref) {
     try {
@@ -233,8 +234,11 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
 }
 
 type PendingMove = { from: number; at: number; id: string };
+type PendingRemoval = { ids: string[]; at: number };
 const pendingMoves = new Map<string, PendingMove>();
-const trackIdentity = (track: Track): string => `${track.query}\u0000${track.title}`;
+const pendingRemovals = new Map<string, PendingRemoval>();
+const trackIdentity = (track: Track): string => `${track.query}\u0000${track.requestedBy}`;
+const NO_MENTIONS = { parse: [] } as const;
 
 function queuePageButtons(prefix: string, page: number, pages: number, t: ReturnType<typeof musicTFor>): ButtonBuilder[] {
   return [
@@ -254,8 +258,8 @@ function queuePageButtons(prefix: string, page: number, pages: number, t: Return
 type QueueComponents = ActionRowBuilder<StringSelectMenuBuilder | ButtonBuilder>[];
 
 async function sendQueuePayload(i: ButtonInteraction, content: string, components: QueueComponents, update: boolean): Promise<void> {
-  if (update) await i.update({ content, components }).catch(() => null);
-  else await i.reply({ content, components, flags: MessageFlags.Ephemeral }).catch(() => null);
+  if (update) await i.update({ content, components, allowedMentions: NO_MENTIONS }).catch(() => null);
+  else await i.reply({ content, components, flags: MessageFlags.Ephemeral, allowedMentions: NO_MENTIONS }).catch(() => null);
 }
 
 async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", requestedPage: number, update: boolean): Promise<void> {
@@ -265,6 +269,9 @@ async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", re
   if (!queue.length) {
     await sendQueuePayload(i, t("queueEmpty"), [], update);
     return;
+  }
+  if (removing) {
+    pendingRemovals.set(`${i.guildId}:${i.user.id}`, { ids: queue.map(trackIdentity), at: Date.now() });
   }
   const pages = Math.max(1, Math.ceil(queue.length / SELECT_OPTION_LIMIT));
   const page = Math.min(pages - 1, Math.max(0, Math.trunc(requestedPage)));
@@ -303,13 +310,23 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
   try {
     if (!i.inGuild()) return;
     const guildId = i.guildId;
-    const deny = (content: string) => i.update({ content, components: [] }).catch(() => null);
+    const deny = (content: string) => i.update({ content, components: [], allowedMentions: NO_MENTIONS }).catch(() => null);
     if (!isAdminInteraction(i)) { await deny(t("notAdmin")); return; }
     const action = i.customId.slice("music:".length);
     const { queue } = getQueueSnapshot(guildId);
 
     if (action === "rmsel") {
-      const removed = removeQueueTracks(guildId, i.values.map(Number));
+      const key = `${guildId}:${i.user.id}`;
+      const pending = pendingRemovals.get(key);
+      pendingRemovals.delete(key);
+      const indices = i.values.map(Number);
+      const unchanged = Boolean(pending && Date.now() - pending.at <= PENDING_MOVE_TTL_MS) && indices.every(index => {
+        if (!Number.isInteger(index) || index < 0) return false;
+        const track = queue[index];
+        return Boolean(track && pending && trackIdentity(track) === pending.ids[index]);
+      });
+      if (!unchanged) { await deny(t("queueChanged")); return; }
+      const removed = removeQueueTracks(guildId, indices);
       await deny(removed.length ? t("removedDone", { n: removed.length }) : t("queueChanged"));
       return;
     }
@@ -333,6 +350,7 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
         components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
           new StringSelectMenuBuilder().setCustomId("music:mvadst").setPlaceholder(title).addOptions(options),
         )],
+        allowedMentions: NO_MENTIONS,
       }).catch(() => null);
       return;
     }

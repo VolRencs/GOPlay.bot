@@ -18,6 +18,20 @@ export function canConnectAndSpeak(channel: VoiceBasedChannel, me: GuildMember |
   return { connect: Boolean(permissions?.has(PermissionFlagsBits.Connect)), speak: Boolean(permissions?.has(PermissionFlagsBits.Speak)) };
 }
 
+const pendingCommands = new Map<string, number>();
+
+export function beginMusicCommand(guildId: string): void {
+  pendingCommands.set(guildId, (pendingCommands.get(guildId) ?? 0) + 1);
+}
+
+export function endMusicCommand(guildId: string): void {
+  const pending = (pendingCommands.get(guildId) ?? 1) - 1;
+  if (pending > 0) pendingCommands.set(guildId, pending);
+  else pendingCommands.delete(guildId);
+}
+
 export function leaveIfIdle(guildId: string | null): void {
-  if (guildId && !hasCurrent(guildId) && queueSizeOf(guildId) === 0) stopAndLeave(guildId);
+  if (!guildId || hasCurrent(guildId) || queueSizeOf(guildId) > 0) return;
+  if ((pendingCommands.get(guildId) ?? 0) > 1) return;
+  stopAndLeave(guildId);
 }

@@ -33,7 +33,7 @@
 
 ## Гигиена секретов
 
-- Никогда не коммитьте `.env`, `cookies.txt` (для `YT_DLP_EXTRA_ARGS`),
+- Никогда не коммитьте `.env`, `cookies.txt` (для `YTRUST_COOKIES`),
   `*.pem` / `*.key`, `data/*.sqlite*`.
 - Утёк `DISCORD_TOKEN` → срочно Reset Token в Discord Developer Portal → Bot.
 - Утёк `DISCORD_CLIENT_SECRET` → OAuth2 → Reset Secret + обновить redirect URLs.

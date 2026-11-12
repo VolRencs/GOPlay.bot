@@ -48,5 +48,5 @@ body:
     id: env
     attributes:
       label: Environment
-      description: Node, OS, ffmpeg / yt-dlp versions.
-      placeholder: "Node 26, Ubuntu 24.04, ffmpeg 6.x (libopus), yt-dlp 2026.x"
+      description: Node, OS, ffmpeg / ytrust versions.
+      placeholder: "Node 26, Ubuntu 24.04, ffmpeg 6.x (libopus), ytrust 0.4.3"

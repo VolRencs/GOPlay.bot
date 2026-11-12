@@ -31,7 +31,7 @@ pnpm **12.18.0**, Next.js **16.4.5**, React **19.3.1**, TypeScript **7.0.2**,
 | Роли | Самовыдача через кнопки, селекты и реакции |
 | Уровни | XP за сообщения и время в голосе, анти-фарм (кулдаун, мин. длина, 2+ участника в голосе), роли-награды за уровни, уведомления в канал или ЛС; команды `/lvl` и `/top` |
 | Embeds | Конструктор embed-сообщений, медиа-вложения, шаблоны |
-| Музыка | YouTube в голосовом канале: `yt-dlp → ffmpeg (libopus) → voice`; очередь до 50 треков, плейлисты до 100, лимит длины 2 ч |
+| Музыка | YouTube в голосовом канале: нативный `ytrust → ffmpeg (libopus) → voice`; очередь до 50 треков, плейлисты до 100, лимит длины 2 ч |
 | События | Создание ивентов, участники, напоминания |
 | Логи | Модлог: входы/выходы, редактирование/удаление сообщений, каналы, баны и т.д. |
 | Временные каналы | Приватные голосовые по заходу в хаб-канал |
@@ -51,13 +51,13 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 ## Быстрый старт (локально)
 
 Требования: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.18.0**,
-**ffmpeg с libopus**, **yt-dlp** в PATH.
+**ffmpeg с libopus**. Нативный модуль `ytrust` устанавливается через `pnpm`.
 
 ```bash
 # 1. Системные зависимости (Debian/Ubuntu)
 sudo apt install ffmpeg
 ffmpeg -encoders | grep opus        # должен найти libopus
-# yt-dlp: https://github.com/yt-dlp/yt-dlp#installation
+# yt-dlp больше не нужен: ytrust — нативная зависимость pnpm
 
 # 2. Зависимости проекта
 pnpm i --frozen-lockfile
@@ -99,9 +99,12 @@ pnpm test    # node --test test/*.test.ts
 | `DEBUG` | опционально | `1` включает info-логи, по умолчанию `0` |
 | `DASHBOARD_ALLOWED_DISCORD_IDS` | опционально | Allowlist дашборда (пусто = любой управляющий сервером) |
 | `ADMIN_DISCORD_IDS` | нужна для `/admin` | ID владельцев через запятую, иначе 403 всем |
-| `YT_DLP_PATH` | опционально | Путь к `yt-dlp` (по умолчанию из PATH) |
 | `FFMPEG_PATH` | опционально | Путь к `ffmpeg` (по умолчанию из PATH) |
-| `YT_DLP_EXTRA_ARGS` | опционально | Доп. флаги yt-dlp, напр. `--cookies /path/to/cookies.txt` |
+| `YTRUST_COOKIES` | рекомендуется | Путь к Netscape `cookies.txt`; на большинстве хостов без них не работает bot-check/возрастные видео |
+| `YTRUST_COOKIES_FROM_BROWSER` | альтернатива | Загрузить cookies из профиля браузера, напр. `firefox` |
+| `YTRUST_PROXY` | опционально | Прокси для запросов к YouTube, напр. `socks5://127.0.0.1:1080` |
+| `YTRUST_TIMEOUT` | опционально | HTTP-таймаут в секундах, по умолчанию `15` |
+| `YTRUST_SOLVER_THREADS` | опционально | Максимум потоков solver'а, `1`–`4` (по умолчанию — по числу CPU) |
 
 Никогда не коммитьте `.env`, `cookies.txt`, `*.pem` / `*.key`.
 Подробные инструкции — в шапке [`.env.example`](.env.example).
@@ -131,7 +134,7 @@ src/bot/              Точка входа бота (index.ts) + модули:
 src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/001_init.sql
 src/lib/              Общая логика: auth, guild-access, settings-route/views, automod, welcome,
                       colors/format, appeals, levels, events, uploads,
-                      player/* (yt-dlp/ffmpeg стек), i18n
+                      player/* (ytrust/ffmpeg стек), i18n
 src/components/       React: user-menu + dashboard/* (панели вкладок)
 scripts/              migrate-auth.ts, run-both.ts (запуск бота и веба)
 deploy/               nginx-ip-https.conf (пример reverse-proxy)
@@ -159,16 +162,16 @@ pnpm start
 ## FAQ
 
 - **`Sign in to confirm you're not a bot` при `/play`** — ограничение YouTube.
-  Укажите cookies: `YT_DLP_EXTRA_ARGS=--cookies /path/to/cookies.txt`
+  Укажите cookies: `YTRUST_COOKIES=/path/to/cookies.txt`
   (файл держать вне git).
+- **`missingMusicBackend`** — не удалось загрузить нативный аддон `ytrust`.
+  Выполните `pnpm i` и проверьте, что хостинг — Linux x64 с glibc 2.35+.
 - **`missingFfmpeg` / `missingOpus`** — установите ffmpeg с libopus,
-  либо укажите `FFMPEG_PATH` / `YT_DLP_PATH` явно.
+  либо укажите `FFMPEG_PATH` явно.
 - **`/admin` отвечает 403** — заполните `ADMIN_DISCORD_IDS` своим Discord ID
   (режим разработчика → копировать ID).
 - **Самовыдача ролей не работает** — роль бота должна быть выше выдаваемых
   в иерархии сервера (бот пишет предупреждение в лог).
-- **Пути с пробелами в `YT_DLP_EXTRA_ARGS`** — не поддерживаются
-  (наивный сплит по пробелам), используйте пути без пробелов.
 
 ## Участие и безопасность
 
@@ -182,3 +185,4 @@ Copyright (C) 2026 VolRen.
 
 - Шрифты в `public/fonts/` — Onest 2.001 и Geist Mono под SIL Open Font License.
 - `public/bot-logo.avif`, `app/icon.png` — собственные ассеты проекта.
+- `ytrust` (резолвер YouTube) — GPL-3.0.

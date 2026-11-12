@@ -33,7 +33,7 @@ code; there are no separate LTS releases yet.
 
 ## Secret hygiene
 
-- Never commit `.env`, `cookies.txt` (for `YT_DLP_EXTRA_ARGS`),
+- Never commit `.env`, `cookies.txt` (for `YTRUST_COOKIES`),
   `*.pem` / `*.key`, `data/*.sqlite*`.
 - Leaked `DISCORD_TOKEN` → urgent Reset Token in Discord Developer Portal → Bot.
 - Leaked `DISCORD_CLIENT_SECRET` → OAuth2 → Reset Secret + update redirect URLs.

@@ -3,55 +3,82 @@ import { useTempDb } from "./helpers.ts";
 
 useTempDb("goplay-player-");
 const {
-  parseYtDlpMeta, pickAudioUrl, safeYtDlpTarget,
-  isBotcheckError, isSingleYouTubeVideoUrl, pickFollowTarget,
-  isNaturalEnd, nextLoopMode, fmtTime,
+  pickAudioFormat, pickAudioUrl, formatHeaders, formatExpiresAt,
+  mapBackendError, safeMediaTarget, normalizeTrackKey, isAllowedStreamUrl,
+  isSingleYouTubeVideoUrl, pickFollowTarget,
+  isNaturalEnd, isRetryableFailure, nextLoopMode, fmtTime,
   partitionByIndices, moveWithinList, shuffleWithin,
-  ffmpegArgs, ytdlpArgsFor,
+  ffmpegArgs,
 } = await import("../src/lib/player/index.ts");
 
-const entry = (i: number) => `{"_type":"url","id":"v${i}","url":"https://www.youtube.com/watch?v=v${i}","title":"трек ${i} — портреты"}`;
-const playlist = `{"_type":"playlist","title":"Mix - портреты","entries":[${Array.from({ length: 50 }, (_, i) => entry(i)).join(",")}]}`;
-const single = `{"id":"bWDu7-jNMbo","title":"портреты (Acoustic)","duration":212.08,"webpage_url":"https://www.youtube.com/watch?v=bWDu7-jNMbo"}`;
+const fmt = (url: string, extra: Record<string, unknown>) => ({ url, protocol: "https", ...extra });
 
-test("parseYtDlpMeta: полный -J как есть, обрезанный капом восстанавливается, мусор — null", () => {
-  assert.deepEqual(parseYtDlpMeta(single, false), JSON.parse(single));
-  assert.deepEqual(parseYtDlpMeta(`${playlist}\n`, false), JSON.parse(playlist));
-  const midCut = parseYtDlpMeta(playlist.slice(0, playlist.indexOf(entry(49)) + 20), true);
-  const entries = midCut?.entries as { url: string }[] | undefined;
-  assert.ok(entries && entries.length >= 45 && entries.length < 50);
-  assert.match(entries[0]!.url, /^https:\/\/www\.youtube\.com\/watch\?v=v\d+$/);
-  const commaCut = parseYtDlpMeta(playlist.slice(0, playlist.indexOf(entry(49))), true);
-  assert.equal((commaCut?.entries as unknown[]).length, 49);
-  assert.equal(parseYtDlpMeta("not json at all", false), null);
-  assert.equal(parseYtDlpMeta('{"_type":"playli', true), null);
-});
-
-test("pickAudioUrl: opus → лучший audio-only по битрейту → best; манифесты отброшены", () => {
-  const fmt = (url: string, extra: Record<string, unknown>) => ({ url, protocol: "https", ...extra });
+test("pickAudioUrl: Opus → лучший audio-only по битрейту → best; манифесты отброшены", () => {
   assert.equal(pickAudioUrl({ formats: [
     fmt("https://a.googlevideo.com/vorbis", { vcodec: "none", acodec: "vorbis", abr: 160 }),
     fmt("https://b.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 120 }),
   ] }), "https://b.googlevideo.com/opus");
   assert.equal(pickAudioUrl({ formats: [
     fmt("https://x.googlevideo.com/m4a", { vcodec: "none", acodec: "mp4a.40.2", abr: 128 }),
-    fmt("https://y.googlevideo.com/m4a", { vcodec: "none", acodec: "mp4a.40.2", tbr: 256 }),
-  ] }), "https://y.googlevideo.com/m4a");
+    fmt("https://y.googlevideo.com/m4a2", { vcodec: "none", acodec: "mp4a.40.2", tbr: 256 }),
+  ] }), "https://y.googlevideo.com/m4a2");
   assert.equal(pickAudioUrl({ formats: [fmt("https://z.googlevideo.com/c", { vcodec: "avc1", acodec: "mp4a", tbr: 900 })] }), "https://z.googlevideo.com/c");
-  assert.equal(pickAudioUrl({ formats: [fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" })] }), null);
+  assert.equal(pickAudioUrl({ formats: [
+    fmt("https://a.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 120 }),
+    fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" }),
+  ] }), "https://a.googlevideo.com/opus");
+  assert.equal(pickAudioUrl({ formats: [fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" })] }), "https://hls.example/x.m3u8");
   assert.equal(pickAudioUrl({ formats: [fmt("not-a-url", { vcodec: "none" })] }), null);
   assert.equal(pickAudioUrl({}), null);
 });
 
-test("SSRF-гейт и классификация bot-проверки", () => {
-  assert.equal(safeYtDlpTarget("https://www.youtube.com/watch?v=x"), "https://www.youtube.com/watch?v=x");
-  assert.equal(safeYtDlpTarget("http://m.youtube.com/shorts/x"), "http://m.youtube.com/shorts/x");
-  assert.equal(safeYtDlpTarget("крутая песня"), null);
-  assert.equal(safeYtDlpTarget("https://evil.example.com/video"), null);
-  assert.equal(safeYtDlpTarget("http://localhost:8080/x"), null);
-  assert.equal(safeYtDlpTarget("ftp://youtube.com/x"), null);
-  assert.equal(isBotcheckError("Sign in to confirm you're not a bot"), true);
-  assert.equal(isBotcheckError("HTTP Error 403: Forbidden"), false);
+test("pickAudioFormat: best_audio приоритетнее formats и отдаёт заголовки/срок", () => {
+  const best = {
+    url: "https://best.googlevideo.com/opus",
+    protocol: "https",
+    vcodec: "none",
+    acodec: "opus",
+    abr: 136,
+    http_headers: { "User-Agent": "UA", Referer: "https://www.youtube.com/" },
+    expires_at: 1_794_415_881,
+  };
+  const format = pickAudioFormat({
+    best_audio: best,
+    formats: [fmt("https://other.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 999 })],
+  });
+  assert.equal(format?.url, best.url);
+  assert.deepEqual(formatHeaders(format!), { "User-Agent": "UA", Referer: "https://www.youtube.com/" });
+  assert.equal(formatExpiresAt(format!), 1_794_415_881_000);
+});
+
+test("SSRF-гейт и классификация ошибок бэкенда", () => {
+  assert.equal(safeMediaTarget("https://www.youtube.com/watch?v=x"), "https://www.youtube.com/watch?v=x");
+  assert.equal(safeMediaTarget("https://www.youtube-nocookie.com/embed/x"), "https://www.youtube-nocookie.com/embed/x");
+  assert.equal(safeMediaTarget("http://m.youtube.com/shorts/x"), "http://m.youtube.com/shorts/x");
+  assert.equal(safeMediaTarget("крутая песня"), null);
+  assert.equal(safeMediaTarget("https://evil.example.com/video"), null);
+  assert.equal(safeMediaTarget("http://localhost:8080/x"), null);
+  assert.equal(safeMediaTarget("ftp://youtube.com/x"), null);
+
+  assert.equal(isAllowedStreamUrl("https://rr2---sn-x.googlevideo.com/videoplayback"), true);
+  assert.equal(isAllowedStreamUrl("https://www.youtube.com/api/manifest"), true);
+  assert.equal(isAllowedStreamUrl("https://evil.example.com/x"), false);
+  assert.equal(isAllowedStreamUrl("not-a-url"), false);
+
+  assert.equal(mapBackendError("BOTCHECK"), "botcheck");
+  assert.equal(mapBackendError("AGE_RESTRICTED"), "age-restricted");
+  assert.equal(mapBackendError("PRIVATE"), "private");
+  assert.equal(mapBackendError("UNAVAILABLE"), "unavailable");
+  assert.equal(mapBackendError("COOKIES"), "cookies");
+  assert.equal(mapBackendError("UNSUPPORTED_URL"), "unsupported-url");
+  assert.equal(mapBackendError("INVALID_INPUT"), "invalid-query");
+  assert.equal(mapBackendError("NO_AUDIO"), "no-audio");
+  assert.equal(mapBackendError("NATIVE_LOAD"), "backend-unavailable");
+  assert.equal(mapBackendError("TIMEOUT"), "network");
+  assert.equal(mapBackendError("HTTP"), "network");
+  assert.equal(mapBackendError("INVALID_RESPONSE"), "network");
+  assert.equal(mapBackendError("CHALLENGE_FAILED"), "challenge-failed");
+  assert.equal(mapBackendError("FORMAT_NOT_FOUND"), "no-audio");
 });
 
 test("fast-path: одиночное видео доверенного хоста, без list=, с id", () => {
@@ -59,12 +86,34 @@ test("fast-path: одиночное видео доверенного хоста
   assert.equal(isSingleYouTubeVideoUrl("https://youtube.com/shorts/bWDu7-jNMbo"), true);
   assert.equal(isSingleYouTubeVideoUrl("https://m.youtube.com/watch?t=30&v=x"), true);
   assert.equal(isSingleYouTubeVideoUrl("https://youtu.be/bWDu7-jNMbo?t=1"), true);
+  assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/v/bWDu7-jNMbo"), true);
   assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/watch?v=x&list=PL123"), false);
+  assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/watch?v=nJqkWDFTK-Y&list=RDnJqkWDFTK-Y&start_radio=1"), false);
   assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/playlist?list=PL123"), false);
   assert.equal(isSingleYouTubeVideoUrl("https://www.youtube.com/watch"), false);
-  assert.equal(isSingleYouTubeVideoUrl("https://music.youtube.com/watch?v=x"), false);
+  assert.equal(isSingleYouTubeVideoUrl("https://music.youtube.com/watch?v=x"), true);
   assert.equal(isSingleYouTubeVideoUrl("https://evil.example.com/watch?v=x"), false);
   assert.equal(isSingleYouTubeVideoUrl("крутая песня"), false);
+});
+
+test("ключ кэша сохраняет list и нормализует короткие ссылки", () => {
+  assert.equal(normalizeTrackKey("https://www.youtube.com/watch?v=abc&list=PL1&t=30"), "https://youtube.com/watch?v=abc&list=PL1");
+  assert.equal(normalizeTrackKey("https://youtu.be/abc?list=PL1&si=x"), "https://youtube.com/watch?v=abc&list=PL1");
+  assert.equal(normalizeTrackKey("https://youtube.com/shorts/abcDEF12345?list=PL1"), "https://youtube.com/watch?v=abcDEF12345&list=PL1");
+  assert.equal(normalizeTrackKey("https://youtube.com/watch?list=PL1&v=abc"), "https://youtube.com/watch?v=abc&list=PL1");
+  assert.equal(normalizeTrackKey("https://youtube.com/playlist?list=PL1&si=x"), "https://youtube.com/playlist?list=PL1");
+  assert.equal(normalizeTrackKey("https://www.youtube.com/watch?v=abc"), "https://youtube.com/watch?v=abc");
+  assert.notEqual(normalizeTrackKey("https://www.youtube.com/watch?v=abc"), normalizeTrackKey("https://www.youtube.com/watch?v=abc&list=PL1"));
+});
+
+test("ретраи: временные ошибки повторяем, постоянные — сразу дальше", () => {
+  assert.equal(isRetryableFailure({ kind: "stall", phase: "middle" }), true);
+  assert.equal(isRetryableFailure({ kind: "eof" }), true);
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "timeout", code: "TIMEOUT" }), true);
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "spawn failed" }), true);
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "botcheck", code: "BOTCHECK" }), false);
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "challenge", code: "CHALLENGE_FAILED" }), false);
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "too long", code: "TOO_LONG" }), false);
 });
 
 test("переход к автору трека: только другой канал из whitelist", () => {
@@ -76,21 +125,24 @@ test("переход к автору трека: только другой ка�
   assert.equal(pickFollowTarget("vcA", "vcB", ["vcB", "vcA"]), "vcB");
 });
 
-test("аргументы стрима: -ss до -i у прямого URL, труба без -ss, seek через --download-sections", () => {
-  const resumed = ffmpegArgs("https://rX---sn.googlevideo.com/videoplayback?id=x", 95);
+test("аргументы ffmpeg: -ss до -i, UA/Referer, без пайпа", () => {
+  const headers = { "User-Agent": "VisionOS-UA", Referer: "https://www.youtube.com/" };
+  const resumed = ffmpegArgs("https://rX---sn.googlevideo.com/videoplayback?id=x", 95, headers);
   const ss = resumed.indexOf("-ss");
   assert.ok(ss !== -1 && ss < resumed.indexOf("-i"));
   assert.equal(resumed[ss + 1], "95");
+  const ua = resumed.indexOf("-user_agent");
+  assert.equal(resumed[ua + 1], "VisionOS-UA");
+  const extra = resumed.indexOf("-headers");
+  assert.match(resumed[extra + 1] ?? "", /Referer: https:\/\/www\.youtube\.com\//);
   assert.deepEqual(resumed.slice(-18), ["-map", "0:a:0", "-vn", "-threads", "1", "-ac", "2", "-ar", "48000", "-c:a", "libopus", "-b:a", "96k", "-application", "audio", "-f", "ogg", "pipe:1"]);
-  const piped = ffmpegArgs(null, 0);
-  assert.equal(piped.includes("-ss"), false);
-  assert.equal(piped[piped.indexOf("-i") + 1], "pipe:0");
-  const sections = ytdlpArgsFor(120, "https://youtube.com/watch?v=x");
-  const at = sections.indexOf("--download-sections");
-  assert.notEqual(at, -1);
-  assert.equal(sections[at + 1], "*120-inf");
-  assert.equal(sections.includes("--no-playlist"), true);
-  assert.equal(ytdlpArgsFor(0, "q").includes("--download-sections"), false);
+
+  const plain = ffmpegArgs("https://rX---sn.googlevideo.com/videoplayback?id=x", 0);
+  assert.equal(plain.includes("-ss"), false);
+  assert.equal(plain.includes("-user_agent"), false);
+  assert.equal(plain.includes("-headers"), false);
+  assert.equal(plain[plain.indexOf("-i") + 1], "https://rX---sn.googlevideo.com/videoplayback?id=x");
+  assert.equal(plain.includes("pipe:0"), false);
 });
 
 test("конец трека и цикл повтора off → track → queue → off", () => {

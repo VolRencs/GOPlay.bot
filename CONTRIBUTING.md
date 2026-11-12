@@ -6,7 +6,7 @@ Thanks for your interest in the project! A few short rules to get your PRs merge
 
 ## Stack and commands
 
-- Node ≥ 26, pnpm 12.18.0, ffmpeg with libopus, yt-dlp in PATH.
+- Node ≥ 26, pnpm 12.18.0, ffmpeg with libopus. `ytrust` is installed as a native pnpm dependency.
 - `pnpm i --frozen-lockfile` — install.
 - `cp .env.example .env` — fill in `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).

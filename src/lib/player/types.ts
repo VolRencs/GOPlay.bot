@@ -9,8 +9,9 @@ export type Track = {
   duration?: number;
   thumbnail?: string;
   mediaUrl?: string;
+  mediaHeaders?: Record<string, string>;
   mediaUrlExpiresAt?: number;
-  metaPending?: boolean;
+  hydrating?: boolean;
 };
 
 export type LoopMode = "off" | "track" | "queue";
@@ -18,9 +19,21 @@ export const nextLoopMode = (mode: LoopMode): LoopMode => mode === "off" ? "trac
 
 export type StreamOutcome =
   | { kind: "eof" }
-  | { kind: "source-error"; detail: string }
+  | { kind: "source-error"; detail: string; code?: string }
   | { kind: "stall"; phase: "start" | "middle" }
   | { kind: "external" };
+
+const PERMANENT_SOURCE_CODES = new Set([
+  "BOTCHECK", "AGE_RESTRICTED", "PRIVATE", "UNAVAILABLE", "UNSUPPORTED_URL",
+  "INVALID_INPUT", "NO_AUDIO", "FORMAT_NOT_FOUND", "CHALLENGE_FAILED",
+  "NATIVE_LOAD", "COOKIES", "TOO_LONG", "UNSAFE_URL",
+]);
+
+export function isRetryableFailure(outcome: StreamOutcome): boolean {
+  if (outcome.kind === "eof" || outcome.kind === "stall") return true;
+  if (outcome.kind !== "source-error") return false;
+  return !outcome.code || !PERMANENT_SOURCE_CODES.has(outcome.code);
+}
 
 export function isNaturalEnd(playedSec: number, durationSec: number | undefined): boolean {
   if (!durationSec || durationSec <= 0) return true;

@@ -5,14 +5,33 @@ import { channelRef } from "../../lib/format.ts";
 import { musicSettingsFor } from "../../lib/music-settings.ts";
 import {
   MAX_QUEUE, connectToVoice, enqueueTrack, hasCurrent, hydrateTrackMeta,
-  isSingleYouTubeVideoUrl, playNext, probeFfmpeg, probeOpus, probeYtDlp,
-  queueSizeOf, resolveTracks, type Track,
+  isSingleYouTubeVideoUrl, playNext, probeFfmpeg, probeMusicBackend, probeOpus,
+  queueSizeOf, resolveTracks, type ResolveErrorKind, type Track,
 } from "../../lib/player/index.ts";
-import { canConnectAndSpeak, isAdminInteraction, leaveIfIdle, memberHasAllowedRole, musicTFor } from "./shared.ts";
+import { beginMusicCommand, canConnectAndSpeak, endMusicCommand, isAdminInteraction, leaveIfIdle, memberHasAllowedRole, musicTFor } from "./shared.ts";
+
+type MusicKey = Parameters<ReturnType<typeof musicTFor>>[0];
+const RESOLVE_ERROR_KEYS = {
+  botcheck: "botCheck",
+  "age-restricted": "ageRestricted",
+  private: "privateVideo",
+  unavailable: "unavailable",
+  "unsupported-url": "unsupportedUrl",
+  "invalid-query": "invalidQuery",
+  "no-audio": "noAudio",
+  cookies: "cookiesError",
+  network: "networkError",
+  "challenge-failed": "challengeFailed",
+  "backend-unavailable": "missingMusicBackend",
+  "too-long": "tooLong",
+  unknown: "invalidQuery",
+} as const satisfies Record<ResolveErrorKind, MusicKey>;
+const NO_MENTIONS = { parse: [] } as const;
 
 export async function handleMusicCommand(i: Interaction): Promise<boolean> {
   if (!i.isChatInputCommand() || i.commandName !== "play") return false;
   const t = musicTFor(i.guildId ?? "");
+  let guildId: string | null = null;
 
   try {
     if (!i.inGuild() || !i.member) {
@@ -20,6 +39,8 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       return true;
     }
     const member = i.member;
+    guildId = i.guildId;
+    beginMusicCommand(guildId);
     await i.deferReply({ flags: MessageFlags.Ephemeral });
 
     const settings = musicSettingsFor(i.guildId!);
@@ -60,9 +81,9 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     count("music.play");
     const t0 = performance.now();
     connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
-    const [ytdlpOk, ffmpegOk, opusOk] = await Promise.all([probeYtDlp(), probeFfmpeg(), probeOpus()]);
+    const [backendOk, ffmpegOk, opusOk] = await Promise.all([probeMusicBackend(), probeFfmpeg(), probeOpus()]);
     time("music.probes", performance.now() - t0);
-    if (!ytdlpOk) { await i.editReply(t("missingYtDlp")); leaveIfIdle(i.guildId); return true; }
+    if (!backendOk) { await i.editReply(t("missingMusicBackend")); leaveIfIdle(i.guildId); return true; }
     if (!ffmpegOk) { await i.editReply(t("missingFfmpeg")); leaveIfIdle(i.guildId); return true; }
     if (!opusOk) { await i.editReply(t("missingOpus")); leaveIfIdle(i.guildId); return true; }
 
@@ -79,12 +100,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       limitedPlaylist = resolved.playlist && !playlistAllowed;
       tracks = limitedPlaylist ? resolved.tracks.slice(0, 1) : resolved.tracks;
       if (tracks.length === 0) {
-        await i.editReply(
-          resolved.error === "botcheck" ? t("botCheck")
-          : resolved.error === "too-long" ? t("tooLong")
-          : resolved.error === "unsupported-url" ? t("unsupportedUrl")
-          : t("invalidQuery"),
-        );
+        await i.editReply(t(resolved.error ? RESOLVE_ERROR_KEYS[resolved.error] : "invalidQuery"));
         leaveIfIdle(i.guildId);
         return true;
       }
@@ -102,9 +118,9 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       const started = playNext(i.guildId!);
       if (started) {
         if (fastPath) hydrateTrackMeta(started, i.guildId!);
-        await i.editReply(limitedPlaylist
-          ? t(playlistNotice, { title: firstTitle })
-          : fastPath ? t("launching") : t("nowPlaying", { title: started.title }));
+        await i.editReply(fastPath && !limitedPlaylist
+          ? t("launching")
+          : { content: limitedPlaylist ? t(playlistNotice, { title: firstTitle }) : t("nowPlaying", { title: started.title }), allowedMentions: NO_MENTIONS });
         return true;
       }
     }
@@ -114,16 +130,21 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       return true;
     }
     if (limitedPlaylist) {
-      await i.editReply(t(playlistNotice, { title: firstTitle }));
+      await i.editReply({ content: t(playlistNotice, { title: firstTitle }), allowedMentions: NO_MENTIONS });
       return true;
     }
-    await i.editReply(tracks.length > 1
-      ? t("playlistAdded", { title: firstTitle, n: String(added) })
-      : t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }));
+    await i.editReply({
+      content: tracks.length > 1
+        ? t("playlistAdded", { title: firstTitle, n: String(added) })
+        : t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }),
+      allowedMentions: NO_MENTIONS,
+    });
     return true;
   } catch (error) {
     leaveIfIdle(i.guildId);
     failInteraction("[MUSIC] Команда не выполнена", i, error, t("genericError"), i.guildId);
     return true;
+  } finally {
+    if (guildId) endMusicCommand(guildId);
   }
 }

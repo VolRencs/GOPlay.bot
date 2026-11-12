@@ -1,42 +1,37 @@
-import { spawn } from "node:child_process";
-import { pipeline } from "node:stream/promises";
+import { spawn, type ChildProcess } from "node:child_process";
 import { AudioPlayerStatus, StreamType, createAudioResource, type AudioPlayer } from "@discordjs/voice";
 import { logger } from "../logger.ts";
 import { count, time } from "../perf.ts";
-import { FFMPEG, YT_DLP, isAllowedMediaUrl, ytDlpArgs } from "./resolver.ts";
+import { FFMPEG, ensureFreshMediaUrl, isAllowedStreamUrl } from "./resolver.ts";
 import type { StreamOutcome, Track } from "./types.ts";
-
-function isAllowedStreamUrl(url: string): boolean {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host === "googlevideo.com" || host.endsWith(".googlevideo.com") || isAllowedMediaUrl(url);
-  } catch { return false; }
-}
 
 export const ACTIVE_STREAM_LIMIT = 8;
 let activeStreams = 0;
 export const activeStreamCount = (): number => activeStreams;
 
 const STALL_MS = 30_000;
+const RESOLVE_TIMEOUT_MS = 30_000;
 
 export type StreamHandle = {
   outcome: Promise<StreamOutcome>;
   cancel: () => void;
 };
 
-export function ffmpegArgs(mediaUrl: string | null, offsetSec: number): string[] {
-  const input = mediaUrl
-    ? [
-      "-thread_queue_size", "1024",
-      ...(offsetSec > 0 ? ["-ss", String(offsetSec)] : []),
-      "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
-      "-i", mediaUrl,
-    ]
-    : ["-thread_queue_size", "1024", "-i", "pipe:0"];
+export function ffmpegArgs(mediaUrl: string, offsetSec: number, headers?: Record<string, string>): string[] {
+  const userAgent = headers?.["User-Agent"] ?? headers?.["user-agent"];
+  const headerLines = Object.entries(headers ?? {})
+    .filter(([key]) => key.toLowerCase() !== "user-agent")
+    .map(([key, value]) => `${key}: ${value}\r\n`)
+    .join("");
   return [
     "-hide_banner", "-loglevel", "error", "-nostdin",
     "-fflags", "nobuffer", "-analyzeduration", "0", "-probesize", "512k",
-    ...input,
+    "-thread_queue_size", "1024",
+    ...(offsetSec > 0 ? ["-ss", String(offsetSec)] : []),
+    ...(userAgent ? ["-user_agent", userAgent] : []),
+    ...(headerLines ? ["-headers", headerLines] : []),
+    "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+    "-i", mediaUrl,
     "-map", "0:a:0", "-vn", "-threads", "1",
     "-ac", "2", "-ar", "48000",
     "-c:a", "libopus", "-b:a", "96k", "-application", "audio",
@@ -44,86 +39,118 @@ export function ffmpegArgs(mediaUrl: string | null, offsetSec: number): string[]
   ];
 }
 
-export function ytdlpArgsFor(offsetSec: number, query: string): string[] {
-  return ytDlpArgs(
-    ...(offsetSec > 0 ? ["--download-sections", `*${Math.floor(offsetSec)}-inf`] : []),
-    "--no-playlist", "-f", "bestaudio[acodec^=opus]/bestaudio/best", "-o", "-", "--", query,
-  );
-}
+type StartOptions = {
+  track: Track;
+  player: AudioPlayer;
+  offsetSec?: number;
+  forceRefresh?: boolean;
+  onMetadata?: () => void;
+};
 
-export function startAudioStream(opts: { track: Track; player: AudioPlayer; offsetSec?: number }): StreamHandle {
+export function startAudioStream(opts: StartOptions): StreamHandle {
   const { track, player } = opts;
   const offset = opts.offsetSec && opts.offsetSec > 0 ? Math.floor(opts.offsetSec) : 0;
   let settled = false, cancelled = false, finished = false;
+  let ffmpeg: ChildProcess | null = null;
+  let stallTimer: NodeJS.Timeout | null = null;
   const { promise, resolve: resolveOutcome } = Promise.withResolvers<StreamOutcome>();
   const settle = (value: StreamOutcome) => { if (!settled) { settled = true; resolveOutcome(value); } };
-
-  const viaExtractor = !(track.mediaUrl && track.mediaUrlExpiresAt && Date.now() < track.mediaUrlExpiresAt && isAllowedStreamUrl(track.mediaUrl));
-  count(viaExtractor ? "music.stream_extractor" : "music.stream_direct");
-  let ytdlpErrTail = "";
-  const ytdlp = viaExtractor
-    ? spawn(YT_DLP, ytdlpArgsFor(offset, track.query), { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] })
-    : null;
-  ytdlp?.stderr?.on("data", (chunk: Buffer) => { ytdlpErrTail = `${ytdlpErrTail}${chunk}`.slice(-400); });
-  const ffmpeg = spawn(FFMPEG, ffmpegArgs(viaExtractor ? null : track.mediaUrl!, offset),
-    { windowsHide: true, stdio: viaExtractor ? ["pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"] });
-  let ffmpegErrTail = "";
-  ffmpeg.stderr?.on("data", (chunk: Buffer) => { ffmpegErrTail = `${ffmpegErrTail}${chunk}`.slice(-400); });
 
   activeStreams++;
   const finish = () => {
     if (finished) return;
     finished = true;
     activeStreams--;
-    clearInterval(stallTimer);
-    try { ytdlp?.kill("SIGKILL"); } catch {  }
-    try { ffmpeg.kill("SIGKILL"); } catch {  }
+    if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
+    try { ffmpeg?.kill("SIGKILL"); } catch {  }
   };
 
-  let gotFirstPacket = false;
-  let lastOutputAt = performance.now();
-  const spawnAt = performance.now();
-  ffmpeg.stdout!.on("data", () => { lastOutputAt = performance.now(); });
-  const stallTimer = setInterval(() => {
-    if (!gotFirstPacket) {
-      if (performance.now() - spawnAt >= STALL_MS) { settle({ kind: "stall", phase: "start" }); finish(); }
+  void (async () => {
+    let guard: NodeJS.Timeout | null = null;
+    const timeout = new Promise<null>(resolve => {
+      guard = setTimeout(() => resolve(null), RESOLVE_TIMEOUT_MS);
+      guard.unref();
+    });
+    const resolved = await Promise.race([ensureFreshMediaUrl(track, opts.forceRefresh === true), timeout]).catch(() => null);
+    if (guard) clearTimeout(guard);
+    if (cancelled || finished) return;
+    if (!resolved) {
+      settle({ kind: "source-error", detail: "резолв медиа-URL не уложился в 30 c", code: "RESOLVE_TIMEOUT" });
+      finish();
       return;
     }
-    const status = player.state.status;
-    if (status === AudioPlayerStatus.Paused || status === AudioPlayerStatus.Idle) { lastOutputAt = performance.now(); return; }
-    if (performance.now() - lastOutputAt >= STALL_MS) { settle({ kind: "stall", phase: "middle" }); finish(); }
-  }, 5_000);
-  stallTimer.unref();
-  ffmpeg.stdout!.once("data", () => {
-    if (gotFirstPacket) return;
-    gotFirstPacket = true;
-    time("music.stream_ttfb", performance.now() - spawnAt);
-  });
-
-  if (ytdlp) {
-    void pipeline(ytdlp.stdout!, ffmpeg.stdin!).catch(() => {  });
-    ytdlp.once("error", error => { logger.warn("[MUSIC] yt-dlp не удалось запустить", String(error).slice(0, 200)); settle({ kind: "source-error", detail: "yt-dlp spawn failed" }); finish(); });
-    ytdlp.once("close", code => {
-      if (!finished && !cancelled && code !== 0 && code !== null)
-        settle({ kind: "source-error", detail: (ytdlpErrTail.trim() || `код ${code}`).slice(-300) });
-    });
-  }
-  ffmpeg.once("error", () => { settle({ kind: "source-error", detail: "ffmpeg spawn failed" }); finish(); });
-  ffmpeg.once("close", code => {
-    if (cancelled) return finish();
-    if (code !== null && code !== 0) {
-      logger.warn("[MUSIC] ffmpeg завершился аварийно", (ffmpegErrTail || ytdlpErrTail).trim(), `код ${code}`);
-      settle({ kind: "source-error", detail: (ffmpegErrTail.trim() || `код ${code}`).slice(-300) });
-    } else {
-      settle({ kind: "eof" });
+    if (!resolved.ok) {
+      settle({ kind: "source-error", detail: resolved.detail.slice(0, 300), ...(resolved.code ? { code: resolved.code } : {}) });
+      finish();
+      return;
     }
-    finish();
-  });
-  try {
-    player.play(createAudioResource(ffmpeg.stdout!, { inputType: StreamType.OggOpus }));
-  } catch (error) {
-    settle({ kind: "source-error", detail: String(error).slice(0, 200) });
-    finish();
-  }
+    const source = resolved.source;
+    if (!isAllowedStreamUrl(source.url)) {
+      settle({ kind: "source-error", detail: "resolved URL is not an allowed media host", code: "UNSAFE_URL" });
+      finish();
+      return;
+    }
+    try { opts.onMetadata?.(); } catch {  }
+
+    let proc: ChildProcess;
+    try {
+      proc = spawn(FFMPEG, ffmpegArgs(source.url, offset, source.headers),
+        { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (error) {
+      logger.warn("[MUSIC] ffmpeg не удалось запустить", String(error).slice(0, 200));
+      settle({ kind: "source-error", detail: "ffmpeg spawn failed" });
+      finish();
+      return;
+    }
+    ffmpeg = proc;
+    count("music.stream_direct");
+
+    let ffmpegErrTail = "";
+    proc.stderr?.on("data", (chunk: Buffer) => { ffmpegErrTail = `${ffmpegErrTail}${chunk}`.slice(-400); });
+
+    let gotFirstPacket = false;
+    let lastOutputAt = performance.now();
+    const spawnAt = performance.now();
+    const stdout = proc.stdout!;
+    stdout.on("data", () => { lastOutputAt = performance.now(); });
+    stallTimer = setInterval(() => {
+      if (!gotFirstPacket) {
+        if (performance.now() - spawnAt >= STALL_MS) { settle({ kind: "stall", phase: "start" }); finish(); }
+        return;
+      }
+      const status = player.state.status;
+      if (status === AudioPlayerStatus.Paused || status === AudioPlayerStatus.Idle) { lastOutputAt = performance.now(); return; }
+      if (performance.now() - lastOutputAt >= STALL_MS) { settle({ kind: "stall", phase: "middle" }); finish(); }
+    }, 5_000);
+    stallTimer.unref();
+    stdout.once("data", () => {
+      if (gotFirstPacket) return;
+      gotFirstPacket = true;
+      time("music.stream_ttfb", performance.now() - spawnAt);
+    });
+
+    proc.once("error", error => {
+      logger.warn("[MUSIC] ffmpeg не удалось запустить", String(error).slice(0, 200));
+      settle({ kind: "source-error", detail: "ffmpeg spawn failed" });
+      finish();
+    });
+    proc.once("close", code => {
+      if (cancelled) { finish(); return; }
+      if (code !== null && code !== 0) {
+        logger.warn("[MUSIC] ffmpeg завершился аварийно", ffmpegErrTail.trim(), `код ${code}`);
+        settle({ kind: "source-error", detail: (ffmpegErrTail.trim() || `код ${code}`).slice(-300) });
+      } else {
+        settle({ kind: "eof" });
+      }
+      finish();
+    });
+    try {
+      player.play(createAudioResource(stdout, { inputType: StreamType.OggOpus }));
+    } catch (error) {
+      settle({ kind: "source-error", detail: String(error).slice(0, 200) });
+      finish();
+    }
+  })();
+
   return { outcome: promise, cancel: () => { cancelled = true; settle({ kind: "external" }); finish(); } };
 }
