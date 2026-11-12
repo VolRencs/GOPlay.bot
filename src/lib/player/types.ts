@@ -26,7 +26,7 @@ export type StreamOutcome =
 const PERMANENT_SOURCE_CODES = new Set([
   "BOTCHECK", "AGE_RESTRICTED", "PRIVATE", "UNAVAILABLE", "UNSUPPORTED_URL",
   "INVALID_INPUT", "NO_AUDIO", "FORMAT_NOT_FOUND", "CHALLENGE_FAILED",
-  "NATIVE_LOAD", "COOKIES", "TOO_LONG", "UNSAFE_URL",
+  "NATIVE_LOAD", "COOKIES", "TOO_LONG", "UNSAFE_URL", "FFMPEG", "IO",
 ]);
 
 export function isRetryableFailure(outcome: StreamOutcome): boolean {

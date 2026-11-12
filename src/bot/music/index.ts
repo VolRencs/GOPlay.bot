@@ -8,7 +8,7 @@ import { SELECT_OPTION_LIMIT } from "../../lib/constants.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { musicSettingsFor } from "../../lib/music-settings.ts";
 import { queueView, renderMusicPanel, trackLabel } from "./panel.ts";
-import { canConnectAndSpeak, isAdminInteraction, musicTFor } from "./shared.ts";
+import { NO_MENTIONS, canConnectAndSpeak, isAdminInteraction, musicTFor } from "./shared.ts";
 import {
   cycleLoop, getSessionTextChannelId, getQueueSnapshot,
   moveToVoice, moveQueueTrack, pickFollowTarget, playbackStateOf,
@@ -175,13 +175,13 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
   try {
     if (!i.inGuild()) return;
     const guildId = i.guildId;
-    const queuePage = /^music:(remove|move):(\d+)$/.exec(i.customId);
-    if (queuePage) {
+    const queueMenuPage = /^music:(remove|move):(\d+)$/.exec(i.customId);
+    if (queueMenuPage) {
       if (!isAdminInteraction(i)) {
         await i.reply({ content: t("notAdmin"), flags: MessageFlags.Ephemeral }).catch(() => null);
         return;
       }
-      await openQueueMenu(i, queuePage[1] as "remove" | "move", Number(queuePage[2]), true);
+      await openQueueMenu(i, queueMenuPage[1] as "remove" | "move", Number(queueMenuPage[2]), true);
       return;
     }
     const state = playbackStateOf(guildId);
@@ -238,7 +238,6 @@ type PendingRemoval = { ids: string[]; at: number };
 const pendingMoves = new Map<string, PendingMove>();
 const pendingRemovals = new Map<string, PendingRemoval>();
 const trackIdentity = (track: Track): string => `${track.query}\u0000${track.requestedBy}`;
-const NO_MENTIONS = { parse: [] } as const;
 
 function queuePageButtons(prefix: string, page: number, pages: number, t: ReturnType<typeof musicTFor>): ButtonBuilder[] {
   return [

@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { logger } from "../logger.ts";
 import { count } from "../perf.ts";
 import { ACTIVE_STREAM_LIMIT, activeStreamCount, startAudioStream, type StreamHandle } from "./streamer.ts";
-import { hydrateTrackMeta, isAllowedMediaUrl, setHydrateHooks } from "./resolver.ts";
+import { hydrateTrackMeta, isAllowedMediaUrl, redactMediaUrl, setHydrateHooks } from "./resolver.ts";
 import { moveWithinList, MAX_QUEUE, MAX_DURATION_SECONDS, isNaturalEnd, isRetryableFailure, nextLoopMode, partitionByIndices, shuffleWithin, type LoopMode, type StreamOutcome, type Track } from "./types.ts";
 import { musicSettingsFor } from "../music-settings.ts";
 
@@ -26,6 +26,7 @@ type Session = {
   resumesLeft: number;
   lastResumeSec: number;
   restarted: boolean;
+  streamWaitSince: number | null;
 };
 
 const sessions = new Map<string, Session>();
@@ -42,18 +43,25 @@ export function setOnTrackStart(fn: (guildId: string, requestedBy: string) => vo
 let playerEnvironment: { humansInBotChannel: (guildId: string) => number } | null = null;
 export function setPlayerEnvironment(env: { humansInBotChannel: (guildId: string) => number }): void { playerEnvironment = env; }
 
+function dropHydratedTrack(guildId: string, track: Track): void {
+  const session = sessions.get(guildId);
+  if (!session) return;
+  if (session.current === track) {
+    skipCurrent(guildId);
+    return;
+  }
+  const index = session.queue.indexOf(track);
+  if (index === -1) return;
+  session.queue.splice(index, 1);
+  prefetchNext(guildId);
+  notify(guildId);
+}
+
 setHydrateHooks({
-  onTooLong: (guildId, track) => {
-    const session = sessions.get(guildId);
-    if (!session) return;
-    if (session.current === track) {
-      skipCurrent(guildId);
-      return;
-    }
-    const index = session.queue.indexOf(track);
-    if (index === -1) return;
-    session.queue.splice(index, 1);
-    notify(guildId);
+  onTooLong: dropHydratedTrack,
+  onFailure: (guildId, track, code) => {
+    logger.warn("[MUSIC] Убираю неиграбельный трек", guildId, track.title, code);
+    dropHydratedTrack(guildId, track);
   },
   onChange: notify,
 });
@@ -82,7 +90,7 @@ export function playbackStateOf(guildId: string) {
     queueLength: s.queue.length,
     paused: state.status === AudioPlayerStatus.Paused,
     loopMode: s.loopMode,
-    positionSec: "playbackDuration" in state ? Math.floor(state.playbackDuration / 1000) : 0,
+    positionSec: Math.floor(s.lastResumeSec + ("playbackDuration" in state ? state.playbackDuration / 1000 : 0)),
   };
 }
 
@@ -114,7 +122,14 @@ export function refreshSessionActivity(guildId: string): void {
 
 export function connectToVoice(guild: Guild, voiceChannelId: string, textChannelId: string): void {
   const guildId = guild.id;
-  if (sessions.has(guildId)) return;
+  const existing = sessions.get(guildId);
+  if (existing) {
+    if (existing.connection.state.status !== VoiceConnectionStatus.Destroyed) {
+      existing.textChannelId = textChannelId;
+      return;
+    }
+    destroySession(guildId);
+  }
   const connection = joinVoiceChannel({ channelId: voiceChannelId, guildId, adapterCreator: guild.voiceAdapterCreator, selfDeaf: true });
   const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play, maxMissedFrames: 250 } });
   connection.subscribe(player);
@@ -126,6 +141,7 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     skipFlag: false, generation: 0, handle: null,
     outcomeClaimed: false,
     failedStarts: 0, resumesLeft: 0, lastResumeSec: 0, restarted: false,
+    streamWaitSince: null,
   };
   sessions.set(guildId, session);
   const alive = () => sessions.get(guildId) === session;
@@ -138,10 +154,14 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     Promise.race([
       entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
       entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-    ]).catch(() => { if (alive()) destroySession(guildId); });
+    ]).catch((error: unknown) => {
+      logger.warn("[MUSIC] Голосовое соединение не восстановилось", guildId, error);
+      if (alive()) destroySession(guildId);
+    });
   };
   if (connection.state.status === VoiceConnectionStatus.Disconnected) onDisconnected();
   connection.on(VoiceConnectionStatus.Disconnected, onDisconnected);
+  connection.on(VoiceConnectionStatus.Destroyed, () => { if (alive()) destroySession(guildId); });
 
   player.on(AudioPlayerStatus.Playing, () => {
     const s = sessions.get(guildId);
@@ -150,14 +170,14 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     s.failedStarts = 0;
   });
   player.on("error", error => {
-    if (sessions.get(guildId)) logger.warn("[MUSIC] Ошибка аудиопотока", guildId, error.message);
+    if (sessions.get(guildId)) logger.warn("[MUSIC] Ошибка аудиопотока", guildId, redactMediaUrl(error.message));
   });
   player.on(AudioPlayerStatus.Idle, oldState => {
     if (!sessions.get(guildId)) return;
     const playedMs = oldState.status === AudioPlayerStatus.Playing || oldState.status === AudioPlayerStatus.Paused || oldState.status === AudioPlayerStatus.AutoPaused
       ? oldState.playbackDuration
       : 0;
-    void handleIdle(session, playedMs);
+    void handleIdle(session, playedMs, session.generation, session.handle);
   });
   refreshActivityTimer(session);
 }
@@ -252,6 +272,7 @@ export function playNext(guildId: string): Track | null {
   s.resumesLeft = RESUME_BUDGET;
   s.lastResumeSec = 0;
   s.restarted = false;
+  s.streamWaitSince = null;
   refreshActivityTimer(s);
   notify(guildId);
   if (!next) return null;
@@ -263,14 +284,16 @@ export function playNext(guildId: string): Track | null {
 const RESUME_BUDGET = 1;
 const RESUME_MIN_PROGRESS = 5;
 const OUTCOME_RACE_MS = 1_500;
-const RETRY_DELAY_MS = 400;
+const RETRY_DELAYS_MS = [3_000, 8_000] as const;
+const STREAM_WAIT_TIMEOUT_MS = 5 * 60_000;
 
-function scheduleLaunch(s: Session, track: Track, offsetSec: number, forceRefresh: boolean): void {
+function scheduleLaunch(s: Session, track: Track, offsetSec: number, forceRefresh: boolean, delayMs: number): void {
   const generation = s.generation;
   setTimeout(() => {
     if (sessions.get(s.guildId) !== s || s.generation !== generation || s.current !== track) return;
+    if (s.skipFlag) { s.skipFlag = false; advance(s, track, false); return; }
     launch(s, track, offsetSec, forceRefresh);
-  }, RETRY_DELAY_MS).unref();
+  }, delayMs).unref();
 }
 
 function launch(s: Session, track: Track, offsetSec: number, forceRefresh = false): void {
@@ -279,6 +302,7 @@ function launch(s: Session, track: Track, offsetSec: number, forceRefresh = fals
     advance(s, null);
     return;
   }
+  if (s.skipFlag) { s.skipFlag = false; advance(s, track, false); return; }
   if (offsetSec === 0) { try { onTrackStart?.(s.guildId, track.requestedBy); } catch {  } }
   if (/^https?:\/\//i.test(track.query) && !isAllowedMediaUrl(track.query)) {
     logger.warn("[MUSIC] Отклонена ссылка на недопустимый хост", s.guildId);
@@ -287,11 +311,18 @@ function launch(s: Session, track: Track, offsetSec: number, forceRefresh = fals
   }
   if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
     count("music.limit_wait");
+    const waitSince = s.streamWaitSince ?? Date.now();
+    s.streamWaitSince = waitSince;
     const gen = s.generation;
     const retry = () => {
       if (sessions.get(s.guildId) !== s || s.generation !== gen || s.current !== track) return;
-      if (s.skipFlag) { s.skipFlag = false; advance(s, track, false); return; }
-      if (s.player.state.status === AudioPlayerStatus.Playing) return;
+      if (s.skipFlag) { s.skipFlag = false; s.streamWaitSince = null; advance(s, track, false); return; }
+      if (s.player.state.status === AudioPlayerStatus.Playing) { s.streamWaitSince = null; return; }
+      if (Date.now() - waitSince >= STREAM_WAIT_TIMEOUT_MS) {
+        s.streamWaitSince = null;
+        failForward(s, "stream-limit-timeout");
+        return;
+      }
       if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
         setTimeout(retry, 1_000).unref();
         return;
@@ -301,24 +332,27 @@ function launch(s: Session, track: Track, offsetSec: number, forceRefresh = fals
     setTimeout(retry, 1_000).unref();
     return;
   }
+  s.streamWaitSince = null;
   s.handle?.cancel();
   s.outcomeClaimed = false;
   const handle = startAudioStream({ track, player: s.player, offsetSec, forceRefresh, onMetadata: () => notify(s.guildId) });
   s.handle = handle;
+  const generation = s.generation;
   void handle.outcome.then(() => {
-    if (sessions.get(s.guildId) !== s || s.current !== track || s.handle !== handle) return;
+    if (sessions.get(s.guildId) !== s || s.generation !== generation || s.current !== track || s.handle !== handle) return;
     if (s.player.state.status !== AudioPlayerStatus.Idle) return;
-    void handleIdle(s, 0);
+    void handleIdle(s, 0, generation, handle);
   });
 }
 
-async function handleIdle(s: Session, playedMs: number): Promise<void> {
+async function handleIdle(s: Session, playedMs: number, generation: number, handle: StreamHandle | null): Promise<void> {
+  if (sessions.get(s.guildId) !== s || s.generation !== generation || s.handle !== handle) return;
   const finished = s.current;
   const playedSec = s.lastResumeSec + playedMs / 1000;
-  const outcome: StreamOutcome | null = s.handle
-    ? await Promise.race([s.handle.outcome, delay(OUTCOME_RACE_MS, null)])
+  const outcome: StreamOutcome | null = handle
+    ? await Promise.race([handle.outcome, delay(OUTCOME_RACE_MS, null)])
     : null;
-  if (sessions.get(s.guildId) !== s || s.current !== finished) return;
+  if (sessions.get(s.guildId) !== s || s.generation !== generation || s.current !== finished || s.handle !== handle) return;
   if (s.outcomeClaimed) return;
   s.outcomeClaimed = true;
   if (s.skipFlag) { s.skipFlag = false; advance(s, finished, false); return; }
@@ -328,9 +362,20 @@ async function handleIdle(s: Session, playedMs: number): Promise<void> {
     return;
   }
 
-  const naturalEnd = !outcome || (outcome.kind === "eof" && isNaturalEnd(playedSec, finished?.duration));
-  if (finished && s.loopMode === "track" && naturalEnd) { launch(s, finished, 0); return; }
-  if (finished && outcome && outcome.kind !== "external" && !naturalEnd) { tryResumeOrForward(s, finished, playedSec, outcome); return; }
+  const naturalEnd = outcome
+    ? outcome.kind === "eof" && isNaturalEnd(playedSec, finished?.duration)
+    : isNaturalEnd(playedSec, finished?.duration);
+  if (finished && s.loopMode === "track" && naturalEnd) {
+    s.lastResumeSec = 0;
+    s.resumesLeft = RESUME_BUDGET;
+    s.restarted = false;
+    launch(s, finished, 0);
+    return;
+  }
+  if (finished && outcome?.kind !== "external" && !naturalEnd) {
+    tryResumeOrForward(s, finished, playedSec, outcome ?? { kind: "stall", phase: "middle" });
+    return;
+  }
   advance(s, finished);
 }
 
@@ -343,15 +388,15 @@ function tryResumeOrForward(s: Session, track: Track, playedSec: number, outcome
     s.resumesLeft--;
     s.lastResumeSec = Math.max(s.lastResumeSec, playedSec);
     count("music.resume");
-    logger.warn("[MUSIC] Стрим прервался рано — резюм с позиции", s.guildId, track.title, `${Math.floor(playedSec)}c`, outcome.kind, "detail" in outcome ? outcome.detail : "");
-    scheduleLaunch(s, track, playedSec, true);
+    logger.warn("[MUSIC] Стрим прервался рано — резюм с позиции", s.guildId, track.title, `${Math.floor(playedSec)}c`, outcome.kind, "detail" in outcome ? redactMediaUrl(outcome.detail) : "");
+    scheduleLaunch(s, track, playedSec, true, RETRY_DELAYS_MS[0]);
     return;
   }
   if (!s.restarted) {
     s.restarted = true;
     s.resumesLeft = 0;
     s.lastResumeSec = 0;
-    scheduleLaunch(s, track, 0, true);
+    scheduleLaunch(s, track, 0, true, RETRY_DELAYS_MS[1]);
     return;
   }
   failForward(s, outcome.kind === "source-error" ? outcome.detail || "источник умер"
@@ -368,11 +413,12 @@ function failForward(s: Session, reason: string): void {
     destroySession(s.guildId);
     return;
   }
-  logger.warn("[MUSIC] Трек не смог играть — переключаюсь", s.guildId, track?.title ?? "", reason);
+  logger.warn("[MUSIC] Трек не смог играть — переключаюсь", s.guildId, track?.title ?? "", redactMediaUrl(reason));
   advance(s, null);
 }
 
 function advance(s: Session, finished: Track | null, requeue = true): void {
+  s.streamWaitSince = null;
   if (requeue && s.loopMode === "queue" && finished) {
     if (s.queue.length < MAX_QUEUE) s.queue.push(finished);
     else logger.warn("[MUSIC] Очередь заполнена — трек не возвращён в конец", s.guildId, finished.title);
@@ -385,7 +431,9 @@ function advance(s: Session, finished: Track | null, requeue = true): void {
 
 export function moveToVoice(guildId: string, channelId: string): void {
   const s = sessions.get(guildId);
-  if (!s || s.connection.joinConfig.channelId === channelId) return;
+  if (!s) return;
+  if (s.connection.state.status === VoiceConnectionStatus.Destroyed) { destroySession(guildId); return; }
+  if (s.connection.joinConfig.channelId === channelId) return;
   try {
     s.connection.rejoin({ channelId, selfDeaf: true, selfMute: false });
   } catch (error) {

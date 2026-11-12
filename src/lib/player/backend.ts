@@ -1,4 +1,5 @@
 import type { AudioResult, ResolveOptions, ResolveResult } from "ytrust";
+import { logger } from "../logger.ts";
 
 type YtrustModule = typeof import("ytrust");
 
@@ -11,6 +12,8 @@ const DEFAULT_TIMEOUT_SEC = 15;
 let backendPromise: Promise<YtrustModule> | null = null;
 let probePromise: Promise<boolean> | null = null;
 let probeRetryAt = 0;
+let reportedVersion = false;
+let lastProbeError = "";
 
 /** Load the native addon lazily so a music failure cannot take down the bot. */
 function loadBackend(): Promise<YtrustModule> {
@@ -56,14 +59,34 @@ export function backendOptions(playlistLimit?: number): ResolveOptions {
   return options;
 }
 
+/** Single-track audio resolution must never expand an attached playlist. */
+export function audioOptions(): ResolveOptions {
+  const options = baseOptions();
+  options.noPlaylist = true;
+  return options;
+}
+
 export function probeMusicBackend(): Promise<boolean> {
   if (probePromise) return probePromise;
   if (Date.now() < probeRetryAt) return Promise.resolve(false);
   const pending = loadBackend()
     .then(module => {
-      try { module.version(); return true; } catch { return false; }
+      const version = module.version();
+      if (!reportedVersion) {
+        reportedVersion = true;
+        logger.info("[MUSIC] ytrust", version);
+      }
+      lastProbeError = "";
+      return true;
     })
-    .catch(() => false);
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== lastProbeError) {
+        lastProbeError = message;
+        logger.warn("[MUSIC] ytrust недоступен", message.slice(0, 300));
+      }
+      return false;
+    });
   probePromise = pending;
   void pending.then(ok => {
     if (ok) return;
@@ -82,7 +105,7 @@ export async function resolveMedia(input: string, options: ResolveOptions = back
   }
 }
 
-export async function resolveAudioMedia(input: string, options: ResolveOptions = backendOptions()): Promise<BackendResult<AudioResult>> {
+export async function resolveAudioMedia(input: string, options: ResolveOptions = audioOptions()): Promise<BackendResult<AudioResult>> {
   try {
     const module = await loadBackend();
     return { ok: true, value: await module.resolveAudio(input, options) };

@@ -4,6 +4,7 @@ import { guildTr } from "../../lib/i18n/bot.ts";
 import { musicTr } from "../../lib/i18n/bot/music.ts";
 
 export const musicTFor = (guildId: string) => guildTr(musicTr, guildId);
+export const NO_MENTIONS = { parse: [] } as const;
 
 export function isAdminInteraction(i: ButtonInteraction | StringSelectMenuInteraction | ChatInputCommandInteraction): boolean {
   return Boolean(i.memberPermissions?.has(PermissionFlagsBits.Administrator));

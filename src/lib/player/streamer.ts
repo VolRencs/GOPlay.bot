@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { AudioPlayerStatus, StreamType, createAudioResource, type AudioPlayer } from "@discordjs/voice";
 import { logger } from "../logger.ts";
 import { count, time } from "../perf.ts";
-import { FFMPEG, ensureFreshMediaUrl, isAllowedStreamUrl } from "./resolver.ts";
+import { FFMPEG, ensureFreshMediaUrl, isAllowedStreamUrl, redactMediaUrl } from "./resolver.ts";
 import type { StreamOutcome, Track } from "./types.ts";
 
 export const ACTIVE_STREAM_LIMIT = 8;
@@ -137,8 +137,9 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     proc.once("close", code => {
       if (cancelled) { finish(); return; }
       if (code !== null && code !== 0) {
-        logger.warn("[MUSIC] ffmpeg завершился аварийно", ffmpegErrTail.trim(), `код ${code}`);
-        settle({ kind: "source-error", detail: (ffmpegErrTail.trim() || `код ${code}`).slice(-300) });
+        const detail = redactMediaUrl(ffmpegErrTail.trim() || `код ${code}`);
+        logger.warn("[MUSIC] ffmpeg завершился аварийно", detail, `код ${code}`);
+        settle({ kind: "source-error", detail: detail.slice(-300) });
       } else {
         settle({ kind: "eof" });
       }
@@ -147,10 +148,14 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     try {
       player.play(createAudioResource(stdout, { inputType: StreamType.OggOpus }));
     } catch (error) {
-      settle({ kind: "source-error", detail: String(error).slice(0, 200) });
+      settle({ kind: "source-error", detail: redactMediaUrl(String(error)).slice(0, 200) });
       finish();
     }
-  })();
+  })().catch((error: unknown) => {
+    logger.warn("[MUSIC] Ошибка запуска стрима", redactMediaUrl(String(error)).slice(0, 200));
+    settle({ kind: "source-error", detail: "stream setup failed" });
+    finish();
+  });
 
   return { outcome: promise, cancel: () => { cancelled = true; settle({ kind: "external" }); finish(); } };
 }

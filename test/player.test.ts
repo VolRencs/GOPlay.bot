@@ -8,7 +8,7 @@ const {
   isSingleYouTubeVideoUrl, pickFollowTarget,
   isNaturalEnd, isRetryableFailure, nextLoopMode, fmtTime,
   partitionByIndices, moveWithinList, shuffleWithin,
-  ffmpegArgs,
+  ffmpegArgs, isRetryableResolveCode, shouldDropTrackOnHydration, redactMediaUrl,
 } = await import("../src/lib/player/index.ts");
 
 const fmt = (url: string, extra: Record<string, unknown>) => ({ url, protocol: "https", ...extra });
@@ -54,6 +54,18 @@ test("pickAudioFormat: best_audio приоритетнее formats и отдаё
   assert.equal(format?.url, best.url);
   assert.deepEqual(formatHeaders(format!), { "User-Agent": "UA", Referer: "https://www.youtube.com/" });
   assert.equal(formatExpiresAt(format!), 1_794_415_881_000);
+  assert.equal(formatExpiresAt({ url: "https://x.googlevideo.com/videoplayback?expire=123" }), 123_000);
+});
+
+test("pickAudioFormat: дорожка по умолчанию важнее громкой дублированной", () => {
+  const defaultTrack = {
+    id: "en", display_name: "English", audio_is_default: true,
+  };
+  const format = pickAudioFormat({ formats: [
+    fmt("https://a.googlevideo.com/opus-dub", { vcodec: "none", acodec: "opus", abr: 192 }),
+    fmt("https://b.googlevideo.com/opus-default", { vcodec: "none", acodec: "opus", abr: 96, audio_track: defaultTrack }),
+  ] });
+  assert.equal(format?.url, "https://b.googlevideo.com/opus-default");
 });
 
 test("SSRF-гейт и классификация ошибок бэкенда", () => {
@@ -120,6 +132,39 @@ test("ретраи: временные ошибки повторяем, пост
   assert.equal(isRetryableFailure({ kind: "source-error", detail: "botcheck", code: "BOTCHECK" }), false);
   assert.equal(isRetryableFailure({ kind: "source-error", detail: "challenge", code: "CHALLENGE_FAILED" }), false);
   assert.equal(isRetryableFailure({ kind: "source-error", detail: "too long", code: "TOO_LONG" }), false);
+});
+
+test("политика ретраев и hydration: временное повторяем, конфигурацию не трогаем", () => {
+  assert.equal(isRetryableResolveCode("TIMEOUT"), true);
+  assert.equal(isRetryableResolveCode("NETWORK"), true);
+  assert.equal(isRetryableResolveCode("INVALID_RESPONSE"), true);
+  assert.equal(isRetryableResolveCode("HTTP"), false);
+  assert.equal(isRetryableResolveCode("BOTCHECK"), false);
+
+  assert.equal(shouldDropTrackOnHydration("PRIVATE"), true);
+  assert.equal(shouldDropTrackOnHydration("UNAVAILABLE"), true);
+  assert.equal(shouldDropTrackOnHydration("TOO_LONG"), true);
+  assert.equal(shouldDropTrackOnHydration("UNSAFE_URL"), true);
+  assert.equal(shouldDropTrackOnHydration("BOTCHECK"), false);
+  assert.equal(shouldDropTrackOnHydration("COOKIES"), false);
+  assert.equal(shouldDropTrackOnHydration("NATIVE_LOAD"), false);
+  assert.equal(shouldDropTrackOnHydration(undefined), false);
+
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "ffmpeg", code: "FFMPEG" }), false);
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "io", code: "IO" }), false);
+  assert.equal(isRetryableFailure({ kind: "source-error", detail: "timeout", code: "TIMEOUT" }), true);
+});
+
+test("redactMediaUrl: подписанные googlevideo-ссылки не попадают в логи", () => {
+  const signed = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1&sig=secret";
+  assert.equal(redactMediaUrl(`ffmpeg ${signed} failed`), "ffmpeg https://rr1---sn-x.googlevideo.com/[redacted] failed");
+  assert.equal(redactMediaUrl("https://www.youtube.com/watch?v=abc"), "https://www.youtube.com/watch?v=abc");
+  assert.equal(redactMediaUrl("no urls here"), "no urls here");
+});
+
+test("ytrust: native-аддон загружается", { skip: process.platform !== "linux" || process.arch !== "x64" }, async () => {
+  const { version } = await import("ytrust");
+  assert.match(version(), /^\d+\.\d+\.\d+/);
 });
 
 test("переход к автору трека: только другой канал из whitelist", () => {

@@ -6,7 +6,7 @@
 
 ## Стек и команды
 
-- Node ≥ 26, pnpm 12.18.0, ffmpeg с libopus. `ytrust` ставится как нативная зависимость pnpm.
+- Node ≥ 26, pnpm 12.19.0, ffmpeg с libopus. `ytrust 1.0.0` ставится как нативная зависимость pnpm.
 - `pnpm i --frozen-lockfile` — установка.
 - `cp .env.example .env` — заполнить `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`,
   `DISCORD_CLIENT_SECRET`, `BETTER_AUTH_SECRET` (`openssl rand -base64 32`).

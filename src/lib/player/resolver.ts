@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { setTimeout as delay } from "node:timers/promises";
 import { logger } from "../logger.ts";
 import { count, time } from "../perf.ts";
-import { backendOptions, resolveAudioMedia, resolveMedia, type BackendFailure } from "./backend.ts";
+import { audioOptions, backendOptions, resolveAudioMedia, resolveMedia, type BackendFailure } from "./backend.ts";
 import { MAX_DURATION_SECONDS, MAX_PLAYLIST, type Track } from "./types.ts";
-import type { ResolveResult } from "ytrust";
+import type { ResolveResult, VideoResult } from "ytrust";
 
 export { probeMusicBackend } from "./backend.ts";
 
@@ -34,6 +35,20 @@ export function isAllowedStreamUrl(value: string): boolean {
 
 // SSRF guard: only allowlisted YouTube hosts reach the resolver.
 export const safeMediaTarget = (query: string): string | null => (isAllowedMediaUrl(query) ? query : null);
+
+/** Keep signed googlevideo URLs out of logs and error details. */
+export function redactMediaUrl(value: string): string {
+  return value.replace(/https?:\/\/[^\s"'<>]+/g, raw => {
+    try {
+      const url = new URL(raw);
+      const host = url.hostname.toLowerCase();
+      if (host === "googlevideo.com" || host.endsWith(".googlevideo.com")) {
+        return `${url.protocol}//${host}/[redacted]`;
+      }
+    } catch {  }
+    return raw;
+  });
+}
 
 export function isSingleYouTubeVideoUrl(query: string): boolean {
   if (!/^https?:\/\//i.test(query) || !URL.canParse(query)) return false;
@@ -72,6 +87,15 @@ export const probeFfmpeg = memoProbe(() => probeBinary(FFMPEG, ["-version"], fal
 export const probeOpus = memoProbe(() => probeBinary(FFMPEG, ["-hide_banner", "-encoders"], true, (code, out) => code === 0 && /libopus/i.test(out)));
 
 type RawFormat = Record<string, unknown>;
+type MetaLike = {
+  duration?: unknown;
+  thumbnail?: unknown;
+  thumbnails?: unknown;
+  best_audio?: unknown;
+  formats?: unknown;
+};
+type HeaderSource = { http_headers?: unknown };
+type ExpirySource = { expires_at?: unknown; url?: unknown };
 type CachedMeta = {
   title: string;
   duration: number;
@@ -97,7 +121,7 @@ function evictOldest<K, V>(map: Map<K, V>): void {
 
 export function normalizeTrackKey(query: string): string {
   const trimmed = query.trim();
-  if (!/^https?:\/\//i.test(trimmed) || !URL.canParse(trimmed)) return `q:${trimmed.toLowerCase()}`;
+  if (!/^https?:\/\//i.test(trimmed) || !URL.canParse(trimmed)) return trimmed.toLowerCase();
   const url = new URL(trimmed);
   url.hostname = url.hostname.replace(/^(?:www|m|music)\./i, "").toLowerCase();
   for (const junk of ["t", "si", "feature", "pp"]) url.searchParams.delete(junk);
@@ -124,6 +148,10 @@ function formatNumber(format: RawFormat, key: string): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function isUsableFormat(value: unknown): value is RawFormat {
   if (!value || typeof value !== "object") return false;
   const format = value as RawFormat;
@@ -131,7 +159,12 @@ function isUsableFormat(value: unknown): value is RawFormat {
     && typeof format.protocol === "string" && /^(?:https?|m3u8_native)$/.test(format.protocol);
 }
 
-export function pickAudioFormat(meta: Record<string, unknown>): RawFormat | null {
+function isDefaultAudioTrack(format: RawFormat): boolean {
+  const track = format.audio_track;
+  return Boolean(track && typeof track === "object" && (track as { audio_is_default?: unknown }).audio_is_default === true);
+}
+
+export function pickAudioFormat(meta: MetaLike): RawFormat | null {
   if (isUsableFormat(meta.best_audio)) return meta.best_audio;
   const formats = (Array.isArray(meta.formats) ? meta.formats : []).filter(isUsableFormat);
   const choose = (candidates: RawFormat[]): RawFormat | null => {
@@ -141,16 +174,18 @@ export function pickAudioFormat(meta: Record<string, unknown>): RawFormat | null
     });
     const opus = audioOnly.filter(format => typeof format.acodec === "string" && format.acodec.startsWith("opus"));
     const rate = (format: RawFormat): number => Math.max(formatNumber(format, "abr") ?? 0, formatNumber(format, "tbr") ?? 0);
-    const loudest = candidates.length ? candidates.reduce((a, b) => (rate(b) > rate(a) ? b : a)) : null;
-    return opus.length ? opus.reduce((a, b) => (rate(b) > rate(a) ? b : a))
-      : audioOnly.length ? audioOnly.reduce((a, b) => (rate(b) > rate(a) ? b : a))
-      : loudest;
+    const best = (list: RawFormat[]): RawFormat | null => {
+      const preferred = list.filter(isDefaultAudioTrack);
+      const pool = preferred.length ? preferred : list;
+      return pool.length ? pool.reduce((a, b) => (rate(b) > rate(a) ? b : a)) : null;
+    };
+    return best(opus) ?? best(audioOnly) ?? best(candidates);
   };
   const progressive = formats.filter(format => format.protocol !== "m3u8_native");
   return choose(progressive) ?? choose(formats.filter(format => format.protocol === "m3u8_native"));
 }
 
-export function formatHeaders(format: RawFormat): Record<string, string> | undefined {
+export function formatHeaders(format: HeaderSource): Record<string, string> | undefined {
   const raw = format.http_headers;
   if (!raw || typeof raw !== "object") return undefined;
   const headers: Record<string, string> = {};
@@ -169,14 +204,13 @@ function urlExpiresAt(url: string): number | undefined {
   } catch { return undefined; }
 }
 
-export function formatExpiresAt(format: RawFormat): number | undefined {
-  const value = formatNumber(format, "expires_at");
+export function formatExpiresAt(format: ExpirySource): number | undefined {
+  const value = finiteNumber(format.expires_at);
   if (value && value > 0) return value * 1000;
-  const url = formatString(format, "url");
-  return url ? urlExpiresAt(url) : undefined;
+  return typeof format.url === "string" ? urlExpiresAt(format.url) : undefined;
 }
 
-function pickThumbnail(meta: Record<string, unknown>): string | undefined {
+function pickThumbnail(meta: MetaLike): string | undefined {
   if (typeof meta.thumbnail === "string" && meta.thumbnail) return meta.thumbnail;
   const thumbnails = Array.isArray(meta.thumbnails) ? meta.thumbnails : [];
   const usable = thumbnails.filter((item): item is { url: string } => Boolean(item && typeof item === "object" && typeof (item as { url?: unknown }).url === "string"));
@@ -191,8 +225,8 @@ type MetaFields = {
   mediaUrlExpiresAt?: number;
 };
 
-function metaFields(meta: Record<string, unknown>): MetaFields {
-  const duration = formatNumber(meta, "duration") ?? 0;
+function metaFields(meta: MetaLike): MetaFields {
+  const duration = finiteNumber(meta.duration) ?? 0;
   const thumbnail = pickThumbnail(meta);
   const format = pickAudioFormat(meta);
   const mediaUrl = format ? formatString(format, "url") : undefined;
@@ -209,16 +243,16 @@ function metaFields(meta: Record<string, unknown>): MetaFields {
 
 function cacheSingleMeta(key: string, meta: CachedMeta): void {
   evictOldest(singleMeta);
+  singleMeta.delete(key);
   singleMeta.set(key, meta);
 }
 
-function trackFromFullMeta(meta: ResolveResult, fallbackQuery: string, requestedBy: string): Track | null {
-  const raw = meta as unknown as Record<string, unknown>;
-  const fields = metaFields(raw);
+function trackFromFullMeta(meta: VideoResult, fallbackQuery: string, requestedBy: string): Track | null {
+  const fields = metaFields(meta);
   if (fields.duration > MAX_DURATION_SECONDS) return null;
   const track: Track = {
-    query: String(raw.webpage_url ?? fallbackQuery),
-    title: String(raw.title ?? fallbackQuery),
+    query: String(meta.webpage_url ?? fallbackQuery),
+    title: String(meta.title ?? fallbackQuery),
     requestedBy,
     ...fields,
   };
@@ -250,6 +284,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 
 type ResolveRun = { meta: ResolveResult | null; error: BackendFailure | null };
 
+const RESOLVE_RETRY_DELAY_MS = 500;
+const RETRYABLE_RESOLVE_CODES = new Set(["TIMEOUT", "NETWORK", "INVALID_RESPONSE"]);
+
+export function isRetryableResolveCode(code: string): boolean {
+  return RETRYABLE_RESOLVE_CODES.has(code);
+}
+
 function runResolve(query: string, playlistLimit = MAX_PLAYLIST): Promise<ResolveRun> {
   return withResolveSlot(() => withTimeout(
     runResolveOnce(query, playlistLimit),
@@ -264,7 +305,11 @@ async function runResolveOnce(query: string, playlistLimit: number): Promise<Res
     return { meta: null, error: { ok: false, code: "UNSUPPORTED_URL", message: "unsupported-url" } };
   }
   const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
-  const result = await resolveMedia(target, backendOptions(limit));
+  let result = await resolveMedia(target, backendOptions(limit));
+  if (!result.ok && isRetryableResolveCode(result.code)) {
+    await delay(RESOLVE_RETRY_DELAY_MS).catch(() => undefined);
+    result = await resolveMedia(target, backendOptions(limit));
+  }
   return result.ok ? { meta: result.value, error: null } : { meta: null, error: result };
 }
 
@@ -300,6 +345,16 @@ export function mapBackendError(code: string): ResolveErrorKind {
   }
 }
 
+const DROP_ON_HYDRATION = new Set([
+  "PRIVATE", "UNAVAILABLE", "UNSUPPORTED_URL", "INVALID_INPUT",
+  "NO_AUDIO", "FORMAT_NOT_FOUND", "CHALLENGE_FAILED", "TOO_LONG", "UNSAFE_URL",
+]);
+
+/** Configuration problems (cookies, native addon) must not silently drain the queue. */
+export function shouldDropTrackOnHydration(code: string | undefined): boolean {
+  return Boolean(code && DROP_ON_HYDRATION.has(code));
+}
+
 type ResolveTracksResult = { tracks: Track[]; error: ResolveErrorKind | null; playlist: boolean };
 
 export async function resolveTracks(query: string, requestedBy: string, playlistLimit = MAX_PLAYLIST): Promise<ResolveTracksResult> {
@@ -326,7 +381,7 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
     if (!raw) continue;
     const duration = typeof entry.duration === "number" && entry.duration > 0 ? entry.duration : undefined;
     if (duration && duration > MAX_DURATION_SECONDS) { skippedLong = true; continue; }
-    const thumbnail = entry.thumbnail ?? pickThumbnail(entry as unknown as Record<string, unknown>);
+    const thumbnail = entry.thumbnail ?? pickThumbnail(entry);
     const query = entry.id
       ? `https://www.youtube.com/watch?v=${entry.id}`
       : raw.startsWith("http") ? raw : `https://www.youtube.com/watch?v=${raw}`;
@@ -341,6 +396,7 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
   if (!tracks.length && skippedLong) return { tracks: [], error: "too-long", playlist: true };
   if (!limited && tracks.length) {
     evictOldest(listMeta);
+    listMeta.delete(cacheKey);
     listMeta.set(cacheKey, { at: Date.now(), tracks });
   }
   return { tracks, error: null, playlist: true };
@@ -348,6 +404,7 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
 
 type HydrateHooks = {
   onTooLong: (guildId: string, track: Track) => void;
+  onFailure: (guildId: string, track: Track, code: string) => void;
   onChange: (guildId: string) => void;
 };
 let hydrateHooks: HydrateHooks | null = null;
@@ -367,11 +424,19 @@ export function hydrateTrackMeta(track: Track, guildId: string): void {
       if (result.code === "TOO_LONG") {
         logger.info("[MUSIC] Трек длиннее лимита — пропускаю", guildId, track.title);
         hydrateHooks?.onTooLong(guildId, track);
+        return;
+      }
+      if (shouldDropTrackOnHydration(result.code)) {
+        logger.warn("[MUSIC] Трек недоступен — убираю из очереди", guildId, track.title, result.code, redactMediaUrl(result.detail).slice(0, 200));
+        hydrateHooks?.onFailure(guildId, track, result.code ?? "UNKNOWN");
       }
       return;
     }
     hydrateHooks?.onChange(guildId);
-  }).catch(() => { track.hydrating = false; });
+  }).catch((error: unknown) => {
+    track.hydrating = false;
+    logger.warn("[MUSIC] Не удалось подготовить трек", guildId, redactMediaUrl(String(error)).slice(0, 200));
+  });
 }
 
 type MediaSource = { url: string; headers?: Record<string, string> };
@@ -400,27 +465,28 @@ function applyCachedMeta(track: Track, meta: CachedMeta): void {
 async function refreshMedia(track: Track, key: string): Promise<MediaSourceResult> {
   const target = safeMediaTarget(track.query);
   if (!target) {
-    logger.warn("[MUSIC] Отклонён недопустимый адрес трека", track.query.slice(0, 100));
+    logger.warn("[MUSIC] Отклонён недопустимый адрес трека", normalizeTrackKey(track.query).slice(0, 100));
     return { ok: false, detail: "unsupported-url", code: "UNSUPPORTED_URL" };
   }
   count("music.media_resolve");
   const started = performance.now();
   const result = await withResolveSlot(() => withTimeout(
-    resolveAudioMedia(target, backendOptions()),
+    resolveAudioMedia(target, audioOptions()),
     MEDIA_RESOLVE_TIMEOUT_MS,
     { ok: false, code: "TIMEOUT", message: "media resolve timed out" } as const,
   ));
   time("music.media_resolve", performance.now() - started);
   if (!result.ok) {
-    logger.warn("[MUSIC] Не удалось получить медиа-URL", track.query, result.code, result.message.slice(0, 200));
-    return { ok: false, detail: `${result.code}: ${result.message}`.slice(0, 300), code: result.code };
+    logger.warn("[MUSIC] Не удалось получить медиа-URL", normalizeTrackKey(track.query).slice(0, 100), result.code, redactMediaUrl(result.message).slice(0, 200));
+    return { ok: false, detail: redactMediaUrl(`${result.code}: ${result.message}`).slice(0, 300), code: result.code };
   }
   const audio = result.value;
-  const raw = audio as unknown as Record<string, unknown>;
-  const headers = formatHeaders(raw);
-  const expiresAt = formatExpiresAt(raw) ?? Date.now() + MEDIA_URL_TTL_MS;
+  const headers = formatHeaders(audio);
+  const expiresAt = formatExpiresAt(audio) ?? Date.now() + MEDIA_URL_TTL_MS;
   if (!isAllowedStreamUrl(audio.url)) {
-    logger.warn("[MUSIC] ytrust вернул URL недопустимого хоста", audio.url.slice(0, 100));
+    let host = "invalid";
+    try { host = new URL(audio.url).hostname; } catch {  }
+    logger.warn("[MUSIC] ytrust вернул URL недопустимого хоста", host);
     return { ok: false, detail: "resolved URL is not an allowed media host", code: "UNSAFE_URL" };
   }
   const duration = typeof audio.duration === "number" && audio.duration > 0 ? audio.duration : 0;

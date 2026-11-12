@@ -30,7 +30,7 @@ Node's native TypeScript type stripping and
 | Roles | Self-assignable roles via buttons, selects and reactions |
 | Levels | XP for messages and voice time, anti-farm rules (cooldown, min length, 2+ members in voice), level reward roles, notifications to a channel or DMs; `/lvl` and `/top` commands |
 | Embeds | Embed message builder, media attachments, templates |
-| Music | YouTube in a voice channel: native `ytrust → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
+| Music | YouTube in a voice channel: native `ytrust 1.0.0 → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
 | Events | Event creation, participants, reminders |
 | Logs | Modlog: joins/leaves, message edits/deletes, channels, bans, etc. |
 | Temp channels | Private voice channels on joining a hub channel |
@@ -49,8 +49,8 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.18.0**,
-**ffmpeg with libopus**. The native `ytrust` module is installed by `pnpm`.
+Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.19.0**,
+**ffmpeg with libopus**. The native `ytrust 1.0.0` module is installed by `pnpm`.
 
 ```bash
 # 1. System dependencies (Debian/Ubuntu)
@@ -165,7 +165,9 @@ pnpm start
   Provide cookies: `YTRUST_COOKIES=/path/to/cookies.txt`
   (keep the file out of git).
 - **`missingMusicBackend`** — the native `ytrust` addon could not load.
-  Run `pnpm i` and make sure the host is Linux x64 with glibc 2.35+.
+  Run `pnpm i`, check the version with
+  `node -e "import('ytrust').then(m => console.log(m.version()))"`,
+  and make sure the host is Linux x64 with glibc 2.35+.
 - **`missingFfmpeg` / `missingOpus`** — install ffmpeg with libopus,
   or set `FFMPEG_PATH` explicitly.
 - **`/admin` returns 403** — fill in `ADMIN_DISCORD_IDS` with your Discord ID

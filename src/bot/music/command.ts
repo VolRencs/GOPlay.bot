@@ -8,7 +8,7 @@ import {
   isSingleYouTubeVideoUrl, playNext, probeFfmpeg, probeMusicBackend, probeOpus,
   queueSizeOf, resolveTracks, type ResolveErrorKind, type Track,
 } from "../../lib/player/index.ts";
-import { beginMusicCommand, canConnectAndSpeak, endMusicCommand, isAdminInteraction, leaveIfIdle, memberHasAllowedRole, musicTFor } from "./shared.ts";
+import { NO_MENTIONS, beginMusicCommand, canConnectAndSpeak, endMusicCommand, isAdminInteraction, leaveIfIdle, memberHasAllowedRole, musicTFor } from "./shared.ts";
 
 type MusicKey = Parameters<ReturnType<typeof musicTFor>>[0];
 const RESOLVE_ERROR_KEYS = {
@@ -26,8 +26,6 @@ const RESOLVE_ERROR_KEYS = {
   "too-long": "tooLong",
   unknown: "invalidQuery",
 } as const satisfies Record<ResolveErrorKind, MusicKey>;
-const NO_MENTIONS = { parse: [] } as const;
-
 export async function handleMusicCommand(i: Interaction): Promise<boolean> {
   if (!i.isChatInputCommand() || i.commandName !== "play") return false;
   const t = musicTFor(i.guildId ?? "");
@@ -80,12 +78,12 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     const playlistNotice = !settings.playlists_enabled ? "playlistLimitedOff" : "playlistLimitedRole";
     count("music.play");
     const t0 = performance.now();
-    connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
     const [backendOk, ffmpegOk, opusOk] = await Promise.all([probeMusicBackend(), probeFfmpeg(), probeOpus()]);
     time("music.probes", performance.now() - t0);
     if (!backendOk) { await i.editReply(t("missingMusicBackend")); leaveIfIdle(i.guildId); return true; }
     if (!ffmpegOk) { await i.editReply(t("missingFfmpeg")); leaveIfIdle(i.guildId); return true; }
     if (!opusOk) { await i.editReply(t("missingOpus")); leaveIfIdle(i.guildId); return true; }
+    connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
 
     let tracks: Track[];
     let fastPath = false;
@@ -126,7 +124,9 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     }
     if (fastPath) {
       hydrateTrackMeta(tracks[0]!, i.guildId!);
-      await i.editReply(t("launching"));
+      await i.editReply(hasCurrent(i.guildId!)
+        ? { content: t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }), allowedMentions: NO_MENTIONS }
+        : t("launching"));
       return true;
     }
     if (limitedPlaylist) {

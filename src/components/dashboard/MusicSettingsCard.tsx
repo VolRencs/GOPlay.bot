@@ -56,7 +56,7 @@ export function MusicSettingsCard() {
               <span className="field-label">Роли с доступом</span>
               <CheckList items={roles} selected={value.allowedRoleIds} label="Роли"
                 onChange={ids => setValue({ ...value, allowedRoleIds: ids })}/>
-              <p className="hint">Пусто — команда доступна только администраторам.</p>
+              <p className="hint">Пусто — команда доступна всем участникам.</p>
             </div>
           </section>
 

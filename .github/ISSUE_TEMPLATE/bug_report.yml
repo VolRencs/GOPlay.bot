@@ -49,4 +49,4 @@ body:
     attributes:
       label: Environment
       description: Node, OS, ffmpeg / ytrust versions.
-      placeholder: "Node 26, Ubuntu 24.04, ffmpeg 6.x (libopus), ytrust 0.4.3"
+      placeholder: "Node 26, Ubuntu 24.04, ffmpeg 6.x (libopus), ytrust 1.0.0"
