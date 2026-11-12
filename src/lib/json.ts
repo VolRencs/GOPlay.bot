@@ -2,7 +2,10 @@ import { automodDefaultActions } from "./automod.ts";
 
 export function safeJson<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
+  try {
+    const parsed = JSON.parse(raw) as T | null;
+    return parsed === null ? fallback : parsed;
+  } catch { return fallback; }
 }
 
 export function parseStringArray(raw: string | null | undefined): string[] {

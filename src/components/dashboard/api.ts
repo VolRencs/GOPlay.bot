@@ -9,10 +9,26 @@ async function apiErrorMessage(response: Response, fallback: string): Promise<st
   return typeof error === "string" && error ? error : fallback;
 }
 
-export async function apiGet<T>(url: string, fallback: T, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(url, signal ? { signal } : {}).catch(() => null);
-  if (!response?.ok) return fallback;
-  return await response.json().catch(() => fallback) as T;
+function redirectOnUnauthorized(status: number): void {
+  if (status === 401 && typeof window !== "undefined") window.location.assign("/login");
+}
+
+export async function apiGet<T>(url: string, signal?: AbortSignal): Promise<ApiResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(url, signal ? { signal } : {});
+  } catch {
+    return { ok: false, error: "Нет соединения с сервером." };
+  }
+  if (!response.ok) {
+    redirectOnUnauthorized(response.status);
+    return { ok: false, error: await apiErrorMessage(response, "Не удалось загрузить данные.") };
+  }
+  try {
+    return { ok: true, data: await response.json() as T };
+  } catch {
+    return { ok: false, error: "Сервер вернул некорректный ответ." };
+  }
 }
 
 export async function apiSend<T>(url: string, init: RequestInit, failMessage: string): Promise<ApiResult<T>> {
@@ -22,7 +38,10 @@ export async function apiSend<T>(url: string, init: RequestInit, failMessage: st
   } catch {
     return { ok: false, error: "Нет соединения с сервером." };
   }
-  if (!response.ok) return { ok: false, error: await apiErrorMessage(response, failMessage) };
+  if (!response.ok) {
+    redirectOnUnauthorized(response.status);
+    return { ok: false, error: await apiErrorMessage(response, failMessage) };
+  }
   return { ok: true, data: await response.json().catch(() => ({})) as T };
 }
 
@@ -52,6 +71,7 @@ export function apiUpload<T>(url: string, body: FormData, failMessage: string, o
         if (total) onProgress?.({ loaded: total, total, percent: 100 });
         finish({ ok: true, data: data as T });
       } else {
+        redirectOnUnauthorized(xhr.status);
         finish({ ok: false, error: typeof payload.error === "string" && payload.error ? payload.error : failMessage });
       }
     };

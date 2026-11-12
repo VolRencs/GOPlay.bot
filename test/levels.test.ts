@@ -32,15 +32,15 @@ test("levelProgress отдаёт прогресс внутри уровня и �
   assert.deepEqual(levelProgress(9_999_999, 10, 1), { level: MAX_LEVEL, current: 0, needed: 0 });
 });
 
-test("награда выбирается только строго по достигнутому уровню", () => {
+test("награда выбирается по ближайшему достигнутому уровню", () => {
   const rewards = [
     { level: 10, role_id: "r10" },
     { level: 20, role_id: "r20" },
   ];
   assert.deepEqual(rewardForLevel(rewards, 10), rewards[0]);
   assert.equal(rewardForLevel(rewards, 9), undefined);
-  assert.equal(rewardForLevel(rewards, 12), undefined);
-  assert.equal(rewardForLevel(rewards, 13), undefined);
+  assert.deepEqual(rewardForLevel(rewards, 12), rewards[0]);
+  assert.deepEqual(rewardForLevel(rewards, 13), rewards[0]);
   assert.deepEqual(rewardForLevel(rewards, 20), rewards[1]);
 });
 

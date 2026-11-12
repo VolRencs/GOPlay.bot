@@ -24,6 +24,7 @@ punishment(9, "g1", "u1", "warn");
 punishment(10, "g1", "u1", "ban");
 punishment(13, "g1", "u1", "ban");
 punishment(14, "g1", "u1", "automod");
+punishment(15, "g1", "u1", "ban");
 
 test("create appeal: happy path copies the punishment type and starts pending", () => {
   const result = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 1, reason: "Я не отправлял это сообщение." });
@@ -53,10 +54,12 @@ test("one open appeal per punishment: service check and unique index", () => {
 });
 
 test("a finished appeal permanently blocks a new one", () => {
-  const appeal = reviewAppeal({ guildId: "g1", appealId: 2, action: "rejected", reviewerId: "mod1", comment: "нет оснований" });
+  const appeal = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 15, reason: "Апелляция для проверки терминального статуса." });
   assert.ok(appeal.ok);
-  assert.equal(appeal.value.appeal.status, "rejected");
-  const retry = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 2, reason: "Апелляция после отклонения." });
+  const reviewed = reviewAppeal({ guildId: "g1", appealId: appeal.value.id, action: "rejected", reviewerId: "mod1", comment: "нет оснований" });
+  assert.ok(reviewed.ok);
+  assert.equal(reviewed.value.appeal.status, "rejected");
+  const retry = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 15, reason: "Апелляция после отклонения." });
   assert.equal(retry.ok, false, "после решения новая апелляция не создаётся");
 });
 

@@ -40,7 +40,7 @@ export function withTransaction<T>(fn: () => T): T {
     const savepoint = `sp_${txDepth}`;
     try {
       db.exec(`SAVEPOINT ${savepoint}`);
-      const result = fn();
+      const result = synchronous(fn());
       db.exec(`RELEASE ${savepoint}`);
       return result;
     } catch (error) {
@@ -50,7 +50,14 @@ export function withTransaction<T>(fn: () => T): T {
   }
   db.exec("BEGIN IMMEDIATE");
   txDepth++;
-  try { const result = fn(); db.exec("COMMIT"); return result; }
+  try { const result = synchronous(fn()); db.exec("COMMIT"); return result; }
   catch (error) { try { db.exec("ROLLBACK"); } catch {  } throw error; }
   finally { txDepth--; }
+}
+
+function synchronous<T>(result: T): T {
+  if (result && typeof (result as { then?: unknown }).then === "function") {
+    throw new Error("withTransaction callback must be synchronous");
+  }
+  return result;
 }

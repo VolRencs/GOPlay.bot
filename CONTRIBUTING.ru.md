@@ -29,14 +29,16 @@
   `description_localizations` для EN).
 - Тексты бота RU/EN: `src/lib/i18n/` (`core.ts`, `bot.ts`, `bot/*.ts`).
   Новую строку добавляйте сразу в оба языка.
-- Схема БД: единственный базовый файл `src/db/migrations/001_init.sql`
-  (применяется один раз через `src/db/database.ts`, отметка в таблице `_migrations`).
-  Новые файлы миграций не добавляйте: правьте базу для свежих БД и вручную
-  применяйте изменения к существующим.
+- Схема БД: нумерованные SQL-файлы в `src/db/migrations/`, применяются по порядку
+  через `src/db/database.ts` с отметкой в таблице `_migrations`. Для любого
+  изменения схемы добавляйте новую миграцию `NNN_*.sql`; уже применённые
+  миграции редактировать нельзя. `001_init.sql` — база для свежих установок.
   Таблицы better-auth трогать нельзя — ими управляет `scripts/migrate-auth.ts`.
 - API дашборда: `app/api/guilds/[guildId]/*/route.ts`. Любая новая точка обязана
   идти через публичные обёртки из `src/lib/guild-access.ts` (`guildRoute`/`adminRoute`)
-  и писать в журнал через `src/lib/dashboard-audit.ts`, где это уместно.
+  и проверять все channel/role/message ID из запроса через
+  `src/lib/guild-resources.ts` до сохранения или отправки.
+  Писать в журнал через `src/lib/dashboard-audit.ts`, где это уместно.
 - Панели дашборда: `src/components/dashboard/*.tsx` + типы в `types.ts`.
 - Поля и лимиты embed: `src/contracts/embeds.ts`; композеры сообщений и событий используют общую модель.
 - Музыка (`src/lib/player/`): резолвер не выходит за allowlist YouTube-доменов;

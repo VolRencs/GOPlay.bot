@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { appealStatusMeta, punishmentLabels } from "#lib/labels.ts";
 import type { AppealsListDto, AppealDto } from "#contracts/appeals.ts";
-import { formatTime, CardHeader, Select, useAsyncAction } from "./ui.tsx";
+import { formatTime, CardHeader, SectionError, Select, useAsyncAction } from "./ui.tsx";
 import { apiGet, apiJson } from "./api.ts";
 import { usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -13,6 +13,7 @@ const APPEAL_TONE: Record<string, string> = { pending: "pill-info", reviewing: "
 export function AppealsPanel() {
   const { guildId, notify, fail } = useDashboard();
   const [appeals,setAppeals]=useState<AppealDto[]|null>(null),[filters,setFilters]=useState({status:"all",userId:"",moderatorId:"",from:"",to:""}),[expanded,setExpanded]=useState<number|null>(null),[comment,setComment]=useState("");
+  const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const loadGen = useRef(0);
@@ -24,9 +25,9 @@ export function AppealsPanel() {
   const { busy, run } = usePanelAction({ onDone: notify, onError: fail });
   const { busy: moreBusy, run: runMore } = useAsyncAction();
   const query=(nextOffset:number, f = debouncedFilters)=>{const params=new URLSearchParams({status:f.status,limit:"100",offset:String(nextOffset)});if(f.userId.trim())params.set("userId",f.userId.trim());if(f.moderatorId.trim())params.set("moderatorId",f.moderatorId.trim());if(f.from)params.set("from",String(new Date(`${f.from}T00:00:00`).getTime()));if(f.to)params.set("to",String(new Date(`${f.to}T23:59:59`).getTime()));return params;};
-  const loadPage=(nextOffset:number)=>apiGet<AppealsListDto>(`/api/guilds/${guildId}/appeals?${query(nextOffset)}`,{appeals:[]});
-  useEffect(()=>{if(!guildId)return;let active=true;const gen=++loadGen.current;setAppeals(null);setExpanded(null);setComment("");setHasMore(false);void loadPage(0).then(data=>{if(!active||gen!==loadGen.current)return;const rows=data.appeals;setAppeals(rows);setHasMore(rows.length>=100);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
-  const more=()=>{const gen=loadGen.current;void runMore(async()=>{const data=await loadPage(appeals?.length ?? 0);if(gen!==loadGen.current)return;const rows=data.appeals;if(!rows.length){setHasMore(false);return;}setAppeals(value=>[...(value??[]),...rows]);setHasMore(rows.length>=100);});};
+  const loadPage=(nextOffset:number)=>apiGet<AppealsListDto>(`/api/guilds/${guildId}/appeals?${query(nextOffset)}`);
+  useEffect(()=>{if(!guildId)return;let active=true;const gen=++loadGen.current;setAppeals(null);setError("");setExpanded(null);setComment("");setHasMore(false);void loadPage(0).then(result=>{if(!active||gen!==loadGen.current)return;if(!result.ok){setError(result.error);setAppeals([]);return;}const rows=result.data.appeals;setAppeals(rows);setHasMore(rows.length>=100);});return()=>{active=false;};},[guildId,debouncedFilters,refresh]);
+  const more=()=>{const gen=loadGen.current;void runMore(async()=>{const result=await loadPage(appeals?.length ?? 0);if(gen!==loadGen.current)return;if(!result.ok){setError(result.error);return;}const rows=result.data.appeals;if(!rows.length){setHasMore(false);return;}setAppeals(value=>[...(value??[]),...rows]);setHasMore(rows.length>=100);});};
   const review=(row:AppealDto,action:string)=>run(
     () => apiJson<{appeal?:{status:string};notified?:boolean;reversal?:{failed:boolean;label:string}}>(`/api/guilds/${guildId}/appeals/${row.id}`,"POST",{action,comment:comment.trim()||undefined},"Не удалось изменить статус апелляции."),
     data => {
@@ -65,7 +66,9 @@ export function AppealsPanel() {
         </div>
       </article>
       <article className="card appeal-list">
-        {appeals===null ? (
+        {error ? (
+          <SectionError message={error} onRetry={() => setRefresh(value => value + 1)}/>
+        ) : appeals===null ? (
           <p className="muted" role="status">Загружаем апелляции…</p>
         ) : appeals.length ? appeals.map(row=>{
           const meta=appealStatusMeta[row.status]??{label:row.status},activeAppeal=row.status==="pending"||row.status==="reviewing";

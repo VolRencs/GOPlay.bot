@@ -5,8 +5,8 @@ import { toAuditDto, type AuditListDto } from "#contracts/dashboard.ts";
 
 export const GET = guildRoute(async (request, { guildId }) => {
   const url = new URL(request.url);
-  const limit = Math.max(1, Math.min(200, Number(url.searchParams.get("limit")) || 50));
-  const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+  const limit = Math.max(1, Math.min(200, Math.trunc(Number(url.searchParams.get("limit")) || 50)));
+  const offset = Math.max(0, Math.trunc(Number(url.searchParams.get("offset")) || 0));
   const section = url.searchParams.get("section")?.trim().slice(0, 50) || null;
 
   const rows = section ? auditQueries.bySection.all(guildId, section, limit, offset) : auditQueries.list.all(guildId, limit, offset);

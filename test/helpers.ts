@@ -1,9 +1,11 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export function useTempDb(prefix: string): string {
-  const path = join(mkdtempSync(join(tmpdir(), prefix)), "bot.sqlite");
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  process.on("exit", () => { try { rmSync(dir, { recursive: true, force: true }); } catch {  } });
+  const path = join(dir, "bot.sqlite");
   process.env.DATABASE_PATH = path;
   return path;
 }

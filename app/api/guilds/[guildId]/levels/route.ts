@@ -6,6 +6,7 @@ import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { levelsState, levelsView } from "#lib/settings-views.ts";
 import { fromDto as fromLevelsDto, levelRangesDto, type LevelRewardDto, type LevelsDto } from "#contracts/levels.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 export const GET = settingsGetRoute(guildId => levelsState(guildId).state);
 
@@ -68,6 +69,17 @@ export const PUT = settingsPutRoute<LevelsDto>({
         rewards,
       },
     };
+  },
+  validate: async (guildId, value) => {
+    const notify = await validateResources(guildId, { channels: { ids: [value.settings.notifyChannelId], types: CHANNEL_TYPES.text } });
+    if (!notify.ok) return resourceError(notify);
+    const ignoredChannels = await validateResources(guildId, { channels: { ids: value.settings.ignoredChannelIds } });
+    if (!ignoredChannels.ok) return resourceError(ignoredChannels);
+    const ignoredRoles = await validateResources(guildId, { roles: { ids: value.settings.ignoredRoleIds } });
+    if (!ignoredRoles.ok) return resourceError(ignoredRoles);
+    const rewardRoles = await validateResources(guildId, { roles: { ids: value.rewards.map(reward => reward.roleId), assignable: true } });
+    if (!rewardRoles.ok) return resourceError(rewardRoles);
+    return null;
   },
   view: levelsView,
   save: (guildId, state) => {

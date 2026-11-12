@@ -1,4 +1,6 @@
 import { strict as assert } from "node:assert";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { useTempDb } from "./helpers.ts";
 
@@ -6,12 +8,12 @@ useTempDb("goplay-pure-");
 
 const { isMissingDiscordResource } = await import("../src/lib/errors.ts");
 const { isSnowflake } = await import("../src/lib/ids.ts");
-const { parseActions } = await import("../src/lib/json.ts");
+const { parseActions, safeJson } = await import("../src/lib/json.ts");
 const { automodDefaultActions } = await import("../src/lib/automod.ts");
 const { extractFilenames, embedUploadPrefix } = await import("../src/lib/uploads.ts");
 const { clampNumber } = await import("../src/lib/constants.ts");
 const { cleanupTargets } = await import("../src/lib/labels.ts");
-const { db } = await import("../src/db/database.ts");
+const { db, withTransaction } = await import("../src/db/database.ts");
 
 test("isMissingDiscordResource различает коды и источники", () => {
   assert.equal(isMissingDiscordResource({ code: 10008 }), true);
@@ -23,6 +25,22 @@ test("isMissingDiscordResource различает коды и источники
   assert.equal(isMissingDiscordResource(null), false);
   assert.equal(isMissingDiscordResource({ code: 10008 }, "channel"), false);
   assert.equal(isMissingDiscordResource({ code: 10003 }, "channel"), true);
+  assert.equal(isMissingDiscordResource({ code: 10007 }, "member"), true);
+  assert.equal(isMissingDiscordResource({ code: 10003 }, "member"), false);
+  assert.equal(isMissingDiscordResource({ code: 10007 }), true);
+});
+
+test("safeJson: битый JSON и null не ломают тип", () => {
+  assert.deepEqual(safeJson("null", {}), {});
+  assert.deepEqual(safeJson("null", []), []);
+  assert.deepEqual(safeJson("{bad", { ok: true }), { ok: true });
+  assert.deepEqual(safeJson('{"a":1}', {}), { a: 1 });
+  assert.equal(safeJson("42", 0), 42);
+});
+
+test("withTransaction отклоняет async-колбэк и не оставляет открытую транзакцию", () => {
+  assert.throws(() => withTransaction(async () => {}), /synchronous/);
+  assert.doesNotThrow(() => withTransaction(() => {}));
 });
 
 test("isSnowflake держит границы длины", () => {
@@ -69,7 +87,10 @@ test("schema: создаёт прикладные таблицы и не сод�
   assert.ok(!columns("message_cache").includes("channel_id"));
   assert.ok(!columns("music_sessions").includes("updated_at"));
   const migrations = (db.prepare("SELECT name FROM _migrations").all() as { name: string }[]).map(row => row.name);
-  assert.deepEqual(migrations, ["001_init.sql", "002_hourly_member_metrics.sql"]);
+  const expectedMigrations = readdirSync(join(import.meta.dirname, "../src/db/migrations"))
+    .filter(file => /^\d+_.+\.sql$/.test(file))
+    .sort();
+  assert.deepEqual(migrations, expectedMigrations);
   assert.deepEqual(columns("guild_hourly_messages"), ["guild_id", "day", "hour", "messages", "joins", "leaves"]);
 });
 

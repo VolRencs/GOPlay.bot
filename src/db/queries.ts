@@ -63,15 +63,16 @@ export const embedsQueries = {
   publishInsert: write("INSERT INTO embeds(guild_id,name,payload_json,channel_id,message_id,mode,updated_at) VALUES(?,?,?,?,?,?,?)"),
   sendingInsert: write("INSERT INTO embed_sendings(guild_id,embed_id,channel_id,message_id,sent_at) VALUES(?,?,?,?,?)"),
   sendingById: read<{ channel_id: string; message_id: string }>("SELECT channel_id,message_id FROM embed_sendings WHERE id=? AND guild_id=?"),
+  sendingByMessage: read<{ id: number }>("SELECT id FROM embed_sendings WHERE guild_id=? AND channel_id=? AND message_id=? LIMIT 1"),
   sendingDelete: write("DELETE FROM embed_sendings WHERE id=? AND guild_id=?"),
   sendingsByEmbedDelete: write("DELETE FROM embed_sendings WHERE embed_id=? AND guild_id=?"),
   delete: write("DELETE FROM embeds WHERE id=? AND guild_id=?"),
 };
 
-export function deleteEmbedSendings(ids: readonly number[]) {
+export function deleteEmbedSendings(guildId: string, ids: readonly number[]) {
   if (!ids.length) return;
   const placeholders = ids.map(() => "?").join(",");
-  write(`DELETE FROM embed_sendings WHERE id IN (${placeholders})`).run(...ids);
+  write(`DELETE FROM embed_sendings WHERE guild_id=? AND id IN (${placeholders})`).run(guildId, ...ids);
 }
 
 export const statsQueries = {

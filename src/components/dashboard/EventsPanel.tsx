@@ -7,8 +7,8 @@ import { userRef } from "#lib/format.ts";
 import type { EventButtonStyle, EventStatus, RecurrenceFrequency } from "#lib/events.ts";
 import type { EventListDto, EventListItemDto } from "#contracts/events.ts";
 import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, confirmAction, EmojiPicker, EmbedComposer, formatTime, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
-import { apiGet, apiMutate, apiSend } from "./api.ts";
+import { CardHeader, channelOptions, confirmAction, EmojiPicker, EmbedComposer, formatTime, NumberField, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { apiGet, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 
@@ -44,9 +44,11 @@ export function EventsPanel() {
   const channels = resources?.channels ?? [];
   const roles = resources?.roles ?? [];
   const emojis = resources?.emojis ?? [];
-  const { data: events, reload } = useApiResource<EventListItemDto[] | null>(
+  const { data: events, reload, loading, error } = useApiResource<EventListItemDto[] | null>(
     Boolean(guildId),
-    signal => apiGet<EventListDto>(`/api/guilds/${guildId}/events`, { events: [] }, signal).then(data => data.events),
+    signal => apiGet<EventListDto>(`/api/guilds/${guildId}/events`, signal).then(result => result.ok
+      ? { ok: true as const, data: result.data.events }
+      : { ok: false as const, error: result.error }),
     [guildId],
     null,
   );
@@ -151,10 +153,10 @@ export function EventsPanel() {
   async function remove(e: EventListItemDto) {
     if (!(await confirmAction(`Удалить событие «${e.embed.title ?? "без названия"}»? Сообщение в Discord тоже будет удалено.`, "Удалить"))) return;
     await run(
-      () => apiMutate(`/api/guilds/${guildId}/events?id=${e.id}`, { method: "DELETE" }, "Не удалось удалить событие."),
-      () => {
+      () => apiSend<{ warning?: string }>(`/api/guilds/${guildId}/events?id=${e.id}`, { method: "DELETE" }, "Не удалось удалить событие."),
+      data => {
         if (editingId === e.id) reset();
-        return { message: "Событие удалено." };
+        return { message: data.warning ?? "Событие удалено.", ...(data.warning ? { tone: "warn" as const } : {}) };
       },
       reload,
     );
@@ -176,6 +178,9 @@ export function EventsPanel() {
     const keyed = Object.fromEntries(Object.entries(change).map(([k, v]) => [`${base}${k.charAt(0).toUpperCase()}${k.slice(1)}`, v])) as Partial<EventDraft>;
     set(keyed);
   };
+
+  if (error) return <SectionError message={error} onRetry={reload}/>;
+  if (loading) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">

@@ -78,7 +78,10 @@ export function rejectOversized(request: Request, limitBytes = 32 * 1024 * 1024)
   if (raw === null) {
     return new Response(JSON.stringify({ error: "Не удалось определить размер запроса." }), { status: 411, headers: { "content-type": "application/json" } });
   }
-  const len = Number(raw ?? 0);
-  if (Number.isFinite(len) && len > limitBytes) return new Response(JSON.stringify({ error: "Запрос слишком большой." }), { status: 413, headers: { "content-type": "application/json" } });
+  const len = Number(raw);
+  if (!Number.isFinite(len) || len < 0 || !Number.isInteger(len)) {
+    return new Response(JSON.stringify({ error: "Некорректный размер запроса." }), { status: 400, headers: { "content-type": "application/json" } });
+  }
+  if (len > limitBytes) return new Response(JSON.stringify({ error: "Запрос слишком большой." }), { status: 413, headers: { "content-type": "application/json" } });
   return null;
 }

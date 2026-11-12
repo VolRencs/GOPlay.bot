@@ -17,7 +17,7 @@
     "dev": "pnpm logs:rotate && bash -o pipefail -c '{ pnpm migrate:auth && node scripts/run-both.ts dev; } 2>&1 | tee -a data/logs/bot.log'",
     "build": "next build",
     "start": "pnpm logs:rotate && { pnpm migrate:auth && node scripts/run-both.ts start; } >> data/logs/bot.log 2>&1",
-    "logs:rotate": "mkdir -p data/logs && find data/logs -maxdepth 1 -name bot.log -size +5M -exec mv {} {}.1 \\;",
+    "logs:rotate": "mkdir -p data/logs && find data/logs -maxdepth 1 -name bot.log -size +5M -exec mv -f {} {}.1 \\;",
     "migrate:auth": "node --env-file=.env scripts/migrate-auth.ts",
     "test": "node --test test/*.test.ts",
     "check": "next typegen && tsc --noEmit"

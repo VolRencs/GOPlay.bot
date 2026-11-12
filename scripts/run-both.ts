@@ -5,7 +5,7 @@ const mode = process.argv[2];
 if (mode !== "dev" && mode !== "start") throw new Error("run-both: expected dev|start");
 
 const root = join(import.meta.dirname, "..");
-const nextArgs = mode === "start" ? [mode, "-H", "127.0.0.1"] : [mode];
+const nextArgs = [mode, "-H", "127.0.0.1"];
 const children: ChildProcess[] = [
   spawn(join(root, "node_modules", ".bin", "next"), nextArgs, { stdio: "inherit", cwd: root }),
   spawn(process.execPath, ["--env-file=.env", join(root, "src", "bot", "index.ts")], { stdio: "inherit", cwd: root }),
@@ -27,6 +27,9 @@ const failPeer = (child: ChildProcess) => {
   if (stopping) return;
   stopping = true;
   for (const peer of children) if (peer !== child) peer.kill("SIGTERM");
+  setTimeout(() => {
+    for (const peer of children) if (peer !== child && peer.exitCode === null && peer.signalCode === null) peer.kill("SIGKILL");
+  }, 5_000).unref();
 };
 
 for (const child of children) {

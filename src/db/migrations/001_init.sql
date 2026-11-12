@@ -1,4 +1,4 @@
--- Single baseline schema. Applied once by database.ts; edit this file for fresh databases.
+-- Baseline schema for fresh databases. Applied once by database.ts; later changes go to new NNN_*.sql migrations.
 
 CREATE TABLE IF NOT EXISTS guilds (
   id TEXT PRIMARY KEY,

@@ -37,7 +37,12 @@ export function ttlCacheAsync<K, V>(loader: (key: K) => Promise<V>, ttlMs: numbe
           entries.set(key, { value, expiresAt: Date.now() + ttlMs });
           return value;
         }).catch(error => {
-          if (stale && entries.get(key)) return entries.get(key)!.value;
+          const entry = entries.get(key);
+          if (stale && entry) {
+            // Keep serving the stale value without hammering a failing upstream on every call.
+            entry.expiresAt = Date.now() + ttlMs;
+            return entry.value;
+          }
           throw error;
         }).finally(() => { pending.delete(key); });
         pending.set(key, request);

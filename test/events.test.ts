@@ -168,6 +168,16 @@ test("transitionDueEvents flips overdue events and creates exactly one next inst
   assert.equal(listEvents("g1").filter(e => e.recurrence.freq === "daily" && e.status === "scheduled" && e.scheduledAt > row.scheduled_at).length, 1, "второй экземпляр не дублируется");
 });
 
+test("listEvents выводит counts из participants без отдельного SQL-агрегата", () => {
+  const row = insertEvent("g2", { ...baseInput(), maxParticipants: 1, waitlistEnabled: true });
+  assert.ok(joinEvent(row.id, "u1", "g2").ok);
+  assert.ok(joinEvent(row.id, "u2", "g2").ok);
+  const view = listEvents("g2").find(event => event.id === row.id);
+  assert.ok(view);
+  assert.deepEqual(view.counts, { joined: 1, waitlist: 1 });
+  assert.equal(view.participants.length, 2);
+});
+
 test("rendering mirrors live state", () => {
   const row = insertEvent("g1", baseInput());
   const counts = { joined: 1, waitlist: 1 };

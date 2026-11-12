@@ -10,6 +10,7 @@ import { reattachStoredAssets } from "../../lib/assets.ts";
 import { eventsTr, guildLang, guildTr } from "../../lib/i18n/bot.ts";
 
 const toDiscordButtonStyle = (name: EventButton["style"]): ButtonStyle => buttonStyleId(name) as ButtonStyle;
+let registered = false;
 
 async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
   const setAsset = (target: "thumbnail" | "image", url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
@@ -26,6 +27,8 @@ async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
 }
 
 export function registerEvents(client: Client) {
+  if (registered) return;
+  registered = true;
   client.on(Events.InteractionCreate, (i) => guard("EVENTS", () => handleInteraction(i)));
   client.on(Events.GuildMemberRemove, (member) => guard("EVENTS:GONE", () => {
     for (const result of removeParticipantFromGuild(member.guild.id, member.user.id)) {
@@ -126,9 +129,14 @@ async function tick(client: Client) {
     const now = Date.now();
     const inGuild = (guildId: string) => client.guilds.cache.has(guildId);
     for (const reminder of dueReminders(now)) {
-      if (!claimReminder(reminder.id, now)) continue;
       const event = getEvent(reminder.event_id);
-      if (!event || event.status !== "scheduled" || !inGuild(event.guild_id)) continue;
+      if (!event || event.status !== "scheduled") {
+        claimReminder(reminder.id, now);
+        continue;
+      }
+      // Do not consume reminders while the guild is unavailable: they should be retried after reconnect.
+      if (!inGuild(event.guild_id)) continue;
+      if (!claimReminder(reminder.id, now)) continue;
       guard("EVENTS:REMIND", () => sendReminders(event));
     }
     const { changed, created } = transitionDueEvents(now, inGuild);

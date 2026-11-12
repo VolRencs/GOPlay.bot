@@ -3,7 +3,7 @@ import { useTempDb } from "./helpers.ts";
 
 useTempDb("goplay-player-");
 const {
-  pickAudioFormat, pickAudioUrl, formatHeaders, formatExpiresAt,
+  pickAudioFormat, formatHeaders, formatExpiresAt,
   mapBackendError, safeMediaTarget, normalizeTrackKey, isAllowedStreamUrl,
   isSingleYouTubeVideoUrl, pickFollowTarget,
   isNaturalEnd, isRetryableFailure, nextLoopMode, fmtTime,
@@ -13,23 +13,28 @@ const {
 
 const fmt = (url: string, extra: Record<string, unknown>) => ({ url, protocol: "https", ...extra });
 
-test("pickAudioUrl: Opus → лучший audio-only по битрейту → best; манифесты отброшены", () => {
-  assert.equal(pickAudioUrl({ formats: [
+const pickUrl = (meta: Record<string, unknown>): string | null => {
+  const url = pickAudioFormat(meta)?.url;
+  return typeof url === "string" ? url : null;
+};
+
+test("pickAudioFormat: Opus → лучший audio-only по битрейту → best; манифесты отброшены", () => {
+  assert.equal(pickUrl({ formats: [
     fmt("https://a.googlevideo.com/vorbis", { vcodec: "none", acodec: "vorbis", abr: 160 }),
     fmt("https://b.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 120 }),
   ] }), "https://b.googlevideo.com/opus");
-  assert.equal(pickAudioUrl({ formats: [
+  assert.equal(pickUrl({ formats: [
     fmt("https://x.googlevideo.com/m4a", { vcodec: "none", acodec: "mp4a.40.2", abr: 128 }),
     fmt("https://y.googlevideo.com/m4a2", { vcodec: "none", acodec: "mp4a.40.2", tbr: 256 }),
   ] }), "https://y.googlevideo.com/m4a2");
-  assert.equal(pickAudioUrl({ formats: [fmt("https://z.googlevideo.com/c", { vcodec: "avc1", acodec: "mp4a", tbr: 900 })] }), "https://z.googlevideo.com/c");
-  assert.equal(pickAudioUrl({ formats: [
+  assert.equal(pickUrl({ formats: [fmt("https://z.googlevideo.com/c", { vcodec: "avc1", acodec: "mp4a", tbr: 900 })] }), "https://z.googlevideo.com/c");
+  assert.equal(pickUrl({ formats: [
     fmt("https://a.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 120 }),
     fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" }),
   ] }), "https://a.googlevideo.com/opus");
-  assert.equal(pickAudioUrl({ formats: [fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" })] }), "https://hls.example/x.m3u8");
-  assert.equal(pickAudioUrl({ formats: [fmt("not-a-url", { vcodec: "none" })] }), null);
-  assert.equal(pickAudioUrl({}), null);
+  assert.equal(pickUrl({ formats: [fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" })] }), "https://hls.example/x.m3u8");
+  assert.equal(pickUrl({ formats: [fmt("not-a-url", { vcodec: "none" })] }), null);
+  assert.equal(pickUrl({}), null);
 });
 
 test("pickAudioFormat: best_audio приоритетнее formats и отдаёт заголовки/срок", () => {
@@ -62,6 +67,7 @@ test("SSRF-гейт и классификация ошибок бэкенда", 
 
   assert.equal(isAllowedStreamUrl("https://rr2---sn-x.googlevideo.com/videoplayback"), true);
   assert.equal(isAllowedStreamUrl("https://www.youtube.com/api/manifest"), true);
+  assert.equal(isAllowedStreamUrl("ftp://rr2---sn-x.googlevideo.com/videoplayback"), false);
   assert.equal(isAllowedStreamUrl("https://evil.example.com/x"), false);
   assert.equal(isAllowedStreamUrl("not-a-url"), false);
 
@@ -164,7 +170,12 @@ test("утилиты очереди: время, удаление по инде�
   assert.deepEqual(partitionByIndices(list, [4, -1, 2.5, 2, 2]), [["a", "b", "d"], ["c"]]);
   assert.deepEqual(list, ["a", "b", "c", "d"]);
 
-  assert.equal(moveWithinList(["a", "b", "c", "d"], 1, 4), 3);
+  const down = ["a", "b", "c", "d"];
+  assert.equal(moveWithinList(down, 0, 2), 2);
+  assert.deepEqual(down, ["b", "c", "a", "d"]);
+  const toEnd = ["a", "b", "c", "d"];
+  assert.equal(moveWithinList(toEnd, 1, 4), 3);
+  assert.deepEqual(toEnd, ["a", "c", "d", "b"]);
   const moved = ["a", "b", "c", "d"];
   moveWithinList(moved, 3, 0);
   assert.deepEqual(moved, ["d", "a", "b", "c"]);

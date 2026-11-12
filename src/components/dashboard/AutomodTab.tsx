@@ -38,7 +38,7 @@ export function AutomodTab() {
     const current = rules[kind] ?? defaultRule(kind);
     const sent = await apiJson<{ unchanged?: boolean }>(`/api/guilds/${guildId}/automod`, "PUT", current, "Не удалось сохранить правило.");
     if (!sent.ok) { fail(sent.error); return false; }
-    setRules(value => ({ ...value, [kind]: current }));
+    setRules(value => value[kind] ? value : { ...value, [kind]: current });
     setSavedRules(value => value ? { ...value, [kind]: current } : { [kind]: current });
     return true;
   }

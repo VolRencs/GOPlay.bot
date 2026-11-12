@@ -23,7 +23,8 @@ code; there are no separate LTS releases yet.
 - All dashboard API routes go through the public wrappers (`guildRoute`/`adminRoute`
   from `src/lib/guild-access.ts`, settings via `settingsPutRoute` from
   `src/lib/settings-route.ts`): only server managers get access, admin panel only
-  for `ADMIN_DISCORD_IDS`.
+  for `ADMIN_DISCORD_IDS`. Every channel, role and message ID from a dashboard
+  request is checked against the URL's guild in `src/lib/guild-resources.ts`.
 - Dashboard uploads are isolated per `guildId`; welcome backgrounds are served only
   to users who can manage that guild. Filenames are sanitized (`src/lib/uploads.ts`),
   with per-route request body limits + `client_max_body_size 8m` in nginx.

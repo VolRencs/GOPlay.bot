@@ -38,17 +38,21 @@ export function registerLoggingEvents(client: Client) {
 
   on(client, Events.GuildMemberRemove, "MEMBER_LEAVE", member => {
     count("events.member_leave");
+    if (member.user.bot) return;
     addMetric(member.guild.id, "leaves");
-    guard("GOODBYE", () => (member.partial ? member.fetch().then(full => sendMemberEvent(full, "goodbye")).catch(() => null) : sendMemberEvent(member, "goodbye")));
-    if (isBotAction(member.guild.id, "member_kick", member.id)) return;
     const t = guildTr(logTr, member.guild.id);
     const banKey = `${member.guild.id}:${member.id}`;
+    const kickedByBot = isBotAction(member.guild.id, "member_kick", member.id);
+    if (!kickedByBot && !recentBans.has(banKey)) {
+      guard("GOODBYE", () => (member.partial ? member.fetch().then(full => sendMemberEvent(full, "goodbye")).catch(() => null) : sendMemberEvent(member, "goodbye")));
+    }
+    if (kickedByBot) return;
     if (!recentBans.delete(banKey)) {
       logAction({ guildId: member.guild.id, type: "member_leave", targetId: member.id, details: t("leaveDetails") });
     }
     void auditFind(member.guild, AuditLogEvent.MemberKick, member.id, { priority: true, retries: 2, retryDelay: 800 }).then(entry => {
       if (entry) logAction({ guildId: member.guild.id, type: "member_kick", targetId: member.id, moderatorId: entry.executor?.id, details: t("reason", { reason: entry.reason ?? "—" }) });
-    });
+    }, () => null);
   });
 
   on(client, Events.GuildMemberUpdate, "MEMBER_UPDATE", async (oldMember, newMember) => {
@@ -127,7 +131,7 @@ export function registerLoggingEvents(client: Client) {
     void auditFind(ban.guild, AuditLogEvent.MemberBanAdd, ban.user.id, { priority: true, retries: 1, retryDelay: 800 }).then(entry => {
       logAction({ guildId: ban.guild.id, type: "member_ban", targetId: ban.user.id, moderatorId: entry?.executor?.id, details: t("reason", { reason: entry?.reason ?? t("notSpecified") }) });
       recordPunishmentAndOffer(client, { guildId: ban.guild.id, guildName: ban.guild.name, userId: ban.user.id, type: "ban", reason: entry?.reason ?? t("noReason"), moderatorId: entry?.executor?.id ?? null });
-    });
+    }, () => null);
   });
 
   on(client, Events.GuildBanRemove, "GUILD_BAN_REMOVE", ban => {
@@ -135,7 +139,7 @@ export function registerLoggingEvents(client: Client) {
     const t = guildTr(logTr, ban.guild.id);
     void auditFind(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id, { priority: true, retries: 1, retryDelay: 800 }).then(entry => {
       logAction({ guildId: ban.guild.id, type: "member_unban", targetId: ban.user.id, moderatorId: entry?.executor?.id, details: t("reason", { reason: entry?.reason ?? t("notSpecified") }) });
-    });
+    }, () => null);
   });
 
   async function logChannelEvent(channel: GuildBasedChannel, type: AuditLogEvent, kind: "channel_create" | "channel_delete", key: "channelCreated" | "channelDeleted") {

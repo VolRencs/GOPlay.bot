@@ -10,6 +10,7 @@ import { stmt } from "#db/statements.ts";
 import { recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { channelRef, roleRef } from "#lib/format.ts";
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 const thresholdLabels: Record<string, string> = {
   messages: "Сообщений", repeatCount: "Повторов", minimumCharacters: "Минимум букв",
@@ -59,6 +60,10 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     const storedRoles=(()=>{const parsed=safeJson<unknown>(savedSecurity?.ignored_role_ids_json,[]);return isSnowflakeArray(parsed)?parsed.toSorted():[]})();
     const unchangedSecurity=savedSecurity ? stableJson(storedRoles)===stableJson([...roles].sort())&&(savedSecurity.protected_channel_id??null)===channel : roles.length===0&&channel===null;
     if(unchangedSecurity)return NextResponse.json({ok:true,unchanged:true});
+    const channelCheck = await validateResources(guildId, { channels: { ids: [channel], types: CHANNEL_TYPES.text } });
+    if (!channelCheck.ok) return resourceError(channelCheck);
+    const roleCheck = await validateResources(guildId, { roles: { ids: roles } });
+    if (!roleCheck.ok) return resourceError(roleCheck);
     automodQueries.securityUpsert.run({ guild_id: guildId, ignored_role_ids_json: JSON.stringify(roles), protected_channel_id: channel, updated_at: Date.now() });
     recordDashboardDiff(guildId,user,AUDIT_SECTION.automod,"Общие исключения: ",
       {
@@ -93,6 +98,8 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     const unchangedRule=currentRule.enabled===r.enabled&&currentRule.windowSeconds===r.windowSeconds&&currentRule.escalation===r.escalation&&stableJson(currentRule.actions)===stableJson(r.actions)&&stableJson(currentRule.threshold)===stableJson(r.threshold);
     if(unchangedRule)return NextResponse.json({ok:true,unchanged:true});
   }
+  const thresholdChannels = await validateResources(guildId, { channels: { ids: Array.isArray(channels) ? channels : [], types: CHANNEL_TYPES.text } });
+  if (!thresholdChannels.ok) return resourceError(thresholdChannels);
   const ruleRow = fromDto(r);
   automodQueries.ruleUpsert.run({ guild_id: guildId, kind: r.kind, enabled: ruleRow.enabled, action_json: ruleRow.action_json, threshold_json: ruleRow.threshold_json, window_seconds: ruleRow.window_seconds, escalation: ruleRow.escalation, updated_at: Date.now() });
   const payload=(rule: AutomodRuleDto)=>({

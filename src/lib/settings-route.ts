@@ -9,6 +9,7 @@ type ParseResult<T> = { ok: true; value: T } | { ok: false; response: Response }
 type SettingsPutConfig<T> = {
   load(guildId: string): Loaded<T>;
   parse(body: unknown, guildId: string, current: T): ParseResult<T>;
+  validate?: (guildId: string, value: T) => Promise<Response | null>;
   view(state: T): Record<string, unknown>;
   save(guildId: string, state: T): void;
   section: string;
@@ -32,6 +33,8 @@ export function settingsPutRoute<T>(config: SettingsPutConfig<T>) {
     if ((current.exists || !config.saveMissing) && stableJson(before) === stableJson(after)) {
       return NextResponse.json({ ok: true, unchanged: true });
     }
+    const invalid = config.validate ? await config.validate(guildId, next) : null;
+    if (invalid) return invalid;
     config.save(guildId, next);
     recordDashboardDiff(guildId, user, config.section, config.prefix, before, after, config.opaque);
     return NextResponse.json({ ok: true });

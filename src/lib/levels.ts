@@ -18,7 +18,11 @@ export type LevelSettings = {
 export type LevelReward = { level: number; role_id: string };
 
 export function rewardForLevel(rewards: readonly LevelReward[], level: number): LevelReward | undefined {
-  return rewards.find(reward => reward.level === level);
+  let target: LevelReward | undefined;
+  for (const reward of rewards) {
+    if (reward.level <= level && (!target || reward.level > target.level)) target = reward;
+  }
+  return target;
 }
 
 export const levelRanges = {

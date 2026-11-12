@@ -8,6 +8,7 @@ import { defaultTempConfig, fromDto as fromTempPresetDto, toDto as toTempPresetD
 import { stmt } from "#db/statements.ts";
 import { recordDashboardChange } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 function parseConfig(value: unknown): TempChannelConfigDto {
   const v = (value && typeof value === "object" && !Array.isArray(value) ? value : {}) as Record<string, unknown>;
@@ -48,6 +49,14 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
   if (stableJson(existing) === stableJson(presets.map(canonical))) {
     return NextResponse.json({ ok: true, unchanged: true, presets: existingRows.map(toTempPresetDto) });
   }
+  const categories = await validateResources(guildId, {
+    channels: { ids: presets.map(preset => preset.config.categoryId), types: CHANNEL_TYPES.category },
+  });
+  if (!categories.ok) return resourceError(categories);
+  const triggers = await validateResources(guildId, {
+    channels: { ids: presets.flatMap(preset => preset.triggers), types: CHANNEL_TYPES.voice },
+  });
+  if (!triggers.ok) return resourceError(triggers);
   const timestamp = Date.now();
   withTransaction(() => {
     tempchannelQueries.delete.run(guildId);

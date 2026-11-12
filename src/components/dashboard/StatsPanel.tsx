@@ -5,7 +5,7 @@ import type { StatsGet } from "./types.ts";
 import { apiGet } from "./api.ts";
 import { useApiResource } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
-import { CardHeader, StatCard, formatNumber } from "./ui.tsx";
+import { CardHeader, SectionError, SectionLoading, StatCard, formatNumber } from "./ui.tsx";
 import { formatDay } from "../../lib/format.ts";
 
 type TopRow = { key: string; name: string; value: number };
@@ -34,13 +34,12 @@ export function ServerStatistics() {
   const { guildId, resources } = useDashboard();
   const stats = resources?.stats ?? { members: null, online: null };
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("7d");
-  const { data } = useApiResource<StatsGet | null | undefined>(
+  const { data, loading, error, reload } = useApiResource<StatsGet | null>(
     Boolean(guildId),
-    signal => apiGet<StatsGet | null>(`/api/guilds/${guildId}/stats?period=${period}`, null, signal),
+    signal => apiGet<StatsGet | null>(`/api/guilds/${guildId}/stats?period=${period}`, signal),
     [guildId, period],
-    undefined,
+    null,
   );
-  const loading = data === undefined;
 
   const totals = data?.totals ?? { joins: 0, leaves: 0, messages: 0, moderation: 0 };
   const points = data?.points ?? [];
@@ -48,6 +47,9 @@ export function ServerStatistics() {
   const avg = points.length ? Math.round(points.reduce((sum, p) => sum + p.messages, 0) / points.length) : 0;
   const periodLabel = PERIOD_LABELS[period];
   const balance = totals.joins - totals.leaves;
+
+  if (error) return <SectionError message={error} onRetry={reload}/>;
+  if (loading) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">

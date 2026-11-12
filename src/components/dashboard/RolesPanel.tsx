@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { buttonColorOptionsList, type EmbedDto, type EmbedSendingDto, type EmbedsGetDto, type Role, type RolePanelRowDto, type SavedRolePanel, type ServerEmoji } from "./types.ts";
 import { roleStyleLabels } from "../../lib/labels.ts";
-import { CardHeader, confirmAction, EmojiPicker, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime } from "./ui.tsx";
+import { CardHeader, confirmAction, EmojiPicker, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime } from "./ui.tsx";
 import { apiGet, apiJsonMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -51,15 +51,17 @@ export function RoleSettings() {
   const roles = resources?.roles ?? [];
   const emojis = resources?.emojis ?? [];
   const channels = resources?.channels ?? [];
-  const { data: { embeds, sendings, panels }, reload } = useApiResource(
+  const { data: { embeds, sendings, panels }, reload, loading, error } = useApiResource(
     Boolean(guildId),
     async (signal) => {
-      const [embedData, rows] = await Promise.all([
-        apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
-        apiGet<RolePanelRowDto[]>(`/api/guilds/${guildId}/roles`, [], signal),
+      const [embedResult, rowsResult] = await Promise.all([
+        apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, signal),
+        apiGet<RolePanelRowDto[]>(`/api/guilds/${guildId}/roles`, signal),
       ]);
+      if (!embedResult.ok) return { ok: false as const, error: embedResult.error };
+      if (!rowsResult.ok) return { ok: false as const, error: rowsResult.error };
       const map = new Map<number, SavedRolePanel>();
-      for (const row of rows) {
+      for (const row of rowsResult.data) {
         let panel = map.get(row.id);
         if (!panel) {
           panel = { id: row.id, channelId: row.channelId ?? "", messageId: row.messageId ?? "", title: row.title ?? "", style: row.style === "reaction" || row.style === "select" ? row.style : "buttons", roleLimit: row.roleLimit, roleMode: row.roleMode, notifyEnabled: row.notifyEnabled, notifyTemplate: row.notifyTemplate ?? "", options: [] };
@@ -67,7 +69,7 @@ export function RoleSettings() {
         }
         if (row.roleId) panel.options.push({ roleId: row.roleId, label: row.label ?? null, emoji: row.emoji ?? null, buttonColor: row.buttonColor ?? "primary" });
       }
-      return { embeds: embedData.embeds, sendings: embedData.sendings, panels: [...map.values()] };
+      return { ok: true as const, data: { embeds: embedResult.data.embeds, sendings: embedResult.data.sendings, panels: [...map.values()] } };
     },
     [guildId],
     { embeds: [] as EmbedDto[], sendings: [] as EmbedSendingDto[], panels: [] as SavedRolePanel[] },
@@ -133,6 +135,9 @@ export function RoleSettings() {
       reload,
     );
   }
+
+  if (error) return <SectionError message={error} onRetry={reload}/>;
+  if (loading) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">

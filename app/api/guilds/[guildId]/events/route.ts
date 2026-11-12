@@ -13,6 +13,7 @@ import { AssetError, collectFormAssets, discordMessageBody, persistUploadedAsset
 import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "#lib/events.ts";
 import type { EventListDto } from "#contracts/events.ts";
 import { embedCharacterCount, EMBED_LIMITS } from "#contracts/embeds.ts";
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 type EventImageTarget = "thumbnail" | "image";
 
@@ -72,6 +73,12 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const { form, data } = parsedBody;
   const input = clampEventInput(data);
   if ("error" in input) return jsonError(input.error);
+  const channelCheck = await validateResources(guildId, { channels: { ids: [input.channelId], types: CHANNEL_TYPES.text } });
+  if (!channelCheck.ok) return resourceError(channelCheck);
+  if (input.eventRoleId) {
+    const roleCheck = await validateResources(guildId, { roles: { ids: [input.eventRoleId], assignable: true } });
+    if (!roleCheck.ok) return resourceError(roleCheck);
+  }
   const id = typeof data.id === "string" && data.id.length ? data.id : null;
   const current = id ? getEventInGuild(guildId, id) : undefined;
   if (id && !current) return jsonError("Событие не найдено.", 404);
@@ -189,7 +196,14 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   }
   const removed = deleteEvent(guildId, id);
   if (!removed) return jsonError("Событие не найдено.", 404);
-  if (token && removed.messageId) await discordFetch(`/channels/${removed.channelId}/messages/${removed.messageId}`, { method: "DELETE" }).catch(() => null);
+  if (token && removed.messageId) {
+    const response = await discordFetch(`/channels/${removed.channelId}/messages/${removed.messageId}`, { method: "DELETE" }).catch(() => null);
+    if (!response || (!response.ok && response.status !== 404)) {
+      after(() => cleanupUnusedEventImages(guildId));
+      recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Событие «${removed.embed.title ?? "без названия"}» удалено, сообщение в Discord не удалено`);
+      return NextResponse.json({ ok: true, warning: "Событие удалено, но сообщение в Discord удалить не удалось." });
+    }
+  }
   after(() => cleanupUnusedEventImages(guildId));
   recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Событие «${removed.embed.title ?? "без названия"}» удалено`);
   return NextResponse.json({ ok: true });

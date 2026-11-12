@@ -10,7 +10,7 @@
 Discord bot and server-management web dashboard in a single repository, run as
 two processes (Next.js + bot) sharing one SQLite database. Stack
 (versions in `package.json`, locked in `pnpm-lock.yaml`): Node **≥ 26**,
-pnpm **12.18.0**, Next.js **16.4.5**, React **19.3.1**, TypeScript **7.0.2**,
+pnpm **12.18.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
 Node's native TypeScript type stripping and
 `node:sqlite` (no separate DB driver).
 
@@ -131,7 +131,7 @@ src/bot/              Bot entry point (index.ts) + modules:
                       commands, moderation, automod, appeals, logging, tempchannels, music
                       (panel/command/shared), events, levels, welcome, self-roles,
                       onboarding, interactions, config-cache, metrics, heartbeat, shutdown
-src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/001_init.sql
+src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
 src/lib/              Shared logic: auth, guild-access, settings-route/views, automod, welcome,
                       colors/format, appeals, levels, events, uploads,
                       player/* (ytrust/ffmpeg stack), i18n

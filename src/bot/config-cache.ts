@@ -23,7 +23,7 @@ type CachedRules = {
   protectedChannelId: string | null;
 };
 
-const REFRESH_INTERVAL = 1_000;
+const REFRESH_INTERVAL = 5_000;
 const IDLE_TIMEOUT = 60_000;
 
 const snapshots = new Map<string, CachedRules>();

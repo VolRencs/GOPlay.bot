@@ -262,14 +262,15 @@ export function listEvents(guildId: string): EventViewDto[] {
   const rows = stmt.eventList.all(guildId);
   if (!rows.length) return [];
   const counts = new Map<string, EventCounts>();
-  for (const row of stmt.eventCountsByGuild.all(guildId)) {
-    counts.set(row.eventId, { joined: Number(row.joined), waitlist: Number(row.waitlist) });
-  }
   const participants = new Map<string, { userId: string; joinedAt: number; waitlist: boolean }[]>();
   for (const p of stmt.eventParticipantsByGuild.all(guildId)) {
     let list = participants.get(p.eventId);
     if (!list) { list = []; participants.set(p.eventId, list); }
     list.push({ userId: p.userId, joinedAt: p.joinedAt, waitlist: Boolean(p.waitlist) });
+    const count = counts.get(p.eventId) ?? { joined: 0, waitlist: 0 };
+    if (p.waitlist) count.waitlist += 1;
+    else count.joined += 1;
+    counts.set(p.eventId, count);
   }
   return rows.map(row => ({
     ...toEventViewBase(row),

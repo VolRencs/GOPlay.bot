@@ -17,11 +17,15 @@ export function registerInteractions(client: Client): void {
 async function handleRoleInteraction(i: ButtonInteraction | StringSelectMenuInteraction, panelId: number, roleIds: string[]): Promise<void> {
   const member = i.guild ? await fetchMember(i.guild, i.user.id) : null;
   if (!member || !Number.isInteger(panelId) || panelId < 1) return;
-  if (panelNotifies(i.guildId!, panelId)) await i.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => null);
+  const ephemeral = panelNotifies(i.guildId!, panelId);
+  if (ephemeral) await i.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => null);
   else await i.deferUpdate().catch(() => null);
   const results = await Promise.all(roleIds.map(roleId => applyPanelRoleSafe(i.guildId!, panelId, roleId, member)));
   const messages = results.filter(result => result.notify).map(result => result.text);
-  if (messages.length) await i.editReply({ content: messages.join("\n") }).catch(() => null);
+  if (messages.length) {
+    if (ephemeral) await i.editReply({ content: messages.join("\n") }).catch(() => null);
+    else await i.followUp({ content: messages.join("\n"), flags: MessageFlags.Ephemeral }).catch(() => null);
+  }
 }
 
 async function routeInteraction(i: Interaction) {

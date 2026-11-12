@@ -119,7 +119,6 @@ export type EventNextSeriesRow = { id: string };
 export type EventCountsRow = { joined: number; waitlist: number };
 export type EventNextWaitlistedRow = { user_id: string };
 export type ReminderDueRow = { id: number; event_id: string };
-export type EventGuildCountRow = { eventId: string; joined: number; waitlist: number };
 export type EventGuildParticipantRow = { eventId: string; userId: string; joinedAt: number; waitlist: number };
 
 export type WelcomeSettingsRow = WelcomeDomain & { guild_id: string; updated_at: number };

@@ -16,22 +16,42 @@ export function useMediaField(savedValue: string) {
   return { file, setFile, inputRef, preview, clear };
 }
 
-export function useApiResource<T>(enabled: boolean, load: (signal: AbortSignal) => Promise<T>, deps: readonly unknown[], fallback: T) {
-  const [data, setData] = useState<T>(fallback);
+export function useApiResource<T>(enabled: boolean, load: (signal: AbortSignal) => Promise<ApiResult<T>>, deps: readonly unknown[], initial: T) {
+  const [data, setData] = useState<T>(initial);
+  const [loading, setLoading] = useState(enabled);
+  const [error, setError] = useState<string | null>(null);
   const depsKey = stableJson(deps);
   const [generation, setGeneration] = useState(0);
-  useEffect(() => { setData(fallback); }, [depsKey]);
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
   useEffect(() => {
-    if (!enabled) return;
+    setData(initialRef.current);
+    setError(null);
+  }, [depsKey]);
+  useEffect(() => {
+    if (!enabled) { setLoading(false); return; }
     let active = true;
     const controller = new AbortController();
-    void load(controller.signal).then(
-      value => { if (active) setData(value); },
-      () => {  },
+    setLoading(true);
+    setError(null);
+    void loadRef.current(controller.signal).then(
+      result => {
+        if (!active) return;
+        if (result.ok) setData(result.data);
+        else setError(result.error);
+        setLoading(false);
+      },
+      () => {
+        if (!active) return;
+        setError("Не удалось загрузить данные.");
+        setLoading(false);
+      },
     );
     return () => { active = false; controller.abort(); };
   }, [enabled, depsKey, generation]);
-  return { data, setData, reload: () => setGeneration(value => value + 1) };
+  return { data, setData, loading, error, reload: () => setGeneration(value => value + 1) };
 }
 
 export function useApiLoad<T>(

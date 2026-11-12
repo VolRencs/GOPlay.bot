@@ -15,6 +15,6 @@
 ## Checklist
 
 - [ ] Bot strings added in both RU and EN (`src/lib/i18n/`)
-- [ ] DB schema change in `src/db/migrations/001_init.sql` (better-auth tables untouched)
+- [ ] DB schema change in a new numbered migration under `src/db/migrations/` (better-auth tables untouched)
 - [ ] New API routes go through the checks in `src/lib/guild-access.ts`
 - [ ] No `.env`, `cookies.txt`, `*.sqlite*`, logs, or `data/uploads/*` committed

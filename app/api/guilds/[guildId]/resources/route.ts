@@ -2,34 +2,30 @@ import { NextResponse } from "next/server.js";
 import { botTokenError, discordFetch, guildRoute, jsonError } from "#lib/guild-access.ts";
 import { SERVER_FALLBACK_NAME } from "#lib/constants.ts";
 import { ttlCacheAsync } from "#lib/cache.ts";
-import { assignableRoles } from "#lib/discord-api.ts";
+import { assignableGuildRoles, guildResourceSnapshot } from "#lib/guild-resources.ts";
 import type { ResourcesGet } from "#contracts/dashboard.ts";
 
-type DiscordChannel = { id: string; name: string; type: number; position: number };
-type DiscordRole = { id: string; name: string; managed: boolean; position: number };
 type DiscordEmoji = { id: string | null; name: string | null; animated: boolean };
-type DiscordMember = { roles: string[] };
 
 const ttl = 60_000;
 
 const resourceCache = ttlCacheAsync<string, ResourcesGet>(async (guildId) => {
-  const token = process.env.DISCORD_TOKEN, botUserId = process.env.DISCORD_CLIENT_ID;
-  if (!token || !botUserId) throw new Error("DISCORD_TOKEN missing");
-  return loadResources(guildId, botUserId);
+  return loadResources(guildId);
 }, ttl, true);
 
-async function loadResources(guildId: string, botUserId: string): Promise<ResourcesGet> {
-  const request = (path: string) => discordFetch(`/guilds/${guildId}/${path}`);
-  const [channelsResponse, rolesResponse, emojisResponse, guildResponse, botMemberResponse] = await Promise.all([request("channels"), request("roles"), request("emojis"), discordFetch(`/guilds/${guildId}?with_counts=true`), request(`members/${botUserId}`)]);
-  if (!channelsResponse.ok || !rolesResponse.ok || !botMemberResponse.ok) throw new Error("Discord guild resources are unavailable");
+async function loadResources(guildId: string): Promise<ResourcesGet> {
+  const snapshot = await guildResourceSnapshot(guildId);
+  const [emojisResponse, guildResponse] = await Promise.all([
+    discordFetch(`/guilds/${guildId}/emojis`),
+    discordFetch(`/guilds/${guildId}?with_counts=true`),
+  ]);
 
-  const allChannels = await channelsResponse.json() as DiscordChannel[];
-  const channels = allChannels.filter(channel => channel.type === 0 || channel.type === 5).sort((a, b) => a.position - b.position).map(({ id, name }) => ({ id, name }));
-  const voiceChannels = allChannels.filter(channel => channel.type === 2).sort((a, b) => a.position - b.position).map(({ id, name }) => ({ id, name }));
-  const categories = allChannels.filter(channel => channel.type === 4).sort((a, b) => a.position - b.position).map(({ id, name }) => ({ id, name }));
-  const allRoles = await rolesResponse.json() as DiscordRole[];
-  const botRoleIds = new Set((await botMemberResponse.json() as DiscordMember).roles);
-  const roles = assignableRoles(allRoles, botRoleIds).filter(role => role.name !== "@everyone").sort((a, b) => b.position - a.position).map(({ id, name }) => ({ id, name }));
+  const channels = snapshot.channels.filter(channel => channel.type === 0 || channel.type === 5).sort((a, b) => a.position - b.position).map(({ id, name }) => ({ id, name }));
+  const voiceChannels = snapshot.channels.filter(channel => channel.type === 2).sort((a, b) => a.position - b.position).map(({ id, name }) => ({ id, name }));
+  const categories = snapshot.channels.filter(channel => channel.type === 4).sort((a, b) => a.position - b.position).map(({ id, name }) => ({ id, name }));
+  const assignable = assignableGuildRoles(snapshot);
+  if (!assignable) throw new Error("Не удалось определить роль бота на сервере");
+  const roles = assignable.filter(role => role.name !== "@everyone").sort((a, b) => b.position - a.position).map(({ id, name }) => ({ id, name }));
   const emojis = emojisResponse.ok ? (await emojisResponse.json() as DiscordEmoji[]).filter(emoji => emoji.id && emoji.name).map(emoji => ({ id: emoji.id!, name: emoji.name!, animated: emoji.animated, value: `<${emoji.animated ? "a" : ""}:${emoji.name!}:${emoji.id!}>` })) : [];
   const guild = guildResponse.ok ? await guildResponse.json() as { name?: string; icon?: string | null; approximate_member_count?: number; approximate_presence_count?: number } : {};
   return { channels, voiceChannels, categories, roles, emojis, server: { name: guild.name ?? SERVER_FALLBACK_NAME, icon: guild.icon ?? null }, stats: { members: guild.approximate_member_count ?? null, online: guild.approximate_presence_count ?? null } };

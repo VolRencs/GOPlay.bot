@@ -3,7 +3,7 @@ import type { AudioResult, ResolveOptions, ResolveResult } from "ytrust";
 type YtrustModule = typeof import("ytrust");
 
 export type BackendFailure = { ok: false; code: string; message: string };
-export type BackendResult<T> = { ok: true; value: T } | BackendFailure;
+type BackendResult<T> = { ok: true; value: T } | BackendFailure;
 
 const BACKEND_RETRY_MS = 60_000;
 const DEFAULT_TIMEOUT_SEC = 15;

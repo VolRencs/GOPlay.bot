@@ -3,6 +3,7 @@ import { DiscordRateLimitError, discordFetch, guildRoute, isSnowflake, jsonError
 import { setTimeout as sleep } from "node:timers/promises";
 import { withTransaction } from "#db/database.ts";
 import { deleteEmbedSendings, embedsQueries } from "#db/queries.ts";
+import { stmt } from "#db/statements.ts";
 import { safeJson, stableJson } from "#lib/json.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
@@ -12,6 +13,7 @@ import { logger } from "#lib/logger.ts";
 import { BRAND_COLOR, colorNumberToHex } from "#lib/colors.ts";
 import { AssetError, collectFormAssets, discordMessageBody, persistUploadedAssets, type UploadAssetSet } from "#lib/assets.ts";
 import { embedCharacterCount, EMBED_LIMITS, normalizeEmbedContent, sendingToDto, toDiscordEmbed, toDto as toEmbedDto, type EmbedContent, type EmbedsGetDto } from "#contracts/embeds.ts";
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 type RequestData = { id?: number; saveOnly?: boolean; updateMessage?: boolean; name: string; channelId?: string; mode?: "embed" | "text"; payload: EmbedContent };
 
@@ -43,31 +45,49 @@ function payloadDisplay(payloadJson: string): Record<string, unknown> {
   };
 }
 
-export const GET = guildRoute(async (request, { guildId }) => {
-  const embeds=embedsQueries.list.all(guildId);
-  let sendings=embedsQueries.sendings.all(guildId);
-  const verify=new URL(request.url).searchParams.get("verify")==="1";
-  if(verify&&process.env.DISCORD_TOKEN&&sendings.length>0){
-    const staleIds:number[]=[];
-    const CONCURRENCY=5;
-    for(let i=0;i<sendings.length;i+=CONCURRENCY){
-      const chunk=sendings.slice(i,i+CONCURRENCY);
-      const results=await Promise.allSettled(chunk.map(async (s)=>{
-        try{
-          const res=await discordFetch(`/channels/${s.channel_id}/messages/${s.message_id}`, { signal: AbortSignal.timeout(5000) });
-          if(res.status===404) return {id:s.id,stale:true};
-          return {id:s.id,stale:false};
-        }catch(e){
-          if(e instanceof DiscordRateLimitError) logger.warn("[EMBEDS] Discord rate limit", guildId, e.retryAfterMs);
-          return {id:s.id,stale:false};
+function embedsDto(guildId: string): EmbedsGetDto {
+  return { embeds: embedsQueries.list.all(guildId).map(toEmbedDto), sendings: embedsQueries.sendings.all(guildId).map(sendingToDto) };
+}
+
+async function verifySendings(guildId: string): Promise<EmbedsGetDto> {
+  let sendings = embedsQueries.sendings.all(guildId);
+  if (sendings.length > 0) {
+    const stale: typeof sendings = [];
+    const CONCURRENCY = 5;
+    for (let i = 0; i < sendings.length; i += CONCURRENCY) {
+      const chunk = sendings.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(chunk.map(async (sending) => {
+        try {
+          const response = await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`, { signal: AbortSignal.timeout(5000) });
+          return response.status === 404 ? sending : null;
+        } catch (error) {
+          if (error instanceof DiscordRateLimitError) logger.warn("[EMBEDS] Discord rate limit", guildId, error.retryAfterMs);
+          return null;
         }
       }));
-      for(const r of results) if(r.status==="fulfilled" && r.value.stale) staleIds.push(r.value.id);
-      if(i+CONCURRENCY < sendings.length) await sleep(210);
+      for (const result of results) if (result.status === "fulfilled" && result.value) stale.push(result.value);
+      if (i + CONCURRENCY < sendings.length) await sleep(210);
     }
-    if(staleIds.length>0){ deleteEmbedSendings(staleIds); sendings=sendings.filter(s=>!staleIds.includes(s.id)); }
+    if (stale.length > 0) {
+      withTransaction(() => {
+        for (const sending of stale) stmt.embedDetach.run(Date.now(), guildId, sending.channel_id, sending.message_id);
+        deleteEmbedSendings(guildId, stale.map(sending => sending.id));
+      });
+      const staleIds = new Set(stale.map(sending => sending.id));
+      sendings = sendings.filter(sending => !staleIds.has(sending.id));
+    }
   }
-  return NextResponse.json<EmbedsGetDto>({embeds:embeds.map(toEmbedDto),sendings:sendings.map(sendingToDto)});
+  return { embeds: embedsQueries.list.all(guildId).map(toEmbedDto), sendings: sendings.map(sendingToDto) };
+}
+
+export const GET = guildRoute(async (_request, { guildId }) => {
+  return NextResponse.json<EmbedsGetDto>(embedsDto(guildId));
+});
+
+export const PATCH = guildRoute(async (_request, { guildId }) => {
+  const tokenError = requireBotToken();
+  if (tokenError) return tokenError;
+  return NextResponse.json<EmbedsGetDto>(await verifySendings(guildId));
 });
 
 export const POST = guildRoute(async (request, { guildId, user }) => {
@@ -107,6 +127,10 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const mode=data.mode==="text"?"text":"embed";
   if(mode==="text"&&(payload.description?.length??0)>2000)return jsonError("Текст сообщения не должен превышать 2000 символов.");
   if(data.saveOnly) {
+    if (data.channelId) {
+      const channelCheck = await validateResources(guildId, { channels: { ids: [data.channelId], types: CHANNEL_TYPES.text } });
+      if (!channelCheck.ok) return resourceError(channelCheck);
+    }
     await persistAssets();
     const before=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
     const saved=JSON.stringify(payload), result=data.id
@@ -124,6 +148,8 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const current=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
   if(data.updateMessage&&(!current?.channel_id||!current.message_id))return jsonError("Сначала отправьте шаблон в канал — обновлять пока нечего.");
   const channelId=data.updateMessage?current!.channel_id!:data.channelId!; const tokenError=requireBotToken(); if(tokenError)return tokenError;
+  const channelCheck = await validateResources(guildId, { channels: { ids: [channelId], types: CHANNEL_TYPES.text } });
+  if (!channelCheck.ok) return resourceError(channelCheck);
   const discordPayload=toDiscordEmbed(payload);
   const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[discordPayload],allowed_mentions:{parse:[]}}; const { body, headers } = discordMessageBody(bodyData, assets);
   const endpoint=`/channels/${channelId}/messages${data.updateMessage?`/${current!.message_id}`:""}`;

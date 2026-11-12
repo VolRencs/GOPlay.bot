@@ -23,7 +23,8 @@
 - Все API-роуты дашборда идут через публичные обёртки (`guildRoute`/`adminRoute`
   из `src/lib/guild-access.ts`, настройки — через `settingsPutRoute` из
   `src/lib/settings-route.ts`): доступ только у управляющих сервером, админка —
-  только `ADMIN_DISCORD_IDS`.
+  только `ADMIN_DISCORD_IDS`. Каждый channel/role/message ID из запроса дашборда
+  проверяется на принадлежность guild из URL в `src/lib/guild-resources.ts`.
 - Загрузки изолированы по `guildId`; фоны приветствия доступны только тем,
   кто управляет этим сервером. Имена файлов санитизируются (`src/lib/uploads.ts`),
   есть лимиты тела запроса на маршрутах + `client_max_body_size 8m` в nginx.

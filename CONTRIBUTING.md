@@ -29,14 +29,16 @@ Thanks for your interest in the project! A few short rules to get your PRs merge
   `description_localizations` for EN).
 - Bot strings RU/EN: `src/lib/i18n/` (`core.ts`, `bot.ts`, `bot/*.ts`).
   Add every new string in both languages at once.
-- DB schema: the single baseline `src/db/migrations/001_init.sql`
-  (applied once via `src/db/database.ts`, tracked in the `_migrations` table).
-  Do not add new migration files; edit the baseline for fresh databases and
-  apply changes to existing databases manually.
+- DB schema: numbered SQL files in `src/db/migrations/`, applied in order by
+  `src/db/database.ts` and tracked in the `_migrations` table. Add a new
+  `NNN_*.sql` migration for every schema change; never edit an already-applied
+  migration. The baseline `001_init.sql` is for fresh databases only.
   Never touch better-auth tables — they are managed by `scripts/migrate-auth.ts`.
 - Dashboard API: `app/api/guilds/[guildId]/*/route.ts`. Every new endpoint must
   go through the public wrappers in `src/lib/guild-access.ts` (`guildRoute`/`adminRoute`)
-  and write to the audit log via `src/lib/dashboard-audit.ts` where applicable.
+  and validate every channel/role/message ID from the request via
+  `src/lib/guild-resources.ts` before saving or sending.
+  Write to the audit log via `src/lib/dashboard-audit.ts` where applicable.
 - Dashboard panels: `src/components/dashboard/*.tsx` + types in `types.ts`.
 - Embed fields/limits: `src/contracts/embeds.ts`; message and event composers share this model.
 - Music (`src/lib/player/`): the resolver never leaves the YouTube domain allowlist;

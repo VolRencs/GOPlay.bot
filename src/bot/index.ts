@@ -32,7 +32,7 @@ import { on, once } from "./events.ts";
 const token = process.env.DISCORD_TOKEN; if (!token) throw new Error("DISCORD_TOKEN is required");
 process.on("unhandledRejection", (reason) => { logger.error("[PROCESS] Unhandled rejection:", reason); });
 process.on("uncaughtException", (error) => { logger.error("[PROCESS] Uncaught exception:", error); });
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.MessageContent], partials: [Partials.Message, Partials.Reaction, Partials.Channel], rest: { timeout: 10_000 } });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.MessageContent], partials: [Partials.Message, Partials.Reaction, Partials.Channel, Partials.User, Partials.GuildMember], rest: { timeout: 10_000 } });
 initLogging(client);
 registerInteractions(client);
 registerLoggingEvents(client);
@@ -40,15 +40,16 @@ registerLoggingEvents(client);
 once(client, Events.ClientReady, "CLIENT_READY", async c => {
   startHeartbeat();
   logger.info("Бот готов:", c.user.username);
+  // Register guilds before any awaited startup work so early messages have a valid FK row.
+  for (const guild of c.guilds.cache.values()) {
+    try { onboardGuild(guild); } catch (error) { logger.error("[GUILD] Не удалось зарегистрировать гильдию", guild.id, error); }
+  }
   try { await getWelcomeRenderer(); }
   catch (error) { logger.error("[WELCOME] Рендер картинок недоступен", error); }
   try {
     await new REST().setToken(token).put(Routes.applicationCommands(c.user.id), { body: commands });
   } catch (error) {
     logger.error("Не удалось зарегистрировать slash-команды:", error);
-  }
-  for (const guild of c.guilds.cache.values()) {
-    try { onboardGuild(guild); } catch (error) { logger.error("[GUILD] Не удалось зарегистрировать гильдию", guild.id, error); }
   }
   logger.info("Зарегистрировано команд:", commands.length, "Гильдий:", c.guilds.cache.size);
   try { await cleanupTempChannels(c); } catch (error) { logger.error("[TEMP] Ошибка очистки временных каналов:", error); }
@@ -61,8 +62,8 @@ on(client, Events.GuildCreate, "GUILD_CREATE", g => {
 
 on(client, Events.GuildMemberAdd, "MEMBER_JOIN", member => {
   count("events.member_join");
-  addMetric(member.guild.id, "joins");
   if (!member.user.bot) {
+    addMetric(member.guild.id, "joins");
     guard("WELCOME", () => sendMemberEvent(member, "welcome"));
     const autorole = autoroleSettingsFor(member.guild.id);
     const autoroleRoleId = autorole.roleId;
@@ -73,8 +74,8 @@ on(client, Events.GuildMemberAdd, "MEMBER_JOIN", member => {
         await member.roles.add(role).catch(error => logger.warn("[AUTOROLE] Не удалось выдать роль", member.guild.id, autoroleRoleId, error));
       });
     }
+    logAction({ guildId: member.guild.id, type: "member_join", targetId: member.id, details: guildTr(logTr, member.guild.id)("joinDetails") });
   }
-  logAction({ guildId: member.guild.id, type: "member_join", targetId: member.id, details: guildTr(logTr, member.guild.id)("joinDetails") });
 });
 
 on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
@@ -129,6 +130,6 @@ on(client, Events.GuildDelete, "GUILD_DELETE", guild => {
   logger.info("[GUILD] Бот удалён с сервера, данные сохранены:", guild.id);
 });
 
-process.on("SIGINT", () => { void shutdown(client); });
-process.on("SIGTERM", () => { void shutdown(client); });
+process.on("SIGINT", () => { shutdown(client).catch(error => { logger.error("Ошибка остановки:", error); process.exit(1); }); });
+process.on("SIGTERM", () => { shutdown(client).catch(error => { logger.error("Ошибка остановки:", error); process.exit(1); }); });
 client.login(token).catch(error => { logger.error("Не удалось подключиться к Discord:", error); process.exit(1); });

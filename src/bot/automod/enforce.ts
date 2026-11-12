@@ -33,10 +33,10 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
   const ruleName = automodRuleTitles[lang][row.kind]?.title ?? row.kind, reason = tAuto("reason", { rule: ruleName });
   const rule: Rule = { kind: row.kind, threshold, window: row.window_seconds };
   const burstKind = isBurstKind(row.kind);
-  const firstInBurst = burstKind ? shouldWarn(rule, data) : true;
-  // Claim the burst window synchronously before the first await to prevent duplicate actions.
-  if (burstKind && firstInBurst) markWarned(rule, data);
-  const repeatBurst = burstKind && !firstInBurst;
+  const firstInWindow = shouldWarn(rule, data);
+  // Claim the window synchronously before the first await to prevent duplicate actions.
+  if (firstInWindow) markWarned(rule, data);
+  const repeatPunishment = !firstInWindow;
   let burst: { id: string; channelId: string }[] = [];
   let deletedCount = 0;
   const applied: string[] = [];
@@ -46,15 +46,15 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
     if (deletedCount > 0) applied.push("delete");
   }
   const member = message.member;
-  if (actions.includes("timeout") && member?.moderatable && !repeatBurst) {
+  if (actions.includes("timeout") && member?.moderatable && !repeatPunishment) {
     markBotAction(guild.id, "member_timeout", author.id);
     const base = Math.max(1, Math.min(MAX_TIMEOUT_SECONDS, Number(threshold.durationSeconds ?? DEFAULT_TIMEOUT_SECONDS)));
     if (await member.timeout(automodDuration(guild.id, author.id, base, Boolean(row.escalation)) * 1000, reason).then(() => true, () => false)) applied.push("timeout");
   }
-  if (actions.includes("kick") && member?.kickable && !repeatBurst) { markBotAction(guild.id, "member_kick", author.id); if (await member.kick(reason).then(() => true, () => false)) applied.push("kick"); }
-  if (actions.includes("ban") && member?.bannable && !repeatBurst) { markBotAction(guild.id, "member_ban", author.id); if (await member.ban({ reason }).then(() => true, () => false)) applied.push("ban"); }
+  if (actions.includes("kick") && member?.kickable && !repeatPunishment) { markBotAction(guild.id, "member_kick", author.id); if (await member.kick(reason).then(() => true, () => false)) applied.push("kick"); }
+  if (actions.includes("ban") && member?.bannable && !repeatPunishment) { markBotAction(guild.id, "member_ban", author.id); if (await member.ban({ reason }).then(() => true, () => false)) applied.push("ban"); }
   let warnPunishmentId: number | null = null;
-  if (actions.includes("warn") && !repeatBurst) {
+  if (actions.includes("warn") && !repeatPunishment) {
     try {
       warnPunishmentId = Number(stmt.moderationInsert.run(guild.id, author.id, "automod", "warn", reason, Date.now()).lastInsertRowid);
       addMetric(guild.id, "moderation");
@@ -72,12 +72,12 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
   }
   const banApplied = applied.includes("ban"), timeoutApplied = applied.includes("timeout");
   const appealType = banApplied ? "ban" : timeoutApplied ? "timeout" : applied.includes("warn") && warnPunishmentId !== null ? "warn" : null;
-  if (appealType && (!burstKind || firstInBurst)) {
+  if (appealType && firstInWindow) {
     const appealTarget = appealType === "warn" ? warnPunishmentId : punishmentId;
     if (appealTarget !== null) void offerAppeal(client, { punishmentId: appealTarget, guildId: guild.id, guildName: guild.name, userId: author.id, appealType, reason });
   }
   const punished = banApplied || timeoutApplied || applied.includes("kick") || applied.includes("warn");
-  if (burstKind && !punished) clearWarned(rule, data);
+  if (firstInWindow && !punished) clearWarned(rule, data);
   logAction({ guildId: guild.id, type: "automod", targetId: author.id, moderatorId: "automod", details: `${t("reason", { reason: ruleName })}\n${applied.length ? t("actionsLine", { list: applied.join(", ") }) : t("actionsFailedLine")}${deletedCount > 0 ? t("deletedFromBurst", { n: String(deletedCount) }) : ""}` });
   time("automod.enforce", performance.now() - started);
 }

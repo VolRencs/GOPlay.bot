@@ -11,6 +11,7 @@ import { guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
 import { channelRef, userRef } from "../../lib/format.ts";
+import { isEmbedLimitError, takeLogBatch } from "../../lib/log-batch.ts";
 
 let client: Client | null = null;
 export function initLogging(c: Client) { client = c; }
@@ -40,12 +41,16 @@ const channelCache = ttlCacheAsync<string, SendableChannels | null>((channelId) 
   });
 }, NEGATIVE_CACHE_TTL);
 
+let resolveFailures = 0;
 export async function resolveChannel(channelId: string, strict = false): Promise<SendableChannels | null> {
   if (!client) return null;
   try {
-    return await channelCache.get(channelId);
+    const channel = await channelCache.get(channelId);
+    resolveFailures = 0;
+    return channel;
   } catch (error) {
     if (strict) throw error;
+    resolveFailures = logger.warnEvery(resolveFailures, 20, "[LOG] Канал недоступен", channelId, error);
     return null;
   }
 }
@@ -65,17 +70,20 @@ function enqueueLog(channelId: string, embed: EmbedBuilder) {
   void drainChannel(channelId);
 }
 
-// Batch up to 10 embeds per request to stay under channel rate limits.
+// Discord allows 10 embeds per message but limits the combined text to 6000 characters.
 const EMBEDS_PER_MESSAGE = 10;
+const MAX_EMBED_CHARS = 5900;
 
 async function drainChannel(channelId: string) {
   if (draining.has(channelId)) return;
   draining.add(channelId);
   let requeued = false;
+  let maxEmbeds = EMBEDS_PER_MESSAGE;
+  let maxChars = MAX_EMBED_CHARS;
   try {
     while (true) {
       const queue = queues.get(channelId) ?? [];
-      const batch = queue.splice(0, EMBEDS_PER_MESSAGE);
+      const batch = takeLogBatch(queue, maxEmbeds, maxChars);
       if (!batch.length) break;
       let attempts = 0;
       let sent = false;
@@ -107,6 +115,20 @@ async function drainChannel(channelId: string) {
           if (isMissingDiscordResource(error, "channel")) {
             permanent = true;
             logger.error("[LOG] Канал логов удалён, пакет отброшен.", channelId, batch.length, error);
+            break;
+          }
+          if (isEmbedLimitError(error)) {
+            if (batch.length > 1) {
+              const list = queues.get(channelId) ?? [];
+              list.unshift(...batch);
+              queues.set(channelId, list);
+              maxEmbeds = Math.max(1, Math.floor(batch.length / 2));
+              maxChars = Math.max(1, Math.floor(maxChars / 2));
+              logger.warn("[LOG] Discord отклонил пакет embed'ов, уменьшаю размер.", channelId, batch.length, maxEmbeds);
+              continue;
+            }
+            permanent = true;
+            logger.error("[LOG] Discord отклонил embed, запись отброшена.", channelId, error);
             break;
           }
           attempts += 1;

@@ -10,7 +10,7 @@
 Discord-бот и веб-панель управления сервером в одном репозитории, но в двух
 процессах (Next.js + бот) с одной SQLite-базой. Стек
 (версии в `package.json`, зафиксированы в `pnpm-lock.yaml`): Node **≥ 26**,
-pnpm **12.18.0**, Next.js **16.4.5**, React **19.3.1**, TypeScript **7.0.2**,
+pnpm **12.18.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
 нативное снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
 
 > Полная английская версия: [README.md](README.md).
@@ -131,7 +131,7 @@ src/bot/              Точка входа бота (index.ts) + модули:
                       commands, moderation, automod, appeals, logging, tempchannels, music
                       (panel/command/shared), events, levels, welcome, self-roles,
                       onboarding, interactions, config-cache, metrics, heartbeat, shutdown
-src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/001_init.sql
+src/db/               database.ts (node:sqlite, WAL), queries.ts + migrations/*.sql
 src/lib/              Общая логика: auth, guild-access, settings-route/views, automod, welcome,
                       colors/format, appeals, levels, events, uploads,
                       player/* (ytrust/ffmpeg стек), i18n

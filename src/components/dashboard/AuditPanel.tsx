@@ -5,21 +5,21 @@ import { cleanupTargets } from "#lib/labels.ts";
 import { AUDIT_SECTIONS } from "#lib/audit-sections.ts";
 import { apiGet, apiJson } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
-import { CardHeader, confirmAction, formatTime, Select } from "./ui.tsx";
+import { CardHeader, SectionError, confirmAction, formatTime, Select } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
 import type { AuditListDto } from "#contracts/dashboard.ts";
 
 export function DashboardAuditLog() {
-  const { guildId } = useDashboard();
+  const { guildId, fail } = useDashboard();
   const [section, setSection] = useState("all");
   const [loadingMore, setLoadingMore] = useState(false);
   const genRef = useRef(0);
-  const { data, setData } = useApiResource<AuditListDto | null>(
+  const { data, setData, error, reload } = useApiResource<AuditListDto | null>(
     Boolean(guildId),
     signal => {
       const params = new URLSearchParams({ limit: "50", offset: "0" });
       if (section !== "all") params.set("section", section);
-      return apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 }, signal);
+      return apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`, signal);
     },
     [guildId, section],
     null,
@@ -33,9 +33,10 @@ export function DashboardAuditLog() {
     if (section !== "all") params.set("section", section);
     setLoadingMore(true);
     try {
-      const page = await apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`, { entries: [], total: 0 });
+      const page = await apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`);
       if (gen !== genRef.current) return;
-      setData(value => value ? { entries: [...value.entries, ...page.entries], total: page.total } : page);
+      if (!page.ok) { fail(page.error); return; }
+      setData(value => value ? { entries: [...value.entries, ...page.data.entries], total: page.data.total } : page.data);
     } finally { setLoadingMore(false); }
   }
   return <section className="panel-stack"><article className="card settings-card">
@@ -45,7 +46,7 @@ export function DashboardAuditLog() {
           <Select value={section} onChange={setSection} ariaLabel="Раздел журнала"
             options={[{ value: "all", label: "Все разделы" }, ...AUDIT_SECTIONS.map(section => ({ value: section, label: section }))]}/>
         </label></div>}/>
-    </article><article className="card audit-list">{entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.createdAt).toISOString()}>{formatTime(entry.createdAt)}</time><span className="audit-user">{entry.userName}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
+    </article><article className="card audit-list">{error ? <SectionError message={error} onRetry={reload}/> : entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.createdAt).toISOString()}>{formatTime(entry.createdAt)}</time><span className="audit-user">{entry.userName}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
 }
 
 export function ServerDataCleanup() {

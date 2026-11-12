@@ -12,6 +12,7 @@ import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { logger } from "#lib/logger.ts";
 import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { welcomeState, welcomeView } from "#lib/settings-views.ts";
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 export const runtime = "nodejs";
 
@@ -43,6 +44,12 @@ export const PUT = settingsPutRoute<WelcomeDto>({
         backgroundPath: null,
       },
     };
+  },
+  validate: async (guildId, value) => {
+    const result = await validateResources(guildId, {
+      channels: { ids: [value.channelId, value.goodbyeChannelId], types: CHANNEL_TYPES.text },
+    });
+    return result.ok ? null : resourceError(result);
   },
   view: welcomeView,
   save: (guildId, state) => {

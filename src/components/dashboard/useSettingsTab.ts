@@ -45,7 +45,8 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
     }
     const next = optionsRef.current.afterSave ? optionsRef.current.afterSave(current.value, sent.data) : current.value;
     if (optionsRef.current.saveMode === "markSaved") current.markSaved(next);
-    else current.commit(next);
+    else if (draftRef.current.value === current.value) current.commit(next);
+    else current.markSaved(next);
     if (report) notify(sent.data.unchanged ? "Изменений нет." : optionsRef.current.savedMessage);
     return true;
   }, [endpoint, fail, notify]);

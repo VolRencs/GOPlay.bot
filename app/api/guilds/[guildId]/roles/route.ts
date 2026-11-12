@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server.js";
 import { discordFetch, guildRoute, isSnowflake, jsonError, readJson, requireBotToken } from "#lib/guild-access.ts";
-import { assignableRoles } from "#lib/discord-api.ts";
 import { withTransaction } from "#db/database.ts";
-import { rolesQueries } from "#db/queries.ts";
+import { embedsQueries, rolesQueries } from "#db/queries.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
 import { logger } from "#lib/logger.ts";
@@ -11,9 +10,7 @@ import { roleModeLabels, roleStyleLabels } from "#lib/labels.ts";
 import { roleRef } from "#lib/format.ts";
 import { toDto as toRolePanelDto, type RolePanelInput, type RolePanelRowDto } from "#contracts/roles.ts";
 import { stripVariationSelectors, toDiscordEmoji, toDiscordReaction } from "goemoji/discord";
-
-type DiscordRole = { id: string; managed: boolean; position: number };
-type DiscordMember = { roles: string[] };
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value === "string" && Object.hasOwn(BUTTON_STYLE_IDS, value);
 
@@ -29,18 +26,6 @@ function readOptions(value: RolePanelInput) {
     }));
   if (Array.isArray(value.options)) return valid(value.options);
   return [];
-}
-async function assignableRoleIds(guildId: string, roleIds: string[]): Promise<Set<string> | null> {
-  const botUserId = process.env.DISCORD_CLIENT_ID;
-  if (!botUserId) return null;
-  try {
-    const [rolesResponse, memberResponse] = await Promise.all([discordFetch(`/guilds/${guildId}/roles`), discordFetch(`/guilds/${guildId}/members/${botUserId}`)]);
-    if (!rolesResponse.ok || !memberResponse.ok) return null;
-    const roles = await rolesResponse.json() as DiscordRole[];
-    const botRoles = new Set((await memberResponse.json() as DiscordMember).roles);
-    const assignable = new Set(assignableRoles(roles, botRoles).map(role => role.id));
-    return new Set(roleIds.filter(id => assignable.has(id)));
-  } catch { return null; }
 }
 
 export const GET = guildRoute(async (_, { guildId }) => {
@@ -58,12 +43,16 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const tpl = rolesQueries.embedTemplate.get(value.embedId, guildId);
   if (!tpl?.name) return jsonError("Шаблон не найден", 404);
   if (!value.channelId || !value.messageId) return jsonError("Выберите уже отправленное сообщение.");
+  const sending = embedsQueries.sendingByMessage.get(guildId, value.channelId, value.messageId);
+  if (!sending) return jsonError("Выберите сообщение, отправленное ботом в этом сервере.", 400);
   const embed = { channel_id: value.channelId, message_id: value.messageId, name: tpl.name };
   const tokenError = requireBotToken();
   if (tokenError) return tokenError;
-  const assignable = await assignableRoleIds(guildId, options.map(o => o.roleId));
-  if (assignable === null) return jsonError("Не удалось проверить иерархию ролей в Discord.", 502);
-  if (options.some(o => !assignable.has(o.roleId))) return jsonError("Некоторые роли нельзя выдавать: переместите роль бота выше них в Discord.");
+  const resources = await validateResources(guildId, {
+    channels: { ids: [value.channelId], types: CHANNEL_TYPES.text },
+    roles: { ids: options.map(option => option.roleId), assignable: true },
+  });
+  if (!resources.ok) return resourceError(resources);
   const style = value.style === undefined ? "buttons" : value.style;
   if (!["buttons", "select", "reaction"].includes(style)) return jsonError("Некорректный тип панели.");
   if (style === "reaction") {

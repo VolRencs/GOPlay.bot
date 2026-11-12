@@ -7,6 +7,7 @@ import { settingsGetRoute, settingsPutRoute } from "#lib/settings-route.ts";
 import { musicState, musicView } from "#lib/settings-views.ts";
 import { fromDto as fromMusicDto, toDto as toMusicDto, type MusicDto } from "#contracts/music.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
+import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 const isValidCommandChannel = (value: unknown): boolean =>
   value === undefined || value === null || (typeof value === "string" && (value === "" || isSnowflake(value)));
@@ -47,6 +48,20 @@ export const PUT = settingsPutRoute<MusicDto>({
         playlistRoleIds: [...new Set(playlistRoles)],
       },
     };
+  },
+  validate: async (guildId, value) => {
+    const channels = await validateResources(guildId, {
+      channels: { ids: [value.commandChannelId], types: CHANNEL_TYPES.text },
+    });
+    if (!channels.ok) return resourceError(channels);
+    const voice = await validateResources(guildId, {
+      channels: { ids: value.voiceChannelIds, types: CHANNEL_TYPES.voice },
+    });
+    if (!voice.ok) return resourceError(voice);
+    const roles = await validateResources(guildId, {
+      roles: { ids: [...value.allowedRoleIds, ...value.playlistRoleIds] },
+    });
+    return roles.ok ? null : resourceError(roles);
   },
   view: musicView,
   save: (guildId, state) => {

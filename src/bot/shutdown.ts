@@ -7,8 +7,14 @@ import { flushLevels } from "./levels/index.ts";
 import { flushMessageCache } from "../db/message-cache.ts";
 import { flushLogs } from "./logging/index.ts";
 import { destroyAllSessions } from "../lib/player/index.ts";
+import { stopHeartbeat } from "./heartbeat.ts";
+
+let shuttingDown = false;
 
 export async function shutdown(client: Client) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  stopHeartbeat();
   stopTimer();
   flushMetrics();
   try { flushLevels(); } catch (error) { logger.warn("[LEVELS] Не удалось слить XP при остановке", error); }
@@ -16,7 +22,7 @@ export async function shutdown(client: Client) {
   logger.info("Остановка бота...");
   try { await flushLogs(); } catch (error) { logger.warn("[LOG] Не удалось слить логи при остановке", error); }
   destroyAllSessions();
-  client.destroy();
+  try { await client.destroy(); } catch (error) { logger.warn("[BOT] Ошибка при закрытии клиента", error); }
   closeDatabase();
   process.exit(0);
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
-import { apiGet, apiJson, apiJsonMutate } from "./dashboard/api.ts";
+import { apiGet, apiJson } from "./dashboard/api.ts";
 import { CardHeader, ConfirmHost, confirmAction, formatNumber, ModalShell, StatCard, TemplateLibrary, TemplateRow, useAsyncAction } from "./dashboard/ui.tsx";
 import type { AdminDataDto, AdminGuildDto } from "#contracts/dashboard.ts";
 
@@ -22,13 +22,13 @@ export function AdminPanel() {
   function refresh() {
     setError("");
     setLoading(true);
-    void apiGet<AdminDataDto | null>("/api/admin", null).then(result => {
-      if (!result) {
-        setError("Не удалось загрузить данные.");
+    void apiGet<AdminDataDto>("/api/admin").then(result => {
+      if (!result.ok) {
+        setError(result.error);
         setLoading(false);
         return;
       }
-      setData(result);
+      setData(result.data);
       setLoading(false);
     });
   }
@@ -39,14 +39,16 @@ export function AdminPanel() {
     const id = leaveTarget.id;
     run(async () => {
       setError(""); setNotice("");
-      const sent = await apiJson<{ leftOnDiscord?: boolean }>(`/api/admin/guilds/${id}`, "POST", { wipe }, "Не удалось выполнить выход.");
+      const sent = await apiJson<{ leftOnDiscord?: boolean; wiped?: boolean; warning?: string }>(`/api/admin/guilds/${id}`, "POST", { wipe }, "Не удалось выполнить выход.");
       if (!sent.ok) return setError(sent.error);
       const result = sent.data;
       if (!result.leftOnDiscord && !wipe && !(await confirmAction("Бот уже не на этом сервере. Стереть оставшиеся данные?", "Стереть"))) return;
       if (!result.leftOnDiscord && !wipe) {
-        const wiped = await apiJsonMutate(`/api/admin/guilds/${id}`, "POST", { wipe: true }, "Не удалось стереть данные.");
+        const wiped = await apiJson<{ wiped?: boolean; warning?: string }>(`/api/admin/guilds/${id}`, "POST", { wipe: true }, "Не удалось стереть данные.");
         if (!wiped.ok) return setError(wiped.error);
-        setNotice(`Данные сервера «${leaveTarget.name}» полностью стёрты.`);
+        setNotice(wiped.data.wiped === false ? (wiped.data.warning ?? "Данные стёрты не полностью.") : `Данные сервера «${leaveTarget.name}» полностью стёрты.`);
+      } else if (wipe && result.wiped === false) {
+        setNotice(result.warning ?? `Данные сервера «${leaveTarget.name}» стёрты не полностью.`);
       } else setNotice(wipe ? `Данные сервера «${leaveTarget.name}» полностью стёрты.` : `Бот вышел с сервера «${leaveTarget.name}».`);
       setLeaveTarget(null);
       refresh();

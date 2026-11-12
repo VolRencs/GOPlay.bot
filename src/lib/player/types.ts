@@ -65,7 +65,7 @@ export function moveWithinList<T>(list: T[], from: number, to: number): number {
   if (!Number.isInteger(from) || !Number.isInteger(to)) return -1;
   if (from < 0 || from >= list.length || to < 0 || to > list.length) return -1;
   const [item] = list.splice(from, 1);
-  const insertAt = to > from ? to - 1 : to;
+  const insertAt = Math.min(to, list.length);
   list.splice(insertAt, 0, item!);
   return insertAt;
 }

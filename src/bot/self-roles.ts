@@ -24,17 +24,19 @@ async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 async function applyPanelRole(guildId: string, panelId: number, roleId: string, member: GuildMember) {
   return withRoleLock(`${guildId}:${member.id}`, async () => {
+    // Re-read the member inside the lock: role mutations return clones and do not update this snapshot.
+    const fresh = await fetchMember(member.guild, member.id) ?? member;
     const panel = cachedPanel(guildId, panelId);
-    const role = member.guild.roles.cache.get(roleId);
+    const role = fresh.guild.roles.cache.get(roleId);
     if (!panel || !role || role.managed || !role.editable) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
     const options = panel.options;
     if (!options.some(option => option.role_id === roleId)) return { text: automodTr(guildLang(guildId), "roleUnavailable"), notify: true };
-    const has = member.roles.cache.has(roleId);
+    const has = fresh.roles.cache.has(roleId);
     const action = panel.role_mode === "add" ? "add" : panel.role_mode === "remove" ? "remove" : has ? "remove" : "add";
     if (action === "add" && !has && panel.role_limit > 0) {
-      if (options.map(x => x.role_id).filter(id => member.roles.cache.has(id)).length >= panel.role_limit) return { text: automodTr(guildLang(guildId), "roleLimitReached", { n: String(panel.role_limit) }), notify: true };
+      if (options.map(x => x.role_id).filter(id => fresh.roles.cache.has(id)).length >= panel.role_limit) return { text: automodTr(guildLang(guildId), "roleLimitReached", { n: String(panel.role_limit) }), notify: true };
     }
-    await member.roles[action](role);
+    await fresh.roles[action](role);
     return { text: panel.notify_template.replaceAll("{role}", () => role.name), notify: Boolean(panel.notify_enabled) };
   });
 }
@@ -51,7 +53,8 @@ function samePanelEmoji(saved: string | null, name: string | null, identifier: s
 
 export async function handleReaction(reaction: MessageReaction | PartialMessageReaction, user: User | PartialUser, removing: boolean) {
   count("events.reaction");
-  if (user.bot) return;
+  const author = user.partial ? await user.fetch().catch(() => null) : user;
+  if (!author || author.bot) return;
   const guildId = reaction.message.guildId;
   if (!guildId) return;
   const panel = reactionPanel(guildId, reaction.message.id);
@@ -60,11 +63,12 @@ export async function handleReaction(reaction: MessageReaction | PartialMessageR
   if (!message?.guild) return;
   const option = panel.options.find(o => samePanelEmoji(o.emoji, reaction.emoji.name, reaction.emoji.identifier));
   if (!option || (removing && panel.role_mode === "add")) return;
-  const member = await fetchMember(message.guild, user.id);
+  const member = await fetchMember(message.guild, author.id);
   if (!member) return;
   if (removing) {
-    const role = member.guild.roles.cache.get(option.role_id);
-    if (role?.editable && member.roles.cache.has(role.id)) await member.roles.remove(role).catch(() => null);
+    const fresh = await fetchMember(member.guild, member.id) ?? member;
+    const role = fresh.guild.roles.cache.get(option.role_id);
+    if (role?.editable && fresh.roles.cache.has(role.id)) await fresh.roles.remove(role).catch(() => null);
     return;
   }
   const result = await applyPanelRoleSafe(message.guild.id, panel.id, option.role_id, member);

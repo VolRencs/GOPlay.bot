@@ -25,22 +25,21 @@ export function isAllowedMediaUrl(query: string): boolean {
 export function isAllowedStreamUrl(value: string): boolean {
   try {
     const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return false;
     const host = url.hostname.toLowerCase();
     if (host === "googlevideo.com" || host.endsWith(".googlevideo.com")) return true;
-    return (url.protocol === "https:" || url.protocol === "http:") && ALLOWED_MEDIA_HOSTS.has(host);
+    return ALLOWED_MEDIA_HOSTS.has(host);
   } catch { return false; }
 }
 
 // SSRF guard: only allowlisted YouTube hosts reach the resolver.
 export const safeMediaTarget = (query: string): string | null => (isAllowedMediaUrl(query) ? query : null);
 
-const SINGLE_VIDEO_HOSTS = ALLOWED_MEDIA_HOSTS;
-
 export function isSingleYouTubeVideoUrl(query: string): boolean {
   if (!/^https?:\/\//i.test(query) || !URL.canParse(query)) return false;
   const url = new URL(query);
   const host = url.hostname.toLowerCase();
-  if (!SINGLE_VIDEO_HOSTS.has(host)) return false;
+  if (!ALLOWED_MEDIA_HOSTS.has(host)) return false;
   if (url.searchParams.has("list")) return false;
   if (host === "youtu.be" || host === "www.youtu.be") return url.pathname.slice(1) !== "";
   const m = url.pathname.match(/^\/(watch|shorts|live|embed|v)(?:\/([^/]+))?$/i);
@@ -149,11 +148,6 @@ export function pickAudioFormat(meta: Record<string, unknown>): RawFormat | null
   };
   const progressive = formats.filter(format => format.protocol !== "m3u8_native");
   return choose(progressive) ?? choose(formats.filter(format => format.protocol === "m3u8_native"));
-}
-
-export function pickAudioUrl(meta: Record<string, unknown>): string | null {
-  const format = pickAudioFormat(meta);
-  return format ? formatString(format, "url") ?? null : null;
 }
 
 export function formatHeaders(format: RawFormat): Record<string, string> | undefined {
@@ -306,7 +300,7 @@ export function mapBackendError(code: string): ResolveErrorKind {
   }
 }
 
-export type ResolveTracksResult = { tracks: Track[]; error: ResolveErrorKind | null; playlist: boolean };
+type ResolveTracksResult = { tracks: Track[]; error: ResolveErrorKind | null; playlist: boolean };
 
 export async function resolveTracks(query: string, requestedBy: string, playlistLimit = MAX_PLAYLIST): Promise<ResolveTracksResult> {
   const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
@@ -380,8 +374,8 @@ export function hydrateTrackMeta(track: Track, guildId: string): void {
   }).catch(() => { track.hydrating = false; });
 }
 
-export type MediaSource = { url: string; headers?: Record<string, string> };
-export type MediaSourceResult = { ok: true; source: MediaSource } | { ok: false; detail: string; code?: string };
+type MediaSource = { url: string; headers?: Record<string, string> };
+type MediaSourceResult = { ok: true; source: MediaSource } | { ok: false; detail: string; code?: string };
 
 const mediaRefreshes = new Map<string, Promise<MediaSourceResult>>();
 
@@ -404,10 +398,15 @@ function applyCachedMeta(track: Track, meta: CachedMeta): void {
 }
 
 async function refreshMedia(track: Track, key: string): Promise<MediaSourceResult> {
+  const target = safeMediaTarget(track.query);
+  if (!target) {
+    logger.warn("[MUSIC] Отклонён недопустимый адрес трека", track.query.slice(0, 100));
+    return { ok: false, detail: "unsupported-url", code: "UNSUPPORTED_URL" };
+  }
   count("music.media_resolve");
   const started = performance.now();
   const result = await withResolveSlot(() => withTimeout(
-    resolveAudioMedia(track.query, backendOptions()),
+    resolveAudioMedia(target, backendOptions()),
     MEDIA_RESOLVE_TIMEOUT_MS,
     { ok: false, code: "TIMEOUT", message: "media resolve timed out" } as const,
   ));

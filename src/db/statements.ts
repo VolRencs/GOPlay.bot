@@ -2,7 +2,7 @@ import { read, upsert, write } from "./typed.ts";
 import type {
   AppealCounterRow, AppealExistingRow, AppealPunishmentRow, AppealRow,
   AutoroleSettingsRow, AutomodRuleCacheRow,
-  CountRow, DataVersionRow, EventCountsRow, EventGuildCountRow, EventGuildParticipantRow,
+  CountRow, DataVersionRow, EventCountsRow, EventGuildParticipantRow,
   EventNextSeriesRow, EventNextWaitlistedRow, GuildDailyChannelStatRow, GuildDailyMetricRow,
   GuildDailyUserStatRow, GuildHourlyMessageRow, GuildIdRow, GuildNameRow,
   LevelRankRow, LevelSettingsRow, LevelTopRow, LoggingSettingsReadRow, MemberLevelRow,
@@ -146,7 +146,6 @@ export const stmt = {
   reminderInsert: write("INSERT OR IGNORE INTO event_reminders(event_id,due_at) VALUES(?,?)"),
   reminderClaim: write("UPDATE event_reminders SET sent_at=? WHERE id=? AND sent_at IS NULL"),
   remindersDue: read<ReminderDueRow>("SELECT id,event_id FROM event_reminders WHERE due_at<=? AND sent_at IS NULL"),
-  eventCountsByGuild: read<EventGuildCountRow>("SELECT p.event_id AS eventId, SUM(p.waitlist=0) AS joined, SUM(p.waitlist=1) AS waitlist FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? GROUP BY p.event_id"),
   eventParticipantsByGuild: read<EventGuildParticipantRow>("SELECT p.event_id AS eventId, p.user_id AS userId, p.joined_at AS joinedAt, p.waitlist FROM event_participants p JOIN events e ON e.id=p.event_id WHERE e.guild_id=? ORDER BY p.waitlist, p.joined_at"),
   cleanupAudit: write("DELETE FROM dashboard_audit WHERE guild_id=?"),
   cleanupAppeals: write("DELETE FROM appeals WHERE guild_id=?"),

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { CardHeader, channelOptions, confirmAction, EmbedComposer, SaveButton, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { CardHeader, channelOptions, confirmAction, EmbedComposer, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiJsonMutate, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
@@ -32,9 +32,9 @@ const emptyEmbedForm = (): EmbedForm => ({ published: false, name: "", mode: "em
 export function EmbedsPanel() {
   const { guildId, resources, notify: onDone, fail: onError } = useDashboard();
   const channels = resources?.channels ?? [];
-  const { data, setData, reload } = useApiResource<EmbedsGetDto>(
+  const { data, setData, reload, loading, error } = useApiResource<EmbedsGetDto>(
     Boolean(guildId),
-    signal => apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, { embeds: [], sendings: [] }, signal),
+    signal => apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, signal),
     [guildId],
     { embeds: [], sendings: [] },
   );
@@ -74,7 +74,7 @@ export function EmbedsPanel() {
 
   function verifySendings() {
     void runVerify(
-      () => apiSend<EmbedsGetDto>(`/api/guilds/${guildId}/embeds?verify=1`, {}, "Не удалось проверить отправления."),
+      () => apiSend<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, { method: "PATCH" }, "Не удалось проверить отправления."),
       next => { setData(next); return { message: "Список отправлений проверен." }; },
     );
   }
@@ -159,6 +159,9 @@ export function EmbedsPanel() {
       reload,
     );
   }
+
+  if (error) return <SectionError message={error} onRetry={reload}/>;
+  if (loading) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">
