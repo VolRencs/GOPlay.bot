@@ -68,6 +68,21 @@ test("pickAudioFormat: дорожка по умолчанию важнее гр�
   assert.equal(format?.url, "https://b.googlevideo.com/opus-default");
 });
 
+test("pickAudioFormat: не выбирает формат с нерешённым challenge", () => {
+  const blocked = fmt("https://blocked.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 192, playable: false });
+  const playable = fmt("https://ok.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 96, playable: true });
+  assert.equal(pickUrl({ best_audio: blocked, formats: [blocked, playable] }), playable.url);
+  assert.equal(pickUrl({ formats: [blocked] }), null);
+  assert.equal(pickUrl({ formats: [{ url: null, protocol: "https", vcodec: "none", acodec: "opus" }] }), null);
+});
+
+test("pickAudioFormat: дорожка по умолчанию важнее кодека", () => {
+  const defaultTrack = { id: "en", display_name: "English", audio_is_default: true };
+  const defaultM4a = fmt("https://a.googlevideo.com/m4a-default", { vcodec: "none", acodec: "mp4a.40.2", abr: 128, audio_track: defaultTrack });
+  const opus = fmt("https://b.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 192 });
+  assert.equal(pickUrl({ formats: [opus, defaultM4a] }), defaultM4a.url);
+});
+
 test("SSRF-гейт и классификация ошибок бэкенда", () => {
   assert.equal(safeMediaTarget("https://www.youtube.com/watch?v=x"), "https://www.youtube.com/watch?v=x");
   assert.equal(safeMediaTarget("https://www.youtube-nocookie.com/embed/x"), "https://www.youtube-nocookie.com/embed/x");

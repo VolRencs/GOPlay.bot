@@ -50,11 +50,10 @@ type StartOptions = {
 export function startAudioStream(opts: StartOptions): StreamHandle {
   const { track, player } = opts;
   const offset = opts.offsetSec && opts.offsetSec > 0 ? Math.floor(opts.offsetSec) : 0;
-  let settled = false, cancelled = false, finished = false;
+  let finished = false;
   let ffmpeg: ChildProcess | null = null;
   let stallTimer: NodeJS.Timeout | null = null;
-  const { promise, resolve: resolveOutcome } = Promise.withResolvers<StreamOutcome>();
-  const settle = (value: StreamOutcome) => { if (!settled) { settled = true; resolveOutcome(value); } };
+  const { promise, resolve: settle } = Promise.withResolvers<StreamOutcome>();
 
   activeStreams++;
   const finish = () => {
@@ -73,7 +72,7 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     });
     const resolved = await Promise.race([ensureFreshMediaUrl(track, opts.forceRefresh === true), timeout]).catch(() => null);
     if (guard) clearTimeout(guard);
-    if (cancelled || finished) return;
+    if (finished) return;
     if (!resolved) {
       settle({ kind: "source-error", detail: "резолв медиа-URL не уложился в 30 c", code: "RESOLVE_TIMEOUT" });
       finish();
@@ -112,7 +111,12 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     let lastOutputAt = performance.now();
     const spawnAt = performance.now();
     const stdout = proc.stdout!;
-    stdout.on("data", () => { lastOutputAt = performance.now(); });
+    stdout.on("data", () => {
+      lastOutputAt = performance.now();
+      if (gotFirstPacket) return;
+      gotFirstPacket = true;
+      time("music.stream_ttfb", performance.now() - spawnAt);
+    });
     stallTimer = setInterval(() => {
       if (!gotFirstPacket) {
         if (performance.now() - spawnAt >= STALL_MS) { settle({ kind: "stall", phase: "start" }); finish(); }
@@ -123,11 +127,6 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
       if (performance.now() - lastOutputAt >= STALL_MS) { settle({ kind: "stall", phase: "middle" }); finish(); }
     }, 5_000);
     stallTimer.unref();
-    stdout.once("data", () => {
-      if (gotFirstPacket) return;
-      gotFirstPacket = true;
-      time("music.stream_ttfb", performance.now() - spawnAt);
-    });
 
     proc.once("error", error => {
       logger.warn("[MUSIC] ffmpeg не удалось запустить", String(error).slice(0, 200));
@@ -135,7 +134,7 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
       finish();
     });
     proc.once("close", code => {
-      if (cancelled) { finish(); return; }
+      if (finished) return;
       if (code !== null && code !== 0) {
         const detail = redactMediaUrl(ffmpegErrTail.trim() || `код ${code}`);
         logger.warn("[MUSIC] ffmpeg завершился аварийно", detail, `код ${code}`);
@@ -157,5 +156,5 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     finish();
   });
 
-  return { outcome: promise, cancel: () => { cancelled = true; settle({ kind: "external" }); finish(); } };
+  return { outcome: promise, cancel: () => { settle({ kind: "external" }); finish(); } };
 }

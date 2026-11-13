@@ -138,24 +138,19 @@ export function normalizeTrackKey(query: string): string {
   return `https://${url.hostname}${path}${url.search}`;
 }
 
-function formatString(format: RawFormat, key: string): string | undefined {
-  const value = format[key];
-  return typeof value === "string" && value ? value : undefined;
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function formatNumber(format: RawFormat, key: string): number | undefined {
-  const value = format[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return finiteNumber(format[key]);
 }
 
 function isUsableFormat(value: unknown): value is RawFormat {
   if (!value || typeof value !== "object") return false;
   const format = value as RawFormat;
-  return typeof format.url === "string" && /^https:\/\//i.test(format.url)
+  return format.playable !== false
+    && typeof format.url === "string" && /^https:\/\//i.test(format.url)
     && typeof format.protocol === "string" && /^(?:https?|m3u8_native)$/.test(format.protocol);
 }
 
@@ -164,25 +159,27 @@ function isDefaultAudioTrack(format: RawFormat): boolean {
   return Boolean(track && typeof track === "object" && (track as { audio_is_default?: unknown }).audio_is_default === true);
 }
 
+function audioRate(format: RawFormat): number {
+  return Math.max(formatNumber(format, "abr") ?? 0, formatNumber(format, "tbr") ?? 0);
+}
+
+function formatScore(format: RawFormat): number {
+  const vcodec = typeof format.vcodec === "string" ? format.vcodec : "none";
+  const audioOnly = vcodec === "none" || vcodec === "";
+  const opus = typeof format.acodec === "string" && format.acodec.startsWith("opus");
+  return (isDefaultAudioTrack(format) ? 4 : 0) + (audioOnly ? 2 : 0) + (opus ? 1 : 0);
+}
+
 export function pickAudioFormat(meta: MetaLike): RawFormat | null {
   if (isUsableFormat(meta.best_audio)) return meta.best_audio;
   const formats = (Array.isArray(meta.formats) ? meta.formats : []).filter(isUsableFormat);
-  const choose = (candidates: RawFormat[]): RawFormat | null => {
-    const audioOnly = candidates.filter(format => {
-      const vcodec = typeof format.vcodec === "string" ? format.vcodec : "none";
-      return vcodec === "none" || vcodec === "";
-    });
-    const opus = audioOnly.filter(format => typeof format.acodec === "string" && format.acodec.startsWith("opus"));
-    const rate = (format: RawFormat): number => Math.max(formatNumber(format, "abr") ?? 0, formatNumber(format, "tbr") ?? 0);
-    const best = (list: RawFormat[]): RawFormat | null => {
-      const preferred = list.filter(isDefaultAudioTrack);
-      const pool = preferred.length ? preferred : list;
-      return pool.length ? pool.reduce((a, b) => (rate(b) > rate(a) ? b : a)) : null;
-    };
-    return best(opus) ?? best(audioOnly) ?? best(candidates);
-  };
+  const best = (list: RawFormat[]): RawFormat | null => list.reduce<RawFormat | null>((current, next) => {
+    if (!current) return next;
+    const diff = formatScore(next) - formatScore(current);
+    return diff > 0 || (diff === 0 && audioRate(next) > audioRate(current)) ? next : current;
+  }, null);
   const progressive = formats.filter(format => format.protocol !== "m3u8_native");
-  return choose(progressive) ?? choose(formats.filter(format => format.protocol === "m3u8_native"));
+  return best(progressive) ?? best(formats);
 }
 
 export function formatHeaders(format: HeaderSource): Record<string, string> | undefined {
@@ -229,7 +226,7 @@ function metaFields(meta: MetaLike): MetaFields {
   const duration = finiteNumber(meta.duration) ?? 0;
   const thumbnail = pickThumbnail(meta);
   const format = pickAudioFormat(meta);
-  const mediaUrl = format ? formatString(format, "url") : undefined;
+  const mediaUrl = format && typeof format.url === "string" && format.url ? format.url : undefined;
   const mediaHeaders = format ? formatHeaders(format) : undefined;
   const mediaUrlExpiresAt = format ? formatExpiresAt(format) ?? Date.now() + MEDIA_URL_TTL_MS : undefined;
   return {

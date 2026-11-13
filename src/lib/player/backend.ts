@@ -35,7 +35,8 @@ function normalizeFailure(error: unknown): BackendFailure {
 
 function envTimeout(): number {
   const value = Number(process.env.YTRUST_TIMEOUT);
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : DEFAULT_TIMEOUT_SEC;
+  if (!Number.isFinite(value) || value <= 0) return DEFAULT_TIMEOUT_SEC;
+  return Math.max(1, Math.trunc(value));
 }
 
 function baseOptions(): ResolveOptions {

@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.2",
-    "better-auth": "^1.7.21",
+    "better-auth": "^1.7.22",
     "discord.js": "^14.28.1",
     "goemoji": "^0.3.1",
     "lucide-react": "^1.72.0",
@@ -32,7 +32,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "welcome-render": "https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz",
-    "ytrust": "https://github.com/VolRencs/ytrust/releases/download/v1.0.0/ytrust-1.0.0.tgz"
+    "ytrust": "https://github.com/VolRencs/ytrust/releases/download/v1.1.1/ytrust-1.1.1.tgz"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

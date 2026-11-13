@@ -30,7 +30,7 @@ Node's native TypeScript type stripping and
 | Roles | Self-assignable roles via buttons, selects and reactions |
 | Levels | XP for messages and voice time, anti-farm rules (cooldown, min length, 2+ members in voice), level reward roles, notifications to a channel or DMs; `/lvl` and `/top` commands |
 | Embeds | Embed message builder, media attachments, templates |
-| Music | YouTube in a voice channel: native `ytrust 1.0.0 → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
+| Music | YouTube in a voice channel: native `ytrust 1.1.1 → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
 | Events | Event creation, participants, reminders |
 | Logs | Modlog: joins/leaves, message edits/deletes, channels, bans, etc. |
 | Temp channels | Private voice channels on joining a hub channel |
@@ -50,7 +50,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 ## Quickstart (local)
 
 Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.19.0**,
-**ffmpeg with libopus**. The native `ytrust 1.0.0` module is installed by `pnpm`.
+**ffmpeg with libopus**. The native `ytrust 1.1.1` module is installed by `pnpm`.
 
 ```bash
 # 1. System dependencies (Debian/Ubuntu)

@@ -21,11 +21,9 @@ type Session = {
   skipFlag: boolean;
   generation: number;
   handle: StreamHandle | null;
-  outcomeClaimed: boolean;
   failedStarts: number;
-  resumesLeft: number;
   lastResumeSec: number;
-  restarted: boolean;
+  recovery: "none" | "resumed" | "restarted";
   streamWaitSince: number | null;
 };
 
@@ -139,8 +137,7 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     idleSince: null,
     activityTimer: null,
     skipFlag: false, generation: 0, handle: null,
-    outcomeClaimed: false,
-    failedStarts: 0, resumesLeft: 0, lastResumeSec: 0, restarted: false,
+    failedStarts: 0, lastResumeSec: 0, recovery: "none",
     streamWaitSince: null,
   };
   sessions.set(guildId, session);
@@ -177,7 +174,8 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
     const playedMs = oldState.status === AudioPlayerStatus.Playing || oldState.status === AudioPlayerStatus.Paused || oldState.status === AudioPlayerStatus.AutoPaused
       ? oldState.playbackDuration
       : 0;
-    void handleIdle(session, playedMs, session.generation, session.handle);
+    const handle = session.handle;
+    if (handle) void handleIdle(session, playedMs, session.generation, handle);
   });
   refreshActivityTimer(session);
 }
@@ -269,9 +267,8 @@ export function playNext(guildId: string): Track | null {
   s.current = next;
   s.generation++;
   s.skipFlag = false;
-  s.resumesLeft = RESUME_BUDGET;
   s.lastResumeSec = 0;
-  s.restarted = false;
+  s.recovery = "none";
   s.streamWaitSince = null;
   refreshActivityTimer(s);
   notify(guildId);
@@ -281,7 +278,6 @@ export function playNext(guildId: string): Track | null {
   return next;
 }
 
-const RESUME_BUDGET = 1;
 const RESUME_MIN_PROGRESS = 5;
 const OUTCOME_RACE_MS = 1_500;
 const RETRY_DELAYS_MS = [3_000, 8_000] as const;
@@ -334,7 +330,6 @@ function launch(s: Session, track: Track, offsetSec: number, forceRefresh = fals
   }
   s.streamWaitSince = null;
   s.handle?.cancel();
-  s.outcomeClaimed = false;
   const handle = startAudioStream({ track, player: s.player, offsetSec, forceRefresh, onMetadata: () => notify(s.guildId) });
   s.handle = handle;
   const generation = s.generation;
@@ -345,16 +340,13 @@ function launch(s: Session, track: Track, offsetSec: number, forceRefresh = fals
   });
 }
 
-async function handleIdle(s: Session, playedMs: number, generation: number, handle: StreamHandle | null): Promise<void> {
+async function handleIdle(s: Session, playedMs: number, generation: number, handle: StreamHandle): Promise<void> {
   if (sessions.get(s.guildId) !== s || s.generation !== generation || s.handle !== handle) return;
   const finished = s.current;
   const playedSec = s.lastResumeSec + playedMs / 1000;
-  const outcome: StreamOutcome | null = handle
-    ? await Promise.race([handle.outcome, delay(OUTCOME_RACE_MS, null)])
-    : null;
+  const outcome: StreamOutcome | null = await Promise.race([handle.outcome, delay(OUTCOME_RACE_MS, null)]);
   if (sessions.get(s.guildId) !== s || s.generation !== generation || s.current !== finished || s.handle !== handle) return;
-  if (s.outcomeClaimed) return;
-  s.outcomeClaimed = true;
+  s.handle = null;
   if (s.skipFlag) { s.skipFlag = false; advance(s, finished, false); return; }
   if (outcome?.kind === "source-error" && outcome.code === "TOO_LONG") {
     logger.info("[MUSIC] Трек длиннее лимита — пропускаю", s.guildId, finished?.title ?? "");
@@ -367,8 +359,7 @@ async function handleIdle(s: Session, playedMs: number, generation: number, hand
     : isNaturalEnd(playedSec, finished?.duration);
   if (finished && s.loopMode === "track" && naturalEnd) {
     s.lastResumeSec = 0;
-    s.resumesLeft = RESUME_BUDGET;
-    s.restarted = false;
+    s.recovery = "none";
     launch(s, finished, 0);
     return;
   }
@@ -384,17 +375,16 @@ function tryResumeOrForward(s: Session, track: Track, playedSec: number, outcome
     failForward(s, outcome.kind === "source-error" ? outcome.detail || "источник недоступен" : outcome.kind);
     return;
   }
-  if (s.resumesLeft > 0 && (playedSec >= s.lastResumeSec + RESUME_MIN_PROGRESS || playedSec < RESUME_MIN_PROGRESS)) {
-    s.resumesLeft--;
+  if (s.recovery === "none" && (playedSec >= s.lastResumeSec + RESUME_MIN_PROGRESS || playedSec < RESUME_MIN_PROGRESS)) {
+    s.recovery = "resumed";
     s.lastResumeSec = Math.max(s.lastResumeSec, playedSec);
     count("music.resume");
     logger.warn("[MUSIC] Стрим прервался рано — резюм с позиции", s.guildId, track.title, `${Math.floor(playedSec)}c`, outcome.kind, "detail" in outcome ? redactMediaUrl(outcome.detail) : "");
     scheduleLaunch(s, track, playedSec, true, RETRY_DELAYS_MS[0]);
     return;
   }
-  if (!s.restarted) {
-    s.restarted = true;
-    s.resumesLeft = 0;
+  if (s.recovery !== "restarted") {
+    s.recovery = "restarted";
     s.lastResumeSec = 0;
     scheduleLaunch(s, track, 0, true, RETRY_DELAYS_MS[1]);
     return;
