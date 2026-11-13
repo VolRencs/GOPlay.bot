@@ -31,6 +31,9 @@ export function ffmpegArgs(mediaUrl: string, offsetSec: number, headers?: Record
     ...(userAgent ? ["-user_agent", userAgent] : []),
     ...(headerLines ? ["-headers", headerLines] : []),
     "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
+    // A fresh googlevideo URL may hit a cold CDN edge that answers 403 for a
+    // few seconds. Reconnect re-requests the original URL instead of failing.
+    "-reconnect_on_http_error", "403,408,410,425,429,500,502,503,504",
     "-i", mediaUrl,
     "-map", "0:a:0", "-vn", "-threads", "1",
     "-ac", "2", "-ar", "48000",

@@ -64,6 +64,9 @@ export function backendOptions(playlistLimit?: number): ResolveOptions {
 export function audioOptions(): ResolveOptions {
   const options = baseOptions();
   options.noPlaylist = true;
+  // ytrust waits out YouTube's cold CDN edge before returning the URL, so
+  // ffmpeg starts against a playable stream instead of reconnecting on 403.
+  options.ensurePlayable = true;
   return options;
 }
 

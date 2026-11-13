@@ -201,6 +201,9 @@ test("аргументы ffmpeg: -ss до -i, UA/Referer, без пайпа", ()
   assert.equal(resumed[ua + 1], "VisionOS-UA");
   const extra = resumed.indexOf("-headers");
   assert.match(resumed[extra + 1] ?? "", /Referer: https:\/\/www\.youtube\.com\//);
+  const reconnect = resumed.indexOf("-reconnect_on_http_error");
+  assert.ok(reconnect !== -1 && reconnect < resumed.indexOf("-i"));
+  assert.match(resumed[reconnect + 1] ?? "", /^403(?:,\d{3})*$/);
   assert.deepEqual(resumed.slice(-18), ["-map", "0:a:0", "-vn", "-threads", "1", "-ac", "2", "-ar", "48000", "-c:a", "libopus", "-b:a", "96k", "-application", "audio", "-f", "ogg", "pipe:1"]);
 
   const plain = ffmpegArgs("https://rX---sn.googlevideo.com/videoplayback?id=x", 0);

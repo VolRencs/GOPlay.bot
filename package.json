@@ -32,7 +32,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "welcome-render": "https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz",
-    "ytrust": "https://github.com/VolRencs/ytrust/releases/download/v1.1.1/ytrust-1.1.1.tgz"
+    "ytrust": "https://github.com/VolRencs/ytrust/releases/download/v1.1.2/ytrust-1.1.2.tgz"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
