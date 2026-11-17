@@ -8,79 +8,39 @@ const {
   isSingleYouTubeVideoUrl, pickFollowTarget,
   isNaturalEnd, isRetryableFailure, nextLoopMode, fmtTime,
   partitionByIndices, moveWithinList, shuffleWithin,
-  ffmpegArgs, isRetryableResolveCode, shouldDropTrackOnHydration, redactMediaUrl,
+  ffmpegArgs, shouldDropTrackOnHydration, redactMediaUrl,
 } = await import("../src/lib/player/index.ts");
-
-const fmt = (url: string, extra: Record<string, unknown>) => ({ url, protocol: "https", ...extra });
 
 const pickUrl = (meta: Record<string, unknown>): string | null => {
   const url = pickAudioFormat(meta)?.url;
   return typeof url === "string" ? url : null;
 };
 
-test("pickAudioFormat: Opus → лучший audio-only по битрейту → best; манифесты отброшены", () => {
-  assert.equal(pickUrl({ formats: [
-    fmt("https://a.googlevideo.com/vorbis", { vcodec: "none", acodec: "vorbis", abr: 160 }),
-    fmt("https://b.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 120 }),
-  ] }), "https://b.googlevideo.com/opus");
-  assert.equal(pickUrl({ formats: [
-    fmt("https://x.googlevideo.com/m4a", { vcodec: "none", acodec: "mp4a.40.2", abr: 128 }),
-    fmt("https://y.googlevideo.com/m4a2", { vcodec: "none", acodec: "mp4a.40.2", tbr: 256 }),
-  ] }), "https://y.googlevideo.com/m4a2");
-  assert.equal(pickUrl({ formats: [fmt("https://z.googlevideo.com/c", { vcodec: "avc1", acodec: "mp4a", tbr: 900 })] }), "https://z.googlevideo.com/c");
-  assert.equal(pickUrl({ formats: [
-    fmt("https://a.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 120 }),
-    fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" }),
-  ] }), "https://a.googlevideo.com/opus");
-  assert.equal(pickUrl({ formats: [fmt("https://hls.example/x.m3u8", { protocol: "m3u8_native", vcodec: "none", acodec: "opus" })] }), "https://hls.example/x.m3u8");
-  assert.equal(pickUrl({ formats: [fmt("not-a-url", { vcodec: "none" })] }), null);
-  assert.equal(pickUrl({}), null);
-});
-
-test("pickAudioFormat: best_audio приоритетнее formats и отдаёт заголовки/срок", () => {
+test("pickAudioFormat: берёт best_audio и отдаёт заголовки/срок", () => {
   const best = {
     url: "https://best.googlevideo.com/opus",
-    protocol: "https",
-    vcodec: "none",
-    acodec: "opus",
-    abr: 136,
+    protocol: "https+cipher",
+    playable: true,
     http_headers: { "User-Agent": "UA", Referer: "https://www.youtube.com/" },
     expires_at: 1_794_415_881,
   };
-  const format = pickAudioFormat({
-    best_audio: best,
-    formats: [fmt("https://other.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 999 })],
-  });
+  const format = pickAudioFormat({ best_audio: best });
   assert.equal(format?.url, best.url);
   assert.deepEqual(formatHeaders(format!), { "User-Agent": "UA", Referer: "https://www.youtube.com/" });
   assert.equal(formatExpiresAt(format!), 1_794_415_881_000);
-  assert.equal(formatExpiresAt({ url: "https://x.googlevideo.com/videoplayback?expire=123" }), 123_000);
+  assert.equal(formatExpiresAt({ expires_at: 123 }), 123_000);
+  assert.equal(formatExpiresAt({}), undefined);
 });
 
-test("pickAudioFormat: дорожка по умолчанию важнее громкой дублированной", () => {
-  const defaultTrack = {
-    id: "en", display_name: "English", audio_is_default: true,
-  };
-  const format = pickAudioFormat({ formats: [
-    fmt("https://a.googlevideo.com/opus-dub", { vcodec: "none", acodec: "opus", abr: 192 }),
-    fmt("https://b.googlevideo.com/opus-default", { vcodec: "none", acodec: "opus", abr: 96, audio_track: defaultTrack }),
-  ] });
-  assert.equal(format?.url, "https://b.googlevideo.com/opus-default");
+test("pickAudioFormat: не выбирает неиграбельный best_audio", () => {
+  assert.equal(pickUrl({ best_audio: { url: "https://blocked.googlevideo.com/opus", protocol: "https", playable: false } }), null);
+  assert.equal(pickUrl({ best_audio: { url: null, protocol: "https", playable: true } }), null);
+  assert.equal(pickUrl({}), null);
 });
 
-test("pickAudioFormat: не выбирает формат с нерешённым challenge", () => {
-  const blocked = fmt("https://blocked.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 192, playable: false });
-  const playable = fmt("https://ok.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 96, playable: true });
-  assert.equal(pickUrl({ best_audio: blocked, formats: [blocked, playable] }), playable.url);
-  assert.equal(pickUrl({ formats: [blocked] }), null);
-  assert.equal(pickUrl({ formats: [{ url: null, protocol: "https", vcodec: "none", acodec: "opus" }] }), null);
-});
-
-test("pickAudioFormat: дорожка по умолчанию важнее кодека", () => {
-  const defaultTrack = { id: "en", display_name: "English", audio_is_default: true };
-  const defaultM4a = fmt("https://a.googlevideo.com/m4a-default", { vcodec: "none", acodec: "mp4a.40.2", abr: 128, audio_track: defaultTrack });
-  const opus = fmt("https://b.googlevideo.com/opus", { vcodec: "none", acodec: "opus", abr: 192 });
-  assert.equal(pickUrl({ formats: [opus, defaultM4a] }), defaultM4a.url);
+test("pickAudioFormat: принимает решённый cipher-формат", () => {
+  const ciphered = { url: "https://cipher.googlevideo.com/opus", protocol: "https+cipher", playable: true };
+  assert.equal(pickUrl({ best_audio: ciphered }), ciphered.url);
 });
 
 test("SSRF-гейт и классификация ошибок бэкенда", () => {
@@ -149,13 +109,7 @@ test("ретраи: временные ошибки повторяем, пост
   assert.equal(isRetryableFailure({ kind: "source-error", detail: "too long", code: "TOO_LONG" }), false);
 });
 
-test("политика ретраев и hydration: временное повторяем, конфигурацию не трогаем", () => {
-  assert.equal(isRetryableResolveCode("TIMEOUT"), true);
-  assert.equal(isRetryableResolveCode("NETWORK"), true);
-  assert.equal(isRetryableResolveCode("INVALID_RESPONSE"), true);
-  assert.equal(isRetryableResolveCode("HTTP"), false);
-  assert.equal(isRetryableResolveCode("BOTCHECK"), false);
-
+test("hydration: временное повторяем, конфигурацию не трогаем", () => {
   assert.equal(shouldDropTrackOnHydration("PRIVATE"), true);
   assert.equal(shouldDropTrackOnHydration("UNAVAILABLE"), true);
   assert.equal(shouldDropTrackOnHydration("TOO_LONG"), true);

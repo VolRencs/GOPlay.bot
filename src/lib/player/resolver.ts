@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { setTimeout as delay } from "node:timers/promises";
 import { logger } from "../logger.ts";
 import { count, time } from "../perf.ts";
 import { audioOptions, backendOptions, resolveAudioMedia, resolveMedia, type BackendFailure } from "./backend.ts";
@@ -92,10 +91,9 @@ type MetaLike = {
   thumbnail?: unknown;
   thumbnails?: unknown;
   best_audio?: unknown;
-  formats?: unknown;
 };
 type HeaderSource = { http_headers?: unknown };
-type ExpirySource = { expires_at?: unknown; url?: unknown };
+type ExpirySource = { expires_at?: unknown };
 type CachedMeta = {
   title: string;
   duration: number;
@@ -108,7 +106,7 @@ const singleMeta = new Map<string, CachedMeta>();
 const listMeta = new Map<string, { at: number; tracks: Track[] }>();
 const LIST_META_TTL = 6 * 3_600_000;
 const MEDIA_URL_TTL_MS = 30 * 60_000;
-const MEDIA_RESOLVE_TIMEOUT_MS = 30_000;
+export const MEDIA_RESOLVE_TIMEOUT_MS = 60_000;
 const RESOLVE_TIMEOUT_MS = 45_000;
 const META_CACHE_CAP = 500;
 
@@ -142,44 +140,16 @@ function finiteNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
-function formatNumber(format: RawFormat, key: string): number | undefined {
-  return finiteNumber(format[key]);
-}
-
 function isUsableFormat(value: unknown): value is RawFormat {
   if (!value || typeof value !== "object") return false;
   const format = value as RawFormat;
   return format.playable !== false
     && typeof format.url === "string" && /^https:\/\//i.test(format.url)
-    && typeof format.protocol === "string" && /^(?:https?|m3u8_native)$/.test(format.protocol);
-}
-
-function isDefaultAudioTrack(format: RawFormat): boolean {
-  const track = format.audio_track;
-  return Boolean(track && typeof track === "object" && (track as { audio_is_default?: unknown }).audio_is_default === true);
-}
-
-function audioRate(format: RawFormat): number {
-  return Math.max(formatNumber(format, "abr") ?? 0, formatNumber(format, "tbr") ?? 0);
-}
-
-function formatScore(format: RawFormat): number {
-  const vcodec = typeof format.vcodec === "string" ? format.vcodec : "none";
-  const audioOnly = vcodec === "none" || vcodec === "";
-  const opus = typeof format.acodec === "string" && format.acodec.startsWith("opus");
-  return (isDefaultAudioTrack(format) ? 4 : 0) + (audioOnly ? 2 : 0) + (opus ? 1 : 0);
+    && typeof format.protocol === "string" && /^(?:https?(?:\+cipher)?|m3u8_native)$/.test(format.protocol);
 }
 
 export function pickAudioFormat(meta: MetaLike): RawFormat | null {
-  if (isUsableFormat(meta.best_audio)) return meta.best_audio;
-  const formats = (Array.isArray(meta.formats) ? meta.formats : []).filter(isUsableFormat);
-  const best = (list: RawFormat[]): RawFormat | null => list.reduce<RawFormat | null>((current, next) => {
-    if (!current) return next;
-    const diff = formatScore(next) - formatScore(current);
-    return diff > 0 || (diff === 0 && audioRate(next) > audioRate(current)) ? next : current;
-  }, null);
-  const progressive = formats.filter(format => format.protocol !== "m3u8_native");
-  return best(progressive) ?? best(formats);
+  return isUsableFormat(meta.best_audio) ? meta.best_audio : null;
 }
 
 export function formatHeaders(format: HeaderSource): Record<string, string> | undefined {
@@ -192,19 +162,9 @@ export function formatHeaders(format: HeaderSource): Record<string, string> | un
   return Object.keys(headers).length ? headers : undefined;
 }
 
-function urlExpiresAt(url: string): number | undefined {
-  try {
-    const value = new URL(url).searchParams.get("expire");
-    if (!value) return undefined;
-    const seconds = Number(value);
-    return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined;
-  } catch { return undefined; }
-}
-
 export function formatExpiresAt(format: ExpirySource): number | undefined {
   const value = finiteNumber(format.expires_at);
-  if (value && value > 0) return value * 1000;
-  return typeof format.url === "string" ? urlExpiresAt(format.url) : undefined;
+  return value && value > 0 ? value * 1000 : undefined;
 }
 
 function pickThumbnail(meta: MetaLike): string | undefined {
@@ -281,13 +241,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 
 type ResolveRun = { meta: ResolveResult | null; error: BackendFailure | null };
 
-const RESOLVE_RETRY_DELAY_MS = 500;
-const RETRYABLE_RESOLVE_CODES = new Set(["TIMEOUT", "NETWORK", "INVALID_RESPONSE"]);
-
-export function isRetryableResolveCode(code: string): boolean {
-  return RETRYABLE_RESOLVE_CODES.has(code);
-}
-
 function runResolve(query: string, playlistLimit = MAX_PLAYLIST): Promise<ResolveRun> {
   return withResolveSlot(() => withTimeout(
     runResolveOnce(query, playlistLimit),
@@ -302,11 +255,7 @@ async function runResolveOnce(query: string, playlistLimit: number): Promise<Res
     return { meta: null, error: { ok: false, code: "UNSUPPORTED_URL", message: "unsupported-url" } };
   }
   const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
-  let result = await resolveMedia(target, backendOptions(limit));
-  if (!result.ok && isRetryableResolveCode(result.code)) {
-    await delay(RESOLVE_RETRY_DELAY_MS).catch(() => undefined);
-    result = await resolveMedia(target, backendOptions(limit));
-  }
+  const result = await resolveMedia(target, backendOptions(limit));
   return result.ok ? { meta: result.value, error: null } : { meta: null, error: result };
 }
 

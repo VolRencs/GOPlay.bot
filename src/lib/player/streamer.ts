@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { AudioPlayerStatus, StreamType, createAudioResource, type AudioPlayer } from "@discordjs/voice";
 import { logger } from "../logger.ts";
 import { count, time } from "../perf.ts";
-import { FFMPEG, ensureFreshMediaUrl, isAllowedStreamUrl, redactMediaUrl } from "./resolver.ts";
+import { FFMPEG, MEDIA_RESOLVE_TIMEOUT_MS, ensureFreshMediaUrl, isAllowedStreamUrl, redactMediaUrl } from "./resolver.ts";
 import type { StreamOutcome, Track } from "./types.ts";
 
 export const ACTIVE_STREAM_LIMIT = 8;
@@ -10,7 +10,7 @@ let activeStreams = 0;
 export const activeStreamCount = (): number => activeStreams;
 
 const STALL_MS = 30_000;
-const RESOLVE_TIMEOUT_MS = 30_000;
+const RESOLVE_TIMEOUT_MS = MEDIA_RESOLVE_TIMEOUT_MS + 5_000;
 
 export type StreamHandle = {
   outcome: Promise<StreamOutcome>;
@@ -77,7 +77,7 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     if (guard) clearTimeout(guard);
     if (finished) return;
     if (!resolved) {
-      settle({ kind: "source-error", detail: "резолв медиа-URL не уложился в 30 c", code: "RESOLVE_TIMEOUT" });
+      settle({ kind: "source-error", detail: `резолв медиа-URL не уложился в ${Math.round(RESOLVE_TIMEOUT_MS / 1000)} c`, code: "RESOLVE_TIMEOUT" });
       finish();
       return;
     }
