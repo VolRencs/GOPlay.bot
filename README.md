@@ -4,13 +4,13 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.18.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.21.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord bot and server-management web dashboard in a single repository, run as
 two processes (Next.js + bot) sharing one SQLite database. Stack
 (versions in `package.json`, locked in `pnpm-lock.yaml`): Node **≥ 26**,
-pnpm **12.18.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
+pnpm **12.21.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
 Node's native TypeScript type stripping and
 `node:sqlite` (no separate DB driver).
 
@@ -30,7 +30,7 @@ Node's native TypeScript type stripping and
 | Roles | Self-assignable roles via buttons, selects and reactions |
 | Levels | XP for messages and voice time, anti-farm rules (cooldown, min length, 2+ members in voice), level reward roles, notifications to a channel or DMs; `/lvl` and `/top` commands |
 | Embeds | Embed message builder, media attachments, templates |
-| Music | YouTube in a voice channel: native `ytrust 1.5.0 → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
+| Music | YouTube in a voice channel: native `ytrust 1.5.1 → ffmpeg (libopus) → voice`; queue up to 50 tracks, playlists up to 100, 2 h length limit |
 | Events | Event creation, participants, reminders |
 | Logs | Modlog: joins/leaves, message edits/deletes, channels, bans, etc. |
 | Temp channels | Private voice channels on joining a hub channel |
@@ -49,8 +49,8 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.19.0**,
-**ffmpeg with libopus**. The native `ytrust 1.5.0` module is installed by `pnpm`.
+Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.21.0**,
+**ffmpeg with libopus**. The native `ytrust 1.5.1` module is installed by `pnpm`.
 
 ```bash
 # 1. System dependencies (Debian/Ubuntu)

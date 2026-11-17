@@ -16,42 +16,58 @@ export function useMediaField(savedValue: string) {
   return { file, setFile, inputRef, preview, clear };
 }
 
-export function useApiResource<T>(enabled: boolean, load: (signal: AbortSignal) => Promise<ApiResult<T>>, deps: readonly unknown[], initial: T) {
-  const [data, setData] = useState<T>(initial);
+type AsyncFetchOptions<T> = {
+  enabled?: boolean;
+  request: (signal: AbortSignal) => Promise<ApiResult<T>>;
+  onData: (data: T) => void;
+  onError?: (error: string) => void;
+};
+
+function useAsyncFetch<T>(options: AsyncFetchOptions<T>, deps: readonly unknown[]) {
+  const enabled = options.enabled !== false;
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
-  const depsKey = stableJson(deps);
   const [generation, setGeneration] = useState(0);
-  const loadRef = useRef(load);
-  loadRef.current = load;
-  const initialRef = useRef(initial);
-  initialRef.current = initial;
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+  const depsKey = stableJson(deps);
   useEffect(() => {
-    setData(initialRef.current);
-    setError(null);
-  }, [depsKey]);
-  useEffect(() => {
-    if (!enabled) { setLoading(false); return; }
+    if (!enabled) { setLoading(false); setError(null); return; }
     let active = true;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    void loadRef.current(controller.signal).then(
+    void optionsRef.current.request(controller.signal).then(
       result => {
         if (!active) return;
-        if (result.ok) setData(result.data);
-        else setError(result.error);
+        if (result.ok) optionsRef.current.onData(result.data);
+        else {
+          setError(result.error);
+          optionsRef.current.onError?.(result.error);
+        }
         setLoading(false);
       },
       () => {
         if (!active) return;
-        setError("Не удалось загрузить данные.");
+        const message = "Не удалось загрузить данные.";
+        setError(message);
+        optionsRef.current.onError?.(message);
         setLoading(false);
       },
     );
     return () => { active = false; controller.abort(); };
   }, [enabled, depsKey, generation]);
-  return { data, setData, loading, error, reload: () => setGeneration(value => value + 1) };
+  return { loading, error, reload: useCallback(() => setGeneration(value => value + 1), []) };
+}
+
+export function useApiResource<T>(enabled: boolean, load: (signal: AbortSignal) => Promise<ApiResult<T>>, deps: readonly unknown[], initial: T) {
+  const [data, setData] = useState<T>(initial);
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
+  const depsKey = stableJson(deps);
+  useEffect(() => { setData(initialRef.current); }, [depsKey]);
+  const { loading, error, reload } = useAsyncFetch<T>({ enabled, request: load, onData: setData }, deps);
+  return { data, setData, loading, error, reload };
 }
 
 export function useApiLoad<T>(
@@ -62,30 +78,7 @@ export function useApiLoad<T>(
   },
   deps: readonly unknown[],
 ) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [generation, setGeneration] = useState(0);
-  const optionsRef = useRef(options);
-  optionsRef.current = options;
-  const depsKey = stableJson(deps);
-  useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    void optionsRef.current.request(controller.signal).then(result => {
-      if (!active) return;
-      if (result.ok) optionsRef.current.onData(result.data);
-      else {
-        setError(result.error);
-        optionsRef.current.onError?.(result.error);
-      }
-      setLoading(false);
-    });
-    return () => { active = false; controller.abort(); };
-  }, [depsKey, generation]);
-  const reload = useCallback(() => setGeneration(value => value + 1), []);
-  return { loading, error, reload };
+  return useAsyncFetch(options, deps);
 }
 
 export function usePanelAction(options: { onDone: PanelNotify; onError: PanelFail }) {

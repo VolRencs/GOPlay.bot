@@ -21,31 +21,41 @@ import { logger } from "../../lib/logger.ts";
 const DATA_ROOT = resolve(process.cwd(), "data");
 const WELCOME_ROOT = resolve(DATA_ROOT, "uploads/welcome");
 const MAX_WELCOME_CONCURRENCY = 2;
-const RENDER_CACHE_MAX = 60;
-const RENDER_CACHE_BYTES = 32 * 1024 * 1024;
-let renderCacheBytes = 0;
-const renderCache = new Map<string, Buffer>();
 
-function cacheRender(key: string, image: Buffer): void {
-  const previous = renderCache.get(key);
-  if (previous) renderCacheBytes -= previous.length;
-  renderCache.set(key, image);
-  renderCacheBytes += image.length;
-  while (renderCache.size > RENDER_CACHE_MAX || renderCacheBytes > RENDER_CACHE_BYTES) {
-    const oldest = renderCache.keys().next().value;
-    if (oldest === undefined) break;
-    renderCacheBytes -= renderCache.get(oldest)!.length;
-    renderCache.delete(oldest);
-  }
+type LruCache<V> = { get(key: string): V | undefined; set(key: string, value: V): void };
+
+function lruCache<V>(maxEntries: number, maxBytes: number, sizeOf: (value: V) => number): LruCache<V> {
+  const entries = new Map<string, V>();
+  let bytes = 0;
+  return {
+    get(key) {
+      const value = entries.get(key);
+      if (value === undefined) return undefined;
+      entries.delete(key);
+      entries.set(key, value);
+      return value;
+    },
+    set(key, value) {
+      const previous = entries.get(key);
+      if (previous !== undefined) bytes -= sizeOf(previous);
+      entries.delete(key);
+      entries.set(key, value);
+      bytes += sizeOf(value);
+      while (entries.size > maxEntries || bytes > maxBytes) {
+        const oldest = entries.keys().next().value;
+        if (oldest === undefined) break;
+        bytes -= sizeOf(entries.get(oldest)!);
+        entries.delete(oldest);
+      }
+    },
+  };
 }
 
-function takeCachedRender(key: string): Buffer | undefined {
-  const cached = renderCache.get(key);
-  if (!cached) return undefined;
-  renderCache.delete(key);
-  renderCache.set(key, cached);
-  return cached;
-}
+type PreparedBackground = { data: Buffer; width: number; height: number; key: string };
+const renderCache = lruCache<Buffer>(60, 32 * 1024 * 1024, value => value.length);
+const backgroundCache = lruCache<Buffer>(8, 24 * 1024 * 1024, value => value.length);
+const preparedCache = lruCache<PreparedBackground>(8, 8 * 1024 * 1024, value => value.data.length);
+const avatarCache = lruCache<Buffer>(50, 8 * 1024 * 1024, value => value.length);
 
 let welcomeActive = 0;
 const welcomeQueue: (() => void)[] = [];
@@ -61,89 +71,11 @@ async function withWelcomeSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-const BACKGROUND_CACHE_MAX = 8;
-const BACKGROUND_CACHE_BYTES = 24 * 1024 * 1024;
-let backgroundCacheBytes = 0;
-const backgroundCache = new Map<string, Buffer>();
-
-function takeBackground(key: string): Buffer | undefined {
-  const cached = backgroundCache.get(key);
-  if (!cached) return undefined;
-  backgroundCache.delete(key);
-  backgroundCache.set(key, cached);
-  return cached;
-}
-
-function cacheBackground(key: string, data: Buffer): void {
-  const previous = backgroundCache.get(key);
-  if (previous) backgroundCacheBytes -= previous.length;
-  backgroundCache.set(key, data);
-  backgroundCacheBytes += data.length;
-  while (backgroundCache.size > BACKGROUND_CACHE_MAX || backgroundCacheBytes > BACKGROUND_CACHE_BYTES) {
-    const oldest = backgroundCache.keys().next().value;
-    if (oldest === undefined) break;
-    backgroundCacheBytes -= backgroundCache.get(oldest)!.length;
-    backgroundCache.delete(oldest);
-  }
-}
-
-type PreparedBackground = { data: Buffer; width: number; height: number; key: string };
-const PREPARED_CACHE_MAX = 8;
-const PREPARED_CACHE_BYTES = 8 * 1024 * 1024;
-let preparedCacheBytes = 0;
-const preparedCache = new Map<string, PreparedBackground>();
-
-function takePrepared(key: string): PreparedBackground | undefined {
-  const cached = preparedCache.get(key);
-  if (!cached) return undefined;
-  preparedCache.delete(key);
-  preparedCache.set(key, cached);
-  return cached;
-}
-
-function cachePrepared(key: string, value: PreparedBackground): void {
-  const previous = preparedCache.get(key);
-  if (previous) preparedCacheBytes -= previous.data.length;
-  preparedCache.set(key, value);
-  preparedCacheBytes += value.data.length;
-  while (preparedCache.size > PREPARED_CACHE_MAX || preparedCacheBytes > PREPARED_CACHE_BYTES) {
-    const oldest = preparedCache.keys().next().value;
-    if (oldest === undefined) break;
-    preparedCacheBytes -= preparedCache.get(oldest)!.data.length;
-    preparedCache.delete(oldest);
-  }
-}
-
-const AVATAR_CACHE_MAX = 50;
-const AVATAR_CACHE_BYTES = 8 * 1024 * 1024;
 const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
 const AVATAR_FAILURE_TTL = 60_000;
 const AVATAR_FAILURE_MAX = 100;
-let avatarCacheBytes = 0;
-const avatarCache = new Map<string, Buffer>();
 const avatarFailures = new Map<string, number>();
 const avatarInflight = new Map<string, Promise<Buffer | null>>();
-
-function takeAvatar(url: string): Buffer | undefined {
-  const cached = avatarCache.get(url);
-  if (!cached) return undefined;
-  avatarCache.delete(url);
-  avatarCache.set(url, cached);
-  return cached;
-}
-
-function cacheAvatar(url: string, data: Buffer): void {
-  const previous = avatarCache.get(url);
-  if (previous) avatarCacheBytes -= previous.length;
-  avatarCache.set(url, data);
-  avatarCacheBytes += data.length;
-  while (avatarCache.size > AVATAR_CACHE_MAX || avatarCacheBytes > AVATAR_CACHE_BYTES) {
-    const oldest = avatarCache.keys().next().value;
-    if (oldest === undefined) break;
-    avatarCacheBytes -= avatarCache.get(oldest)!.length;
-    avatarCache.delete(oldest);
-  }
-}
 
 function avatarFailureActive(url: string): boolean {
   const until = avatarFailures.get(url);
@@ -187,7 +119,7 @@ async function fetchAvatar(url: string): Promise<Buffer | null> {
       markAvatarFailure(url);
       return null;
     }
-    cacheAvatar(url, bytes);
+    avatarCache.set(url, bytes);
     return bytes;
   } catch (error) {
     logger.warn("[WELCOME] Не удалось загрузить аватар", url, error);
@@ -198,7 +130,7 @@ async function fetchAvatar(url: string): Promise<Buffer | null> {
 
 function avatarBuffer(url: string): Promise<Buffer | null> {
   if (!url) return Promise.resolve(null);
-  const cached = takeAvatar(url);
+  const cached = avatarCache.get(url);
   if (cached) return Promise.resolve(cached);
   if (avatarFailureActive(url)) return Promise.resolve(null);
   const existing = avatarInflight.get(url);
@@ -232,7 +164,7 @@ async function backgroundFingerprint(path?: string | null): Promise<BackgroundFi
 }
 
 async function loadBackground(state: BackgroundFingerprint): Promise<Buffer | null> {
-  const cached = takeBackground(state.key);
+  const cached = backgroundCache.get(state.key);
   if (cached) return cached;
   if (!state.path) return null;
   const data = await readFile(state.path).catch((error: unknown) => {
@@ -240,12 +172,12 @@ async function loadBackground(state: BackgroundFingerprint): Promise<Buffer | nu
     return null;
   });
   if (!data) return null;
-  cacheBackground(state.key, data);
+  backgroundCache.set(state.key, data);
   return data;
 }
 
 async function prepareBackground(data: Buffer, key: string): Promise<PreparedBackground> {
-  const cached = takePrepared(key);
+  const cached = preparedCache.get(key);
   if (cached) return cached;
   const info = await probeWelcomeImage(data);
   if (
@@ -268,7 +200,7 @@ async function prepareBackground(data: Buffer, key: string): Promise<PreparedBac
     height: normalized.height,
     key: `${key}|normalized`,
   };
-  cachePrepared(key, prepared);
+  preparedCache.set(key, prepared);
   return prepared;
 }
 
@@ -279,7 +211,7 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
   const subtitle = renderWelcomeTemplate(config.subtitle, values);
   const background = await backgroundFingerprint(input.backgroundPath);
   const cacheKey = JSON.stringify([config, title, subtitle, background.key, input.avatar]);
-  const cached = takeCachedRender(cacheKey);
+  const cached = renderCache.get(cacheKey);
   if (cached) return cached;
 
   const result = await withWelcomeSlot(async () => {
@@ -315,6 +247,6 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
     return { image, cacheable: avatarOk };
   });
 
-  if (result.cacheable) cacheRender(cacheKey, result.image);
+  if (result.cacheable) renderCache.set(cacheKey, result.image);
   return result.image;
 }

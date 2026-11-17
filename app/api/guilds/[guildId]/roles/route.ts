@@ -91,7 +91,10 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       }
     });
   };
-  const headers = { "content-type": "application/json" };
+  const patchComponents = async (components: unknown[]) => {
+    const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ components }) });
+    if (!response.ok) throw new Error(`patch ${response.status}`);
+  };
   try {
   if (style === "reaction") {
     for (const option of options) {
@@ -101,14 +104,12 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   } else if (style === "select") {
     const maxValues = roleLimit <= 0 ? Math.min(options.length, SELECT_OPTION_LIMIT) : Math.min(roleLimit, options.length);
     const component = { type: 3, custom_id: `roles:${panelId}`, placeholder: "Выберите роли", min_values: 0, max_values: maxValues, options: options.map(o => ({ label: (o.label || embed.name).slice(0, 100), value: o.roleId, emoji: toDiscordEmoji(o.emoji) })) };
-    const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [{ type: 1, components: [component] }] }) });
-    if (!response.ok) throw new Error(`patch ${response.status}`);
+    await patchComponents([{ type: 1, components: [component] }]);
   } else {
     const buttons = options.map(o => ({ type: 2, style: buttonStyleId(o.buttonColor), label: (o.label || embed.name).slice(0, 80), custom_id: `role:${panelId}:${o.roleId}`, emoji: toDiscordEmoji(o.emoji) }));
     const rows = [];
     for (let i = 0; i < buttons.length; i += 5) rows.push({ type: 1, components: buttons.slice(i, i + 5) });
-    const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: rows }) });
-    if (!response.ok) throw new Error(`patch ${response.status}`);
+    await patchComponents(rows);
   }
   } catch (error) {
     logger.warn("[ROLES] Привязка панели к сообщению не удалась", guildId, error);
@@ -119,7 +120,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     persistOptions();
   } catch (error) {
     logger.warn("[ROLES] Панель удалена параллельно во время сохранения", guildId, error);
-    void discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers, body: JSON.stringify({ components: [] }) }).catch(() => null);
+    void patchComponents([]).catch(() => null);
     return jsonError("Панель была удалена другим модератором во время сохранения.", 409);
   }
   const styleLabel = roleStyleLabels[style] ?? style;

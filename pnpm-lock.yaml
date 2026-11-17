@@ -200,11 +200,11 @@ importers:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
       welcome-render:
-        specifier: https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz
-        version: https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz
+        specifier: https://github.com/VolRencs/welcome-render/releases/download/v0.3.0/welcome-render-0.3.0.tgz
+        version: https://github.com/VolRencs/welcome-render/releases/download/v0.3.0/welcome-render-0.3.0.tgz
       ytrust:
-        specifier: https://github.com/VolRencs/ytrust/releases/download/v1.5.0/ytrust-1.5.0.tgz
-        version: https://github.com/VolRencs/ytrust/releases/download/v1.5.0/ytrust-1.5.0.tgz
+        specifier: https://github.com/VolRencs/ytrust/releases/download/v1.5.1/ytrust-1.5.1.tgz
+        version: https://github.com/VolRencs/ytrust/releases/download/v1.5.1/ytrust-1.5.1.tgz
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
@@ -1064,9 +1064,9 @@ packages:
     resolution: {integrity: sha512-EvRlUt/QqAEvXdQeRMYUfwOQsfzpDztykrG2owGEE/rBOBoYv9uF39ZzsNDh4lTFHhTr2XOZjKkYgueD12ZmGA==}
     engines: {node: '>=18.17'}
 
-  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz:
-    resolution: {integrity: sha512-zk9WwHNBF99n0Wh2UJTTHBNIfAWGhV37fBd54u+sghtt6GBV9zpU+xo2Jp7dG3PlWGDPNlb0an8yVjZIsBf8Rw==, tarball: https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz}
-    version: 0.2.0
+  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.3.0/welcome-render-0.3.0.tgz:
+    resolution: {integrity: sha512-eUBMCg9/L2F3US+f5nuDTgbb0AGK2KAe6Uqmw7MihjD2+zcjYeH6xc/0uub0MqF0iTKwyKs7JAsFvZGYV1lkYQ==, tarball: https://github.com/VolRencs/welcome-render/releases/download/v0.3.0/welcome-render-0.3.0.tgz}
+    version: 0.3.0
     engines: {node: '>=26.0.0'}
     cpu: [x64]
     os: [linux]
@@ -1084,9 +1084,9 @@ packages:
       utf-8-validate:
         optional: true
 
-  ytrust@https://github.com/VolRencs/ytrust/releases/download/v1.5.0/ytrust-1.5.0.tgz:
-    resolution: {integrity: sha512-aivzDsih7GRZwl+1dT8sc+sayhkM4pqWcIz4LLlzTJBSL+iBq5nfCk3tWDj7GXybc0eP3R6IgXkoIEe+rKbigA==, tarball: https://github.com/VolRencs/ytrust/releases/download/v1.5.0/ytrust-1.5.0.tgz}
-    version: 1.5.0
+  ytrust@https://github.com/VolRencs/ytrust/releases/download/v1.5.1/ytrust-1.5.1.tgz:
+    resolution: {integrity: sha512-OwwRLFPSx/talvXOQlgqdPJYm1fKNlR8h3nOpn4pJX0lW1KEXtGx4k+skdKY+vWbD3RwgJhX/YXlQ9V3YdjMLQ==, tarball: https://github.com/VolRencs/ytrust/releases/download/v1.5.1/ytrust-1.5.1.tgz}
+    version: 1.5.1
     engines: {node: '>=26.0.0'}
     cpu: [x64]
     os: [linux]
@@ -1745,10 +1745,10 @@ snapshots:
 
   undici@6.29.1: {}
 
-  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.2.0/welcome-render-0.2.0.tgz: {}
+  welcome-render@https://github.com/VolRencs/welcome-render/releases/download/v0.3.0/welcome-render-0.3.0.tgz: {}
 
   ws@8.23.0: {}
 
-  ytrust@https://github.com/VolRencs/ytrust/releases/download/v1.5.0/ytrust-1.5.0.tgz: {}
+  ytrust@https://github.com/VolRencs/ytrust/releases/download/v1.5.1/ytrust-1.5.1.tgz: {}
 
   zod@4.6.7: {}

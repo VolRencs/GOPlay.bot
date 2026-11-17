@@ -4,13 +4,13 @@
 
 [![CI](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml/badge.svg)](https://github.com/VolRencs/GOPlay.bot/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D26-green)
-![pnpm](https://img.shields.io/badge/pnpm-12.18.0-orange)
+![pnpm](https://img.shields.io/badge/pnpm-12.21.0-orange)
 ![License](https://img.shields.io/badge/license-GPL--3.0-blue)
 
 Discord-бот и веб-панель управления сервером в одном репозитории, но в двух
 процессах (Next.js + бот) с одной SQLite-базой. Стек
 (версии в `package.json`, зафиксированы в `pnpm-lock.yaml`): Node **≥ 26**,
-pnpm **12.19.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
+pnpm **12.21.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
 нативное снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
 
 > Полная английская версия: [README.md](README.md).
@@ -31,7 +31,7 @@ pnpm **12.19.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
 | Роли | Самовыдача через кнопки, селекты и реакции |
 | Уровни | XP за сообщения и время в голосе, анти-фарм (кулдаун, мин. длина, 2+ участника в голосе), роли-награды за уровни, уведомления в канал или ЛС; команды `/lvl` и `/top` |
 | Embeds | Конструктор embed-сообщений, медиа-вложения, шаблоны |
-| Музыка | YouTube в голосовом канале: нативный `ytrust 1.5.0 → ffmpeg (libopus) → voice`; очередь до 50 треков, плейлисты до 100, лимит длины 2 ч |
+| Музыка | YouTube в голосовом канале: нативный `ytrust 1.5.1 → ffmpeg (libopus) → voice`; очередь до 50 треков, плейлисты до 100, лимит длины 2 ч |
 | События | Создание ивентов, участники, напоминания |
 | Логи | Модлог: входы/выходы, редактирование/удаление сообщений, каналы, баны и т.д. |
 | Временные каналы | Приватные голосовые по заходу в хаб-канал |
@@ -50,8 +50,8 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Быстрый старт (локально)
 
-Требования: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.19.0**,
-**ffmpeg с libopus**. Нативный модуль `ytrust 1.5.0` устанавливается через `pnpm`.
+Требования: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.21.0**,
+**ffmpeg с libopus**. Нативный модуль `ytrust 1.5.1` устанавливается через `pnpm`.
 
 ```bash
 # 1. Системные зависимости (Debian/Ubuntu)

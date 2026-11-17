@@ -7,10 +7,6 @@ import type {
   WelcomeRenderer,
 } from "welcome-render";
 
-const PACKAGE = "welcome-render";
-const importModule = new Function("specifier", "return import(specifier)") as (
-  specifier: string,
-) => Promise<typeof import("welcome-render")>;
 const moduleFontDir = resolve(import.meta.dirname ?? process.cwd(), "../../public/fonts");
 const cwdFontDir = resolve(process.cwd(), "public/fonts");
 const fontDir = existsSync(join(moduleFontDir, "Onest-Regular.ttf")) ? moduleFontDir : cwdFontDir;
@@ -37,8 +33,7 @@ async function withNormalizeSlot<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 async function welcomeRenderModule(): Promise<typeof import("welcome-render")> {
-  if (modulePromise) return modulePromise;
-  modulePromise = importModule(PACKAGE).catch((error: unknown) => {
+  modulePromise ??= import("welcome-render").catch((error: unknown) => {
     modulePromise = undefined;
     throw error;
   });

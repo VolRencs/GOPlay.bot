@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { Suspense, lazy, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { stripVariationSelectors } from "goemoji/discord";
 import { ArrowDown, ArrowRight, Check, ChevronDown, Image, Smile, User } from "lucide-react";
@@ -251,55 +251,81 @@ export function CheckList({ items, selected, onChange, channel = false, label }:
 
 const EmojiPickerBody = lazy(() => import("./EmojiPickerBody.tsx"));
 
+type PopoverCoords = { left: number; width: number; top?: number; bottom?: number };
+
+const placeEmojiPopover = (rect: DOMRect): PopoverCoords => {
+  const width = Math.min(340, window.innerWidth - 24);
+  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+  const below = window.innerHeight - rect.bottom;
+  const above = rect.top;
+  const upwards = below < Math.min(360, window.innerHeight * 0.6) && above > below;
+  return { left, width, ...(upwards ? { bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8 }) };
+};
+
+const placeSelectPopover = (rect: DOMRect): PopoverCoords => {
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const willFlip = spaceBelow < Math.min(300, window.innerHeight / 2);
+  return {
+    left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
+    width: rect.width,
+    ...(willFlip ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
+  };
+};
+
+function useFloatingPopover(options: {
+  anchorRef: RefObject<HTMLElement | null>;
+  rootRef: RefObject<HTMLElement | null>;
+  popoverRef: RefObject<HTMLElement | null>;
+  place: (rect: DOMRect) => PopoverCoords;
+}) {
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<PopoverCoords | null>(null);
+  const close = useCallback(() => { setOpen(false); setCoords(null); }, []);
+  const openPopover = useCallback(() => {
+    const rect = options.anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setCoords(options.place(rect));
+    setOpen(true);
+  }, [options.anchorRef, options.place]);
+  useEffect(() => {
+    if (!open) return;
+    const { rootRef, popoverRef } = options;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !popoverRef.current?.contains(target)) close();
+    };
+    const onScrollOrResize = (event: Event) => {
+      if (popoverRef.current?.contains(event.target as Node)) return;
+      if (popoverRef.current?.contains(document.activeElement)) return;
+      close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, close, options.rootRef, options.popoverRef]);
+  return { open, coords, close, openPopover };
+}
+
 export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange:(value:string)=>void;serverEmojis:ServerEmoji[]}) {
-  const [open,setOpen]=useState(false);
-  const [coords,setCoords]=useState<{left:number;width:number;top?:number;bottom?:number}|null>(null);
   const rootRef=useRef<HTMLDivElement>(null);
   const anchorRef=useRef<HTMLDivElement>(null);
   const popoverRef=useRef<HTMLDivElement>(null);
-  const close=()=>{setOpen(false);setCoords(null);};
-  const openPicker=()=>{
-    const rect=anchorRef.current?.getBoundingClientRect();
-    if(!rect) return;
-    const width=Math.min(340, window.innerWidth-24);
-    const left=Math.max(12, Math.min(rect.left, window.innerWidth-width-12));
-    const below=window.innerHeight-rect.bottom;
-    const above=rect.top;
-    const upwards=below<Math.min(360, window.innerHeight*0.6)&&above>below;
-    setCoords({left,width,...(upwards?{bottom:window.innerHeight-rect.top+8}:{top:rect.bottom+8})});
-    setOpen(true);
-  };
-  const toggle=()=>open?close():openPicker();
-  useEffect(()=>{
-    if(!open) return;
-    const onPointerDown=(event:PointerEvent)=>{
-      const target=event.target as Node;
-      if(!rootRef.current?.contains(target)&&!popoverRef.current?.contains(target)) close();
-    };
-    const onScrollOrResize=(event:Event)=>{
-      if(popoverRef.current?.contains(event.target as Node)) return;
-      if(popoverRef.current?.contains(document.activeElement)) return;
-      close();
-    };
-    const onKeyDown=(event:KeyboardEvent)=>{if(event.key==="Escape") close();};
-    document.addEventListener("pointerdown",onPointerDown);
-    document.addEventListener("keydown",onKeyDown);
-    window.addEventListener("scroll",onScrollOrResize,true);
-    window.addEventListener("resize",onScrollOrResize);
-    return ()=>{
-      document.removeEventListener("pointerdown",onPointerDown);
-      document.removeEventListener("keydown",onKeyDown);
-      window.removeEventListener("scroll",onScrollOrResize,true);
-      window.removeEventListener("resize",onScrollOrResize);
-    };
-  },[open]);
+  const { open, coords, close, openPopover } = useFloatingPopover({ anchorRef, rootRef, popoverRef, place: placeEmojiPopover });
   const select=(emoji:string)=>{onChange(stripVariationSelectors(emoji));close();};
   return (
     <div className="emoji-picker" ref={rootRef}>
       <div className="emoji-current">
         <div className="emoji-input-wrap" ref={anchorRef}>
           <input value={value} maxLength={96} onChange={e => onChange(e.target.value)} placeholder="Выберите эмодзи" aria-label="Эмодзи"/>
-          <button type="button" className="emoji-trigger" onClick={toggle} aria-expanded={open} aria-label="Выбрать эмодзи" title="Выбрать эмодзи">
+          <button type="button" className="emoji-trigger" onClick={() => open ? close() : openPopover()} aria-expanded={open} aria-label="Выбрать эмодзи" title="Выбрать эмодзи">
             <Smile size={16}/>
           </button>
           {open&&coords&&createPortal(
@@ -377,44 +403,11 @@ function MediaField({ icon, label, file, previewUrl, saved, onPick, onClear, ref
 }
 
 export function Select({ value, onChange, options, ariaLabel, placeholder, disabled }: { value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; ariaLabel: string; placeholder?: string | undefined; disabled?: boolean | undefined }) {
-  const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState<{ left: number; width: number; top?: number; bottom?: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const selected = options.find(option => option.value === value);
-
-  const openList = () => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const willFlip = spaceBelow < Math.min(300, window.innerHeight / 2);
-    setCoords({
-      left: Math.max(8, Math.min(rect.left, window.innerWidth - rect.width - 8)),
-      width: rect.width,
-      ...(willFlip ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }),
-    });
-    setOpen(true);
-  };
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!rootRef.current?.contains(target) && !listRef.current?.contains(target)) setOpen(false);
-    };
-    const onScrollOrResize = (event: Event) => {
-      if (listRef.current?.contains(event.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("scroll", onScrollOrResize, true);
-    window.addEventListener("resize", onScrollOrResize);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("scroll", onScrollOrResize, true);
-      window.removeEventListener("resize", onScrollOrResize);
-    };
-  }, [open]);
+  const { open, coords, close, openPopover } = useFloatingPopover({ anchorRef: triggerRef, rootRef, popoverRef: listRef, place: placeSelectPopover });
   useEffect(() => {
     if (!open) return;
     requestAnimationFrame(() => listRef.current?.querySelector<HTMLElement>("[aria-selected='true']")?.focus());
@@ -432,7 +425,7 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
     else if (event.key === "ArrowUp") { event.preventDefault(); focusOption(-1); }
     else if (event.key === "Home") { event.preventDefault(); focusOption("first"); }
     else if (event.key === "End") { event.preventDefault(); focusOption("last"); }
-    else if (event.key === "Escape") { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); }
+    else if (event.key === "Escape") { event.preventDefault(); close(); triggerRef.current?.focus(); }
   };
 
   return (
@@ -445,10 +438,10 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
-        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); open ? setOpen(false) : openList(); }}
+        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); open ? close() : openPopover(); }}
         onKeyDown={e => {
-          if ((e.key === "Enter" || e.key === " ") && !open) { e.preventDefault(); openList(); }
-          else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); openList(); }
+          if ((e.key === "Enter" || e.key === " ") && !open) { e.preventDefault(); openPopover(); }
+          else if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); openPopover(); }
         }}
       >
         <span className={selected ? "" : "placeholder"}>{selected?.label ?? placeholder ?? ""}</span>
@@ -471,7 +464,7 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
                   role="option"
                   aria-selected={option.value === value}
                   className={option.value === value ? "select-option selected" : "select-option"}
-                  onClick={() => { onChange(option.value); setOpen(false); triggerRef.current?.focus(); }}
+                  onClick={() => { onChange(option.value); close(); triggerRef.current?.focus(); }}
                 >
                   <Check size={14}/><span>{option.label}</span>
                 </button>
