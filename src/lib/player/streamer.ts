@@ -66,6 +66,10 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     if (stallTimer) { clearInterval(stallTimer); stallTimer = null; }
     try { ffmpeg?.kill("SIGKILL"); } catch {  }
   };
+  const fail = (detail: string, code?: string) => {
+    settle({ kind: "source-error", detail, ...(code ? { code } : {}) });
+    finish();
+  };
 
   void (async () => {
     let guard: NodeJS.Timeout | null = null;
@@ -77,19 +81,16 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     if (guard) clearTimeout(guard);
     if (finished) return;
     if (!resolved) {
-      settle({ kind: "source-error", detail: `резолв медиа-URL не уложился в ${Math.round(RESOLVE_TIMEOUT_MS / 1000)} c`, code: "RESOLVE_TIMEOUT" });
-      finish();
+      fail(`резолв медиа-URL не уложился в ${Math.round(RESOLVE_TIMEOUT_MS / 1000)} c`, "RESOLVE_TIMEOUT");
       return;
     }
     if (!resolved.ok) {
-      settle({ kind: "source-error", detail: resolved.detail.slice(0, 300), ...(resolved.code ? { code: resolved.code } : {}) });
-      finish();
+      fail(resolved.detail.slice(0, 300), resolved.code);
       return;
     }
     const source = resolved.source;
     if (!isAllowedStreamUrl(source.url)) {
-      settle({ kind: "source-error", detail: "resolved URL is not an allowed media host", code: "UNSAFE_URL" });
-      finish();
+      fail("resolved URL is not an allowed media host", "UNSAFE_URL");
       return;
     }
     try { opts.onMetadata?.(); } catch {  }
@@ -100,8 +101,7 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
         { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     } catch (error) {
       logger.warn("[MUSIC] ffmpeg не удалось запустить", String(error).slice(0, 200));
-      settle({ kind: "source-error", detail: "ffmpeg spawn failed" });
-      finish();
+      fail("ffmpeg spawn failed");
       return;
     }
     ffmpeg = proc;
@@ -133,8 +133,7 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
 
     proc.once("error", error => {
       logger.warn("[MUSIC] ffmpeg не удалось запустить", String(error).slice(0, 200));
-      settle({ kind: "source-error", detail: "ffmpeg spawn failed" });
-      finish();
+      fail("ffmpeg spawn failed");
     });
     proc.once("close", code => {
       if (finished) return;
@@ -150,13 +149,11 @@ export function startAudioStream(opts: StartOptions): StreamHandle {
     try {
       player.play(createAudioResource(stdout, { inputType: StreamType.OggOpus }));
     } catch (error) {
-      settle({ kind: "source-error", detail: redactMediaUrl(String(error)).slice(0, 200) });
-      finish();
+      fail(redactMediaUrl(String(error)).slice(0, 200));
     }
   })().catch((error: unknown) => {
     logger.warn("[MUSIC] Ошибка запуска стрима", redactMediaUrl(String(error)).slice(0, 200));
-    settle({ kind: "source-error", detail: "stream setup failed" });
-    finish();
+    fail("stream setup failed");
   });
 
   return { outcome: promise, cancel: () => { settle({ kind: "external" }); finish(); } };

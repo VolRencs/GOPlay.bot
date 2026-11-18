@@ -30,13 +30,12 @@ export const GET = adminRoute(async () => {
   const activity = adminQueries.activity7d.get(cutoff)!;
   const members = await memberTotal.get("total").catch(() => null);
   const rows = adminQueries.guilds.all();
-  const guildCount = rows.length;
   const messages = new Map(adminQueries.messages.all().map(r => [r.guild_id, Number(r.m)]));
   const panels = new Map(adminQueries.panels.all().map(r => [r.guild_id, Number(r.c)]));
   const events = new Map(adminQueries.events.all().map(r => [r.guild_id, Number(r.c)]));
   return NextResponse.json<AdminDataDto>({
     ...(await botStatus()),
-    guildCount,
+    guildCount: rows.length,
     messages7d: Number(activity.m),
     moderation7d: Number(activity.mod),
     members,

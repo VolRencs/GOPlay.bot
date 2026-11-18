@@ -336,13 +336,10 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
       if (!Number.isInteger(from) || from < 0 || from >= queue.length) { await deny(t("queueChanged")); return; }
       pendingMoves.set(`${guildId}:${i.user.id}`, { from, at: Date.now(), id: trackIdentity(queue[from]!) });
       const showCount = Math.min(queue.length, SELECT_OPTION_LIMIT - 1);
-      const options: StringSelectMenuOptionBuilder[] = [];
-      for (let slot = 0; slot < showCount; slot++) {
-        options.push(new StringSelectMenuOptionBuilder()
-          .setLabel(t("moveToPosition", { n: slot + 1 }))
-          .setDescription(trackLabel(queue[slot]!.title, 100))
-          .setValue(String(slot)));
-      }
+      const options = Array.from({ length: showCount }, (_, slot) => new StringSelectMenuOptionBuilder()
+        .setLabel(t("moveToPosition", { n: slot + 1 }))
+        .setDescription(trackLabel(queue[slot]!.title, 100))
+        .setValue(String(slot)));
       options.push(new StringSelectMenuOptionBuilder().setLabel(t("moveToEnd")).setValue(String(queue.length)));
       const title = trackLabel(queue[from]!.title, 90);
       await i.update({

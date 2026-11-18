@@ -25,18 +25,14 @@ export function runCleanupTarget(guildId: string, target: CleanupTarget): number
   });
 }
 
-function purgeMessageCache(guildId: string) {
-  forgetGuildMessages(guildId);
-  stmt.cleanupMessageCache.run(guildId);
-}
-
 export function wipeGuildData(guildId: string) {
   withTransaction(() => {
     // events, music_settings and message_cache have no guild FK; everything else cascades from guilds.
     deleteEventsByGuild(guildId);
     invalidateMusicSettings(guildId);
     stmt.cleanupMusic.run(guildId);
-    purgeMessageCache(guildId);
+    forgetGuildMessages(guildId);
+    stmt.cleanupMessageCache.run(guildId);
     stmt.cleanupGuild.run(guildId);
   });
 }

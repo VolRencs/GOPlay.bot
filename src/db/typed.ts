@@ -1,10 +1,9 @@
 import type { SQLInputValue, StatementResultingChanges, StatementSync } from "node:sqlite";
 import { db } from "./database.ts";
 
-export type ReadStatement<Row> = Omit<StatementSync, "get" | "all" | "iterate"> & {
+export type ReadStatement<Row> = Omit<StatementSync, "get" | "all"> & {
   get(...params: SQLInputValue[]): Row | undefined;
   all(...params: SQLInputValue[]): Row[];
-  iterate(...params: SQLInputValue[]): IterableIterator<Row>;
 };
 
 export function read<Row>(sql: string): ReadStatement<Row> {
@@ -15,13 +14,11 @@ export function write(sql: string): StatementSync {
   return db.prepare(sql);
 }
 
-type RowValue = SQLInputValue;
-
-type UpsertStatement<Row extends Record<string, RowValue>> = {
+type UpsertStatement<Row extends Record<string, SQLInputValue>> = {
   run(row: Row): StatementResultingChanges;
 };
 
-export function upsert<Row extends Record<string, RowValue>>(
+export function upsert<Row extends Record<string, SQLInputValue>>(
   table: string,
   columns: readonly (keyof Row & string)[],
   key: readonly (keyof Row & string)[],

@@ -15,7 +15,7 @@ import { resolveChannel } from "../logging/index.ts";
 import { fetchMember } from "../utils/members.ts";
 
 type PendingXp = { guildId: string; userId: string; xp: number; messages: number; voiceSeconds: number };
-export type LevelUp = { guildId: string; userId: string; level: number };
+type LevelUp = { guildId: string; userId: string; level: number };
 
 const FLUSH_INTERVAL = 5_000;
 const VOICE_INTERVAL = 60_000;
@@ -36,10 +36,10 @@ let voiceTimer: ReturnType<typeof setInterval> | null = null;
 const keyFor = (guildId: string, userId: string) => `${guildId}:${userId}`;
 
 function addPending(guildId: string, userId: string, xp: number, messages: number, voiceSeconds: number): void {
-  const key = keyFor(guildId, userId);
-  const entry = pending.get(key);
-  if (entry) { entry.xp += xp; entry.messages += messages; entry.voiceSeconds += voiceSeconds; }
-  else pending.set(key, { guildId, userId, xp, messages, voiceSeconds });
+  const entry = pending.getOrInsertComputed(keyFor(guildId, userId), () => ({ guildId, userId, xp: 0, messages: 0, voiceSeconds: 0 }));
+  entry.xp += xp;
+  entry.messages += messages;
+  entry.voiceSeconds += voiceSeconds;
 }
 
 export function flushLevels(): LevelUp[] {
@@ -61,7 +61,7 @@ export function flushLevels(): LevelUp[] {
         }
         const settings = settingsFor(guildId);
         const rows = new Map(
-          stmt.levelRowsFor.all(guildId, JSON.stringify([...new Set(guildEntries.map(entry => entry.userId))]))
+          stmt.levelRowsFor.all(guildId, JSON.stringify(guildEntries.map(entry => entry.userId)))
             .map(row => [row.user_id, row]),
         );
         for (const entry of guildEntries) {

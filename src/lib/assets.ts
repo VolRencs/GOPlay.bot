@@ -1,13 +1,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { filenameFromUrl } from "./uploads.ts";
+import { filenameFromUrl, UPLOAD_CONTENT_TYPES } from "./uploads.ts";
 
 const imageMimeTypes: readonly string[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 function extMime(filename: string): string {
   const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
-  return ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
+  return UPLOAD_CONTENT_TYPES[ext] ?? "image/jpeg";
 }
 
 export class AssetError extends Error {}
@@ -28,11 +28,7 @@ const safeName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0
 
 function extMatchesMime(filename: string, mime: string): boolean {
   const ext = filename.slice(filename.lastIndexOf(".") + 1).toLowerCase();
-  if (mime === "image/png") return ext === "png";
-  if (mime === "image/jpeg") return ext === "jpg" || ext === "jpeg";
-  if (mime === "image/webp") return ext === "webp";
-  if (mime === "image/gif") return ext === "gif";
-  return false;
+  return UPLOAD_CONTENT_TYPES[ext] === mime;
 }
 
 async function collectNewUploads<T extends string>(form: FormData | null, specs: readonly { formKey: string; target: T }[], setAsset: (target: T, url: string) => void): Promise<StoredAsset<T>[]> {

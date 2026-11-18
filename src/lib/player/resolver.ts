@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { logger } from "../logger.ts";
 import { count, time } from "../perf.ts";
-import { audioOptions, backendOptions, resolveAudioMedia, resolveMedia, type BackendFailure } from "./backend.ts";
+import { backendOptions, resolveAudioMedia, resolveMedia, type BackendFailure } from "./backend.ts";
 import { MAX_DURATION_SECONDS, MAX_PLAYLIST, type Track } from "./types.ts";
 import type { ResolveResult, VideoResult } from "ytrust";
 
@@ -256,8 +256,7 @@ async function runResolveOnce(query: string, playlistLimit: number): Promise<Res
   if (!target) {
     return { meta: null, error: { ok: false, code: "UNSUPPORTED_URL", message: "unsupported-url" } };
   }
-  const limit = Math.max(1, Math.min(MAX_PLAYLIST, Math.trunc(playlistLimit)));
-  const result = await resolveMedia(target, backendOptions(limit));
+  const result = await resolveMedia(target, backendOptions(playlistLimit));
   return result.ok ? { meta: result.value, error: null } : { meta: null, error: result };
 }
 
@@ -419,7 +418,7 @@ async function refreshMedia(track: Track, key: string): Promise<MediaSourceResul
   count("music.media_resolve");
   const started = performance.now();
   const result = await withResolveSlot(() => withTimeout(
-    resolveAudioMedia(target, audioOptions()),
+    resolveAudioMedia(target),
     MEDIA_RESOLVE_TIMEOUT_MS,
     { ok: false, code: "TIMEOUT", message: "media resolve timed out" } as const,
   ));
@@ -439,9 +438,7 @@ async function refreshMedia(track: Track, key: string): Promise<MediaSourceResul
   }
   const duration = typeof audio.duration === "number" && audio.duration > 0 ? audio.duration : 0;
   const thumbnail = typeof audio.thumbnail === "string" && audio.thumbnail ? audio.thumbnail : undefined;
-  track.title = audio.title;
-  if (duration > 0) track.duration = duration;
-  if (thumbnail) track.thumbnail = thumbnail;
+  applyCachedMeta(track, { title: audio.title, duration, ...(thumbnail ? { thumbnail } : {}) });
   if (duration > MAX_DURATION_SECONDS) {
     return { ok: false, detail: "track is longer than the limit", code: "TOO_LONG" };
   }

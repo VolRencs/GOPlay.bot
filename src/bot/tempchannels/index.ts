@@ -241,8 +241,9 @@ function voiceChannel(i: ButtonInteraction | ModalSubmitInteraction): VoiceChann
 
 function tempOwner(i: ButtonInteraction | ModalSubmitInteraction) {
   const guild = i.guild, channel = voiceChannel(i);
-  const row = guild && channel ? stmt.tempByChannel.get(channel.id) : undefined;
-  if (!guild || !channel || !row) return null;
+  if (!guild || !channel) return null;
+  const row = stmt.tempByChannel.get(channel.id);
+  if (!row) return null;
   return { guild, channel, row, owner: row.owner_id === i.user.id };
 }
 

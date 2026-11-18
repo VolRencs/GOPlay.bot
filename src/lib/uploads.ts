@@ -42,10 +42,6 @@ export async function serveUploadFile(dir: string, filename: string, contentType
 export async function cleanupUnusedUploads<T>(dir: string, rows: Iterable<T>, filenamesOf: (row: T) => string[], minAgeMs = 0): Promise<void> {
   const referenced = new Set<string>();
   for (const row of rows) for (const filename of filenamesOf(row)) referenced.add(filename);
-  await cleanupOrphanedFiles(dir, referenced, minAgeMs);
-}
-
-async function cleanupOrphanedFiles(dir: string, referenced: Set<string>, minAgeMs = 0): Promise<void> {
   try {
     const now = Date.now();
     for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -82,13 +78,9 @@ export async function deleteGuildFiles(guildId: string): Promise<string[]> {
 // formData()/json() buffer the whole body before per-file limits, so reject early.
 export function rejectOversized(request: Request, limitBytes = 32 * 1024 * 1024): Response | null {
   const raw = request.headers.get("content-length");
-  if (raw === null) {
-    return new Response(JSON.stringify({ error: "Не удалось определить размер запроса." }), { status: 411, headers: { "content-type": "application/json" } });
-  }
+  if (raw === null) return Response.json({ error: "Не удалось определить размер запроса." }, { status: 411 });
   const len = Number(raw);
-  if (!Number.isFinite(len) || len < 0 || !Number.isInteger(len)) {
-    return new Response(JSON.stringify({ error: "Некорректный размер запроса." }), { status: 400, headers: { "content-type": "application/json" } });
-  }
-  if (len > limitBytes) return new Response(JSON.stringify({ error: "Запрос слишком большой." }), { status: 413, headers: { "content-type": "application/json" } });
+  if (!Number.isFinite(len) || len < 0 || !Number.isInteger(len)) return Response.json({ error: "Некорректный размер запроса." }, { status: 400 });
+  if (len > limitBytes) return Response.json({ error: "Запрос слишком большой." }, { status: 413 });
   return null;
 }

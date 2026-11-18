@@ -55,7 +55,6 @@ export function pickFollowTarget(currentVc: string | null, requesterVc: string |
 
 export function partitionByIndices<T>(list: readonly T[], indices: readonly number[]): [T[], T[]] {
   const drop = new Set(indices.filter(i => Number.isInteger(i) && i >= 0 && i < list.length));
-  if (!drop.size) return [[...list], []];
   const kept: T[] = [], gone: T[] = [];
   list.forEach((item, i) => (drop.has(i) ? gone : kept).push(item));
   return [kept, gone];

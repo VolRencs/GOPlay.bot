@@ -19,7 +19,7 @@ import type { EventInputDto, EventViewDto } from "../../contracts/events.ts";
 
 export function eventCounts(eventId: string): EventCounts {
   const row = stmt.eventCounts.get(eventId)!;
-  return { joined: Number(row.joined), waitlist: Number(row.waitlist) };
+  return { joined: row.joined, waitlist: row.waitlist };
 }
 
 export function getEvent(eventId: string): EventRow | undefined {

@@ -19,7 +19,7 @@ type SettingsPutConfig<T> = {
 };
 
 export function settingsGetRoute<T>(load: (guildId: string) => T) {
-  return guildRoute(async (_, { guildId }) => NextResponse.json(load(guildId), { headers: { "cache-control": "no-store" } }));
+  return guildRoute((_, { guildId }) => NextResponse.json(load(guildId), { headers: { "cache-control": "no-store" } }));
 }
 
 export function settingsPutRoute<T>(config: SettingsPutConfig<T>) {

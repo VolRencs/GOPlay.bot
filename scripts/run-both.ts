@@ -11,14 +11,18 @@ const children: ChildProcess[] = [
   spawn(process.execPath, ["--env-file-if-exists=.env", join(root, "src", "bot", "index.ts")], { stdio: "inherit", cwd: root }),
 ];
 
+function killChildren(targets: ChildProcess[], signal: NodeJS.Signals): void {
+  for (const child of targets) child.kill(signal);
+  setTimeout(() => {
+    for (const child of targets) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }, 5_000).unref();
+}
+
 let stopping = false;
 const stop = (signal: NodeJS.Signals) => {
   if (stopping) return;
   stopping = true;
-  for (const child of children) child.kill(signal);
-  setTimeout(() => {
-    for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  }, 5_000).unref();
+  killChildren(children, signal);
 };
 process.on("SIGINT", () => stop("SIGINT"));
 process.on("SIGTERM", () => stop("SIGTERM"));
@@ -26,10 +30,7 @@ process.on("SIGTERM", () => stop("SIGTERM"));
 const failPeer = (child: ChildProcess) => {
   if (stopping) return;
   stopping = true;
-  for (const peer of children) if (peer !== child) peer.kill("SIGTERM");
-  setTimeout(() => {
-    for (const peer of children) if (peer !== child && peer.exitCode === null && peer.signalCode === null) peer.kill("SIGKILL");
-  }, 5_000).unref();
+  killChildren(children.filter(peer => peer !== child), "SIGTERM");
 };
 
 for (const child of children) {

@@ -233,8 +233,6 @@ const memberNamesCache = ttlCacheAsync<string, Map<string, string>>(async guildI
   }
   return names;
 }, DAY_MS, true);
-const guildMemberNames = (guildId: string): Promise<Map<string, string>> => memberNamesCache.get(guildId);
-
 // Small ID sets use per-member lookups; large sets fall back to full pagination.
 const memberNameCache = ttlCacheAsync<string, string | null>(async key => {
   const [guildId = "", userId = ""] = key.split(":");
@@ -250,7 +248,7 @@ export async function guildMemberNamesFor(guildId: string, ids: readonly string[
   if (!unique.length) return new Map();
   // One paginated members request is cheaper and safer than dozens of per-member
   // calls that can trip Discord's rate limit.
-  if (unique.length > 10) return guildMemberNames(guildId);
+  if (unique.length > 10) return memberNamesCache.get(guildId);
   const entries: (readonly [string, string | null])[] = [];
   for (let i = 0; i < unique.length; i += 3) {
     entries.push(...await Promise.all(unique.slice(i, i + 3).map(async id =>

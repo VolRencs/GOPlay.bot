@@ -127,7 +127,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   } catch (error) {
     logger.warn("[ROLES] Привязка панели к сообщению не удалась", guildId, error);
-    if (created) rolesQueries.rollbackDelete.run(panelId);
+    if (created) rolesQueries.delete.run(panelId, guildId);
     return jsonError("Не удалось привязать элементы к исходному сообщению", 502);
   }
   try {
@@ -135,7 +135,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   } catch (error) {
     const concurrent = error instanceof Error && error.message === "panel deleted concurrently";
     logger.warn(concurrent ? "[ROLES] Панель удалена параллельно во время сохранения" : "[ROLES] Не удалось сохранить панель", guildId, error);
-    if (created) rolesQueries.rollbackDelete.run(panelId);
+    if (created) rolesQueries.delete.run(panelId, guildId);
     else void patchMessage(embed.channel_id, embed.message_id, []).catch(() => null);
     return concurrent
       ? jsonError("Панель была удалена другим модератором во время сохранения.", 409)

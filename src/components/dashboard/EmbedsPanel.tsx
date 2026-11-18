@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { CardHeader, channelOptions, confirmAction, EmbedComposer, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
-import { apiGet, apiJsonMutate, apiMutate, apiSend } from "./api.ts";
+import { apiGet, apiJson, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
 import { stableJson } from "../../lib/json.ts";
@@ -107,8 +107,9 @@ export function EmbedsPanel() {
   }
 
   function reset() {
-    setFormState(emptyEmbedForm());
-    setSavedForm(stableJson(emptyEmbedForm()));
+    const blank = emptyEmbedForm();
+    setFormState(blank);
+    setSavedForm(stableJson(blank));
     image.clear(); thumbnail.clear(); authorIcon.clear();
     try { sessionStorage.removeItem(draftKey); } catch {}
   }
@@ -145,7 +146,7 @@ export function EmbedsPanel() {
     const targetChannel = channel || item.channelId;
     if (!targetChannel) return onError("Выберите канал для первого отправления шаблона.");
     await run(
-      () => apiJsonMutate(`/api/guilds/${guildId}/embeds`, "POST", { id: item.id, name: item.name, channelId: targetChannel, mode: item.mode, payload: item.payload }, "Не удалось отправить шаблон."),
+      () => apiJson<unknown>(`/api/guilds/${guildId}/embeds`, "POST", { id: item.id, name: item.name, channelId: targetChannel, mode: item.mode, payload: item.payload }, "Не удалось отправить шаблон."),
       () => ({ message: "Шаблон отправлен." }),
       reload,
     );
@@ -154,7 +155,7 @@ export function EmbedsPanel() {
   async function remove(item: EmbedDto) {
     if (!(await confirmAction(`Удалить «${item.name}» из Discord и списка шаблонов?`, "Удалить"))) return;
     await run(
-      () => apiMutate(`/api/guilds/${guildId}/embeds?id=${item.id}`, { method: "DELETE" }, "Не удалось удалить сообщение."),
+      () => apiSend<unknown>(`/api/guilds/${guildId}/embeds?id=${item.id}`, { method: "DELETE" }, "Не удалось удалить сообщение."),
       () => {
         if (form.id === item.id) reset();
         return { message: "Embed-сообщение удалено." };
@@ -166,7 +167,7 @@ export function EmbedsPanel() {
   async function removeSending(s: EmbedSendingDto) {
     if (!(await confirmAction("Удалить это отправленное сообщение из Discord?", "Удалить"))) return;
     await run(
-      () => apiMutate(`/api/guilds/${guildId}/embeds?sendingId=${s.id}`, { method: "DELETE" }, "Не удалось удалить сообщение."),
+      () => apiSend<unknown>(`/api/guilds/${guildId}/embeds?sendingId=${s.id}`, { method: "DELETE" }, "Не удалось удалить сообщение."),
       () => ({ message: "Отправленное сообщение удалено." }),
       reload,
     );

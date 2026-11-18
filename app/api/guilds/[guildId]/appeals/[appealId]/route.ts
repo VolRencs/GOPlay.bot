@@ -15,13 +15,14 @@ export const POST = guildRoute<{ guildId: string; appealId: string }>(async (req
   if (!action) return jsonError("Некорректное действие.");
   const comment = typeof body?.comment === "string" ? body.comment.trim().slice(0, 500) || null : null;
   const discordAccount = discordAccountOf(user.id);
+  const reviewerId = discordAccount?.accountId ?? user.id;
 
-  const result = reviewAppeal({ guildId, appealId, action, reviewerId: discordAccount?.accountId ?? user.id, comment });
+  const result = reviewAppeal({ guildId, appealId, action, reviewerId, comment });
   if (!result.ok) return jsonError(result.error, result.status);
   const { appeal, reversal, previousStatus } = result.value;
 
   const reversalResult = reversal ? await applyAppealReversal(guildLang(guildId), guildId, appeal.user_id, reversal) : null;
-  const finalAppeal = reversalResult && !reversalResult.ok && reopenAppeal(guildId, appeal.id, discordAccount?.accountId ?? user.id)
+  const finalAppeal = reversalResult && !reversalResult.ok && reopenAppeal(guildId, appeal.id, reviewerId)
     ? { ...appeal, status: "reviewing" as const }
     : appeal;
   const notified = await notifyAppealStatus(appeal, reversalResult);

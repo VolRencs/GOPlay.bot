@@ -6,7 +6,7 @@ import { buttonColorOptionsList, type EmbedDto, type EmbedSendingDto, type Embed
 import { roleStyleLabels } from "../../lib/labels.ts";
 import { SELECT_OPTION_LIMIT } from "../../lib/constants.ts";
 import { CardHeader, confirmAction, EmojiPicker, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime } from "./ui.tsx";
-import { apiGet, apiJsonMutate, apiSend } from "./api.ts";
+import { apiGet, apiJson, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
 import { stableJson } from "../../lib/json.ts";
@@ -133,7 +133,7 @@ export function RoleSettings() {
     if (!sending) { onError("Выберите отправленное сообщение."); return false; }
     if (!options.some(o => o.roleId)) { onError("Добавьте хотя бы одну роль."); return false; }
     const ok = await run(
-      () => apiJsonMutate(`/api/guilds/${guildId}/roles`, "POST", { panelId, embedId: sending.embedId, channelId: sending.channelId, messageId: sending.messageId, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }, "Не удалось сохранить панель."),
+      () => apiJson<unknown>(`/api/guilds/${guildId}/roles`, "POST", { panelId, embedId: sending.embedId, channelId: sending.channelId, messageId: sending.messageId, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }, "Не удалось сохранить панель."),
       () => {
         const message = panelId ? "Панель самовыдачи обновлена." : "Панель самовыдачи сохранена.";
         reset();

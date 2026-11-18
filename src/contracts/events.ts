@@ -1,7 +1,6 @@
 import type { EventButton, EventCounts, EventEmbed, EventRecurrence, EventStatus } from "../lib/events/types.ts";
 
-export type EventInputDto = {
-  id?: string;
+type EventContentDto = {
   channelId: string;
   messageId: string | null;
   embed: EventEmbed;
@@ -16,21 +15,11 @@ export type EventInputDto = {
   recurrence: EventRecurrence;
 };
 
-export type EventViewDto = {
+export type EventInputDto = EventContentDto & { id?: string };
+
+export type EventViewDto = EventContentDto & {
   id: string;
   guildId: string;
-  channelId: string;
-  messageId: string | null;
-  embed: EventEmbed;
-  buttons: EventButton[];
-  scheduledAt: number;
-  maxParticipants: number;
-  registrationEnabled: boolean;
-  waitlistEnabled: boolean;
-  status: EventStatus;
-  eventRoleId: string | null;
-  reminders: number[];
-  recurrence: EventRecurrence;
   createdAt: number;
   updatedAt: number;
   startedAt: number | null;

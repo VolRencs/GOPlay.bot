@@ -2,7 +2,7 @@ import { read, upsert, write } from "./typed.ts";
 import type {
   AppealCounterRow, AppealExistingRow, AppealPunishmentRow, AppealRow,
   AutoroleSettingsRow, AutomodRuleCacheRow,
-  CountRow, DataVersionRow, EventCountsRow, EventGuildParticipantRow,
+  CountRow, DataVersionRow, EventGuildParticipantRow,
   EventNextSeriesRow, EventNextWaitlistedRow, GuildDailyChannelStatRow, GuildDailyMetricRow,
   GuildDailyUserStatRow, GuildHourlyMessageRow, GuildIdRow, GuildNameRow,
   LevelRankRow, LevelSettingsRow, LevelTopRow, LoggingSettingsReadRow, MemberLevelRow,
@@ -13,7 +13,7 @@ import type {
 import type { WelcomeDomain } from "../contracts/welcome.ts";
 import type { TempPresetRow } from "../lib/tempchannels.ts";
 import type { LevelReward } from "../lib/levels.ts";
-import type { EventRow, ParticipantRow } from "../lib/events/types.ts";
+import type { EventCounts, EventRow, ParticipantRow } from "../lib/events/types.ts";
 
 export const stmt = {
   guildInsert: write("INSERT OR IGNORE INTO guilds(id,name) VALUES(?,?)"),
@@ -103,7 +103,7 @@ export const stmt = {
     ["guild_id", "enabled", "xp_per_message", "message_cooldown_seconds", "min_message_length", "xp_per_voice_minute", "base_xp", "growth_percent", "ignored_channel_ids_json", "ignored_role_ids_json", "notify_mode", "notify_channel_id", "updated_at"],
     ["guild_id"],
   ),
-  levelRow: read<MemberLevelRow>("SELECT xp,level,messages,voice_seconds FROM member_levels WHERE guild_id=? AND user_id=?"),
+  levelRow: read<Pick<MemberLevelRow, "xp" | "level" | "messages" | "voice_seconds">>("SELECT xp,level,messages,voice_seconds FROM member_levels WHERE guild_id=? AND user_id=?"),
   levelRowsFor: read<MemberLevelRow>("SELECT * FROM member_levels WHERE guild_id=? AND user_id IN (SELECT value FROM json_each(?))"),
   levelUpsert: upsert<MemberLevelRow>(
     "member_levels",
@@ -143,7 +143,7 @@ export const stmt = {
   participantDelete: write("DELETE FROM event_participants WHERE event_id=? AND user_id=?"),
   participantPromote: write("UPDATE event_participants SET waitlist=0 WHERE event_id=? AND user_id=? AND waitlist=1"),
   participantsOf: read<ParticipantRow>("SELECT * FROM event_participants WHERE event_id=? ORDER BY waitlist, joined_at"),
-  eventCounts: read<EventCountsRow>("SELECT COALESCE(SUM(waitlist=0),0) AS joined, COALESCE(SUM(waitlist=1),0) AS waitlist FROM event_participants WHERE event_id=?"),
+  eventCounts: read<EventCounts>("SELECT COALESCE(SUM(waitlist=0),0) AS joined, COALESCE(SUM(waitlist=1),0) AS waitlist FROM event_participants WHERE event_id=?"),
   eventNextWaitlisted: read<EventNextWaitlistedRow>("SELECT user_id FROM event_participants WHERE event_id=? AND waitlist=1 ORDER BY joined_at LIMIT 1"),
   reminderDeleteUnsent: write("DELETE FROM event_reminders WHERE event_id=? AND sent_at IS NULL"),
   reminderInsert: write("INSERT OR IGNORE INTO event_reminders(event_id,due_at) VALUES(?,?)"),

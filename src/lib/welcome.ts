@@ -51,14 +51,14 @@ export function parseImageConfig(value: unknown): WelcomeImageConfig {
   return {
     avatarWidth: number(raw.avatarWidth, defaultImageConfig.avatarWidth, 48, 420),
     avatarHeight: number(raw.avatarHeight, defaultImageConfig.avatarHeight, 48, 420),
-    avatarX: number(raw.avatarX, defaultImageConfig.avatarX, 0, 900),
-    avatarY: number(raw.avatarY, defaultImageConfig.avatarY, 0, 480),
+    avatarX: number(raw.avatarX, defaultImageConfig.avatarX, 0, WELCOME_DESIGN.width),
+    avatarY: number(raw.avatarY, defaultImageConfig.avatarY, 0, WELCOME_DESIGN.height),
     title: typeof raw.title === "string" ? raw.title.slice(0, 120) : defaultImageConfig.title,
     subtitle: typeof raw.subtitle === "string" ? raw.subtitle.slice(0, 180) : defaultImageConfig.subtitle,
-    titleX: number(raw.titleX, defaultImageConfig.titleX, 0, 900),
-    titleY: number(raw.titleY, defaultImageConfig.titleY, 0, 480),
-    subtitleX: number(raw.subtitleX, defaultImageConfig.subtitleX, 0, 900),
-    subtitleY: number(raw.subtitleY, defaultImageConfig.subtitleY, 0, 480),
+    titleX: number(raw.titleX, defaultImageConfig.titleX, 0, WELCOME_DESIGN.width),
+    titleY: number(raw.titleY, defaultImageConfig.titleY, 0, WELCOME_DESIGN.height),
+    subtitleX: number(raw.subtitleX, defaultImageConfig.subtitleX, 0, WELCOME_DESIGN.width),
+    subtitleY: number(raw.subtitleY, defaultImageConfig.subtitleY, 0, WELCOME_DESIGN.height),
     titleSize: number(raw.titleSize, defaultImageConfig.titleSize, 12, 96),
     subtitleSize: number(raw.subtitleSize, defaultImageConfig.subtitleSize, 10, 72),
     titleColor: color(raw.titleColor, defaultImageConfig.titleColor),
@@ -101,17 +101,10 @@ export function renderWelcomeTemplate(template: string, values: Record<string, s
   return template.replace(/\{(user|username|displayName|server|count|memberCount|userId|userAvatar|serverIcon)\}/g, (token) => values[token.slice(1, -1)] ?? token);
 }
 
-export const welcomePreviewValues: Record<string, string> = {
-  user: "Новый участник",
-  username: "new_user",
-  displayName: "Новый участник",
-  server: "Ваш сервер",
-  count: "123",
-  memberCount: "123",
-  userId: "000000000000000000",
-  userAvatar: "",
-  serverIcon: "",
-};
+export const welcomePreviewValues: Record<string, string> = welcomeValues({
+  name: "Новый участник", username: "new_user", userId: "000000000000000000",
+  server: "Ваш сервер", count: 123, avatar: "",
+});
 
 export function welcomeValues(input: { name: string; username?: string; userId?: string; server: string; count: number; avatar: string }): Record<string, string> {
   return {

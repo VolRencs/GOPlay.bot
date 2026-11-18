@@ -22,7 +22,7 @@ export function AutoroleSettings() {
   const roles = resources?.roles ?? [];
   return (
     <section className="card settings-card">
-      <CardHeader title="Автороль при входе" muted="Роль, которую бот выдаёт участнику сразу после присоединения к серверу." action={<SaveButton saving={saving} disabled={saving || (value.enabled && !value.roleId)} onClick={saveNow} />} />
+      <CardHeader title="Автороль при входе" muted="Роль, которую бот выдаёт участнику сразу после присоединения к серверу." action={<SaveButton saving={saving} disabled={value.enabled && !value.roleId} onClick={saveNow} />} />
       <label className="check-row">
         <input type="checkbox" checked={value.enabled} onChange={e => setValue({ ...value, enabled: e.target.checked })} disabled={saving} />
         <span>Выдавать роль при входе</span>

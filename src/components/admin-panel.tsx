@@ -82,9 +82,9 @@ export function AdminPanel() {
             {data.guilds.length > 0 ? (
               <div className="template-list">
                 {data.guilds.map(g => (
-                  <TemplateRow key={g.id} actions={<>
+                  <TemplateRow key={g.id} actions={
                     <button type="button" className="btn danger" disabled={busy} onClick={() => setLeaveTarget(g)}><LogOut size={16}/>Выйти с сервера</button>
-                  </>}>
+                  }>
                     <strong>{g.name}</strong>
                     <p className="muted">{formatNumber(g.messages)} сообщений · {g.panels} панелей · {g.events} событий · ID {g.id}</p>
                   </TemplateRow>

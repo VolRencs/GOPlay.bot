@@ -23,17 +23,14 @@ function text(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() || undefined : undefined;
 }
 
-function mediaUrl(value: unknown): string | undefined {
+function innerText(value: unknown, key: "url" | "text"): string | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const entry = value as Record<string, unknown>;
-  return typeof entry.url === "string" ? entry.url.trim() || undefined : undefined;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "string" ? field.trim() || undefined : undefined;
 }
 
-function footerText(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const entry = value as Record<string, unknown>;
-  return typeof entry.text === "string" ? entry.text.trim() || undefined : undefined;
-}
+const mediaUrl = (value: unknown) => innerText(value, "url");
+const footerText = (value: unknown) => innerText(value, "text");
 
 function cleanEmbedFields(value: unknown): { fields: EmbedField[]; halfFilled: boolean } {
   const raw = Array.isArray(value) ? value : [];

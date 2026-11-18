@@ -17,11 +17,8 @@ export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) 
     return jsonError("Не удалось связаться с Discord.", 502);
   }
 
-  let fileErrors: string[] = [];
-  if (wipe) {
-    wipeGuildData(guildId);
-    fileErrors = await deleteGuildFiles(guildId);
-  }
+  if (wipe) wipeGuildData(guildId);
+  const fileErrors = wipe ? await deleteGuildFiles(guildId) : [];
 
   return NextResponse.json({
     ok: true,

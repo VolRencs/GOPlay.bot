@@ -70,13 +70,12 @@ const RETRY_DELAY = 30_000;
 const retryTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function enqueueLog(channelId: string, embed: EmbedBuilder) {
-  const list = queues.get(channelId) ?? [];
+  const list = queues.getOrInsertComputed(channelId, () => []);
   if (list.length >= MAX_QUEUE) {
     const dropped = list.splice(0, list.length - MAX_QUEUE + 1);
     logger.error("[LOG] Очередь логов переполнена, старые записи отброшены.", channelId, dropped.length);
   }
   list.push(embed);
-  queues.set(channelId, list);
   void drainChannel(channelId);
 }
 
@@ -130,9 +129,7 @@ async function drainChannel(channelId: string) {
           }
           if (isEmbedLimitError(error)) {
             if (batch.length > 1) {
-              const list = queues.get(channelId) ?? [];
-              list.unshift(...batch);
-              queues.set(channelId, list);
+              queues.getOrInsertComputed(channelId, () => []).unshift(...batch);
               maxEmbeds = Math.max(1, Math.floor(batch.length / 2));
               maxChars = Math.max(1, Math.floor(maxChars / 2));
               logger.warn("[LOG] Discord отклонил пакет embed'ов, уменьшаю размер.", channelId, batch.length, maxEmbeds);
@@ -154,9 +151,7 @@ async function drainChannel(channelId: string) {
       }
       if (retrySmaller) continue;
       if (!sent && !permanent) {
-        const list = queues.get(channelId) ?? [];
-        list.unshift(...batch);
-        queues.set(channelId, list);
+        queues.getOrInsertComputed(channelId, () => []).unshift(...batch);
         requeued = true;
         break;
       }

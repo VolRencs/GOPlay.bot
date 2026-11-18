@@ -9,23 +9,9 @@ export type GuildIdRow = { id: string };
 export type CountRow = { count: number };
 export type DataVersionRow = { data_version: number };
 
-export type AutomodRuleCacheRow = {
-  kind: RuleKind;
-  action_json: string;
-  threshold_json: string;
-  window_seconds: number;
-  escalation: number;
-};
-
-export type SecuritySettingsReadRow = {
-  ignored_role_ids_json: string;
-  protected_channel_id: string | null;
-};
-
-export type LoggingSettingsReadRow = {
-  channel_id: string | null;
-  categories_json: string;
-};
+export type AutomodRuleCacheRow = Omit<AutomodRuleDomain, "kind"> & { kind: RuleKind };
+export type SecuritySettingsReadRow = Pick<GuildSecuritySettingsRow, "ignored_role_ids_json" | "protected_channel_id">;
+export type LoggingSettingsReadRow = Pick<LoggingSettingsRow, "channel_id" | "categories_json">;
 
 export type TempChannelRow = {
   id: number;
@@ -115,7 +101,6 @@ export type AppealExistingRow = { id: number; number: number; status: AppealStat
 export type AppealCounterRow = { appeal_counter: number };
 export type WarnRow = { reason: string; created_at: number };
 export type EventNextSeriesRow = { id: string };
-export type EventCountsRow = { joined: number; waitlist: number };
 export type EventNextWaitlistedRow = { user_id: string };
 export type ReminderDueRow = { id: number; event_id: string };
 export type EventGuildParticipantRow = { eventId: string; userId: string; joinedAt: number; waitlist: number };

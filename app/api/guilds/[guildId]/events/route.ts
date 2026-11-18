@@ -64,7 +64,7 @@ async function syncDiscord(current: EventRow, channelId: string, embed: EventEmb
 
 export const GET = guildRoute(async (_, { guildId }) => {
   const events = listEvents(guildId);
-  const ids = [...new Set(events.flatMap(view => view.participants.map(p => p.userId)))];
+  const ids = events.flatMap(view => view.participants.map(p => p.userId));
   const names = await guildMemberNamesFor(guildId, ids).catch(() => new Map<string, string>());
   return NextResponse.json<EventListDto>({ events: events.map(view => ({ ...view, participants: view.participants.map(p => ({ ...p, name: names.get(p.userId) ?? null })) })) });
 });
@@ -191,8 +191,9 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
     }
     if (token && event) {
       const counts = eventCounts(event.id);
-      const embed = renderEventEmbed(lang, renderableOf(event), parseEventEmbed(event.embed_json), counts);
-      const buttons = renderEventButtons(renderableOf(event), parseEventButtons(event.buttons_json), counts);
+      const renderable = renderableOf(event);
+      const embed = renderEventEmbed(lang, renderable, parseEventEmbed(event.embed_json), counts);
+      const buttons = renderEventButtons(renderable, parseEventButtons(event.buttons_json), counts);
       await syncDiscord(event, event.channel_id, embed, buttons, []);
     }
     recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Участник ${userRef(participant)} удалён из события${result.promotedUserId ? `, ${userRef(result.promotedUserId)} переведён из очереди` : ""}`);
@@ -200,15 +201,14 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   }
   const removed = deleteEvent(guildId, id);
   if (!removed) return jsonError("Событие не найдено.", 404);
+  after(() => cleanupUnusedEventImages(guildId));
   if (token && removed.messageId) {
     const response = await discordFetch(`/channels/${removed.channelId}/messages/${removed.messageId}`, { method: "DELETE" }).catch(() => null);
     if (!response || (!response.ok && response.status !== 404)) {
-      after(() => cleanupUnusedEventImages(guildId));
       recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Событие «${removed.embed.title ?? "без названия"}» удалено, сообщение в Discord не удалено`);
       return NextResponse.json({ ok: true, warning: "Событие удалено, но сообщение в Discord удалить не удалось." });
     }
   }
-  after(() => cleanupUnusedEventImages(guildId));
   recordDashboardChange(guildId, user, AUDIT_SECTION.events, `Событие «${removed.embed.title ?? "без названия"}» удалено`);
   return NextResponse.json({ ok: true });
 });

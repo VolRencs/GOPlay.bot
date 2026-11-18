@@ -45,7 +45,7 @@ export async function apiSend<T>(url: string, init: RequestInit, failMessage: st
   return { ok: true, data: await response.json().catch(() => ({})) as T };
 }
 
-export function apiUpload<T>(url: string, body: FormData, failMessage: string, onProgress?: (progress: UploadProgress) => void, signal?: AbortSignal): Promise<ApiResult<T>> {
+export function apiUpload<T>(url: string, body: FormData, failMessage: string, onProgress?: (progress: UploadProgress) => void): Promise<ApiResult<T>> {
   return new Promise(resolve => {
     const xhr = new XMLHttpRequest();
     let settled = false;
@@ -55,7 +55,6 @@ export function apiUpload<T>(url: string, body: FormData, failMessage: string, o
       settled = true;
       resolve(result);
     };
-    if (signal?.aborted) { finish({ ok: false, error: "Загрузка отменена." }); return; }
     xhr.open("POST", url);
     xhr.responseType = "text";
     xhr.upload.onprogress = event => {
@@ -76,22 +75,10 @@ export function apiUpload<T>(url: string, body: FormData, failMessage: string, o
       }
     };
     xhr.onerror = () => finish({ ok: false, error: "Нет соединения с сервером." });
-    xhr.onabort = () => finish({ ok: false, error: "Загрузка отменена." });
-    if (signal) signal.addEventListener("abort", () => xhr.abort(), { once: true });
     xhr.send(body);
   });
 }
 
 export function apiJson<T>(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body: unknown, failMessage: string): Promise<ApiResult<T>> {
   return apiSend<T>(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }, failMessage);
-}
-
-export async function apiMutate(url: string, init: RequestInit, failMessage: string): Promise<ApiResult<undefined>> {
-  const result = await apiSend<unknown>(url, init, failMessage);
-  return result.ok ? { ok: true, data: undefined } : result;
-}
-
-export async function apiJsonMutate(url: string, method: "POST" | "PUT" | "PATCH" | "DELETE", body: unknown, failMessage: string): Promise<ApiResult<undefined>> {
-  const result = await apiJson<unknown>(url, method, body, failMessage);
-  return result.ok ? { ok: true, data: undefined } : result;
 }

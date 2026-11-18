@@ -6,7 +6,7 @@ import { welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
 import { parseImageConfig } from "#lib/welcome.ts";
 import { WelcomePreview } from "./WelcomePreview.tsx";
 import { CardHeader, SectionError, SectionLoading, channelOptions, ColorRow, confirmAction, NumberField, SaveButton, Select } from "./ui.tsx";
-import { apiMutate, apiUpload, type UploadProgress } from "./api.ts";
+import { apiSend, apiUpload, type UploadProgress } from "./api.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 import type { Channel } from "./types.ts";
@@ -84,7 +84,7 @@ export function WelcomeSettings() {
     if (uploadState || removing) return;
     if (!(await confirmAction("Удалить фон картинки приветствия?", "Удалить"))) return;
     setRemoving(true);
-    const sent = await apiMutate(endpoint, { method: "DELETE" }, "Не удалось удалить фон.");
+    const sent = await apiSend<unknown>(endpoint, { method: "DELETE" }, "Не удалось удалить фон.");
     setRemoving(false);
     if (!sent.ok) { fail(sent.error); return; }
     clearLocalPreview();

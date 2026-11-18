@@ -44,7 +44,6 @@ export const rolesQueries = {
   panelOptions: read<{ role_id: string }>("SELECT role_id FROM self_role_options WHERE panel_id=?"),
   insert: write("INSERT INTO self_role_panels(guild_id,channel_id,message_id,title,style,role_limit,role_mode,notify_enabled,notify_template,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)"),
   update: write("UPDATE self_role_panels SET channel_id=?,message_id=?,title=?,style=?,role_limit=?,role_mode=?,notify_enabled=?,notify_template=?,updated_at=? WHERE id=? AND guild_id=?"),
-  rollbackDelete: write("DELETE FROM self_role_panels WHERE id=?"),
   delete: write("DELETE FROM self_role_panels WHERE id=? AND guild_id=?"),
   optionsDelete: write("DELETE FROM self_role_options WHERE panel_id=?"),
   optionInsert: write("INSERT INTO self_role_options(panel_id,role_id,label,emoji,button_color) VALUES(?,?,?,?,?)"),

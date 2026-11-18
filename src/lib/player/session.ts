@@ -301,8 +301,7 @@ function launch(s: Session, track: Track, offsetSec: number, forceRefresh = fals
   }
   if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
     count("music.limit_wait");
-    s.streamWaitSince ??= Date.now();
-    const waitSince = s.streamWaitSince;
+    const waitSince = (s.streamWaitSince ??= Date.now());
     const gen = s.generation;
     const retry = () => {
       if (sessions.get(s.guildId) !== s || s.generation !== gen || s.current !== track) return;

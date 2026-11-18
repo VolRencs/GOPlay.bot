@@ -78,7 +78,7 @@ export function registerLoggingEvents(client: Client) {
     }
   });
 
-  const editPending = new Map<string, { before: string; after: string; timer: ReturnType<typeof setTimeout> }>();
+  const editPending = new Map<string, { before: string; timer: ReturnType<typeof setTimeout> }>();
   const EDIT_DEBOUNCE_MS = 2_000;
   const code = (value: string) => `\`\`\`${value.replace(/```/g, "ˋˋˋ") || "—"}\`\`\``;
   on(client, Events.MessageUpdate, "MESSAGE_UPDATE", (oldMessage, newMessage) => {
@@ -100,7 +100,7 @@ export function registerLoggingEvents(client: Client) {
       editPending.delete(key);
       guard("EDIT_LOG", () => fireEditLog(guildId, authorId, channelId, beforeText, after));
     }, EDIT_DEBOUNCE_MS).unref();
-    editPending.set(key, { before: beforeText, after, timer });
+    editPending.set(key, { before: beforeText, timer });
   });
 
   function fireEditLog(guildId: string, authorId: string, channelId: string, before: string, after: string) {
