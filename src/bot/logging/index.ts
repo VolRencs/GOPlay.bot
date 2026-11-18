@@ -28,6 +28,16 @@ const settingsCache = ttlCacheSync<string, { channelId: string | null; categorie
   }
 }, SETTINGS_TTL);
 
+export function loggingCategoryEnabled(guildId: string, type: string): boolean {
+  const settings = settingsCache.get(guildId);
+  return Boolean(settings.channelId && (settings.categories[type] ?? true));
+}
+
+export function messageLoggingEnabled(guildId: string): boolean {
+  const settings = settingsCache.get(guildId);
+  return Boolean(settings.channelId && (settings.categories.message_delete !== false || settings.categories.message_edit !== false));
+}
+
 const queues = new Map<string, EmbedBuilder[]>();
 const draining = new Set<string>();
 const MAX_ATTEMPTS = 3;

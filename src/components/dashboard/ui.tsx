@@ -489,7 +489,9 @@ export function ModalShell({ labelledBy, onClose, children }: { labelledBy: stri
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); close(); return; }
       if (event.key !== "Tab") return;
-      const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>("button") ?? [])];
+      const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [])];
       if (!focusable.length) return;
       const first = focusable[0]!, last = focusable[focusable.length - 1]!;
       if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }

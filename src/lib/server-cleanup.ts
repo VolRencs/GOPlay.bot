@@ -8,8 +8,6 @@ import type { CleanupTarget } from "./labels.ts";
 
 const statsDeletes = [stmt.cleanupStatsMetrics, stmt.cleanupStatsChannelStats, stmt.cleanupStatsUserStats, stmt.cleanupStatsHourlyMessages];
 
-const WIPE_TARGETS: CleanupTarget[] = ["audit", "appeals", "warns", "stats", "events", "levels"];
-
 export function runCleanupTarget(guildId: string, target: CleanupTarget): number {
   if (target === "audit") return withTransaction(() => Number(stmt.cleanupAudit.run(guildId).changes));
   if (target === "appeals") return withTransaction(() => {
@@ -34,7 +32,8 @@ function purgeMessageCache(guildId: string) {
 
 export function wipeGuildData(guildId: string) {
   withTransaction(() => {
-    for (const target of WIPE_TARGETS) runCleanupTarget(guildId, target);
+    // events, music_settings and message_cache have no guild FK; everything else cascades from guilds.
+    deleteEventsByGuild(guildId);
     invalidateMusicSettings(guildId);
     stmt.cleanupMusic.run(guildId);
     purgeMessageCache(guildId);

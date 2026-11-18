@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server.js";
-import { discordFetch, guildMemberNamesFor, guildRoute } from "#lib/guild-access.ts";
+import { guildMemberNamesFor, guildRoute } from "#lib/guild-access.ts";
 import { statsQueries } from "#db/queries.ts";
-import { ttlCacheAsync } from "#lib/cache.ts";
+import { guildResourceSnapshot } from "#lib/guild-resources.ts";
 import { moderationLabel } from "#lib/labels.ts";
 import { guildLang } from "#lib/i18n/bot.ts";
 import { DAY_MS } from "#lib/constants.ts";
@@ -9,17 +9,6 @@ import { formatDay } from "#lib/format.ts";
 import type { StatsGet } from "#contracts/dashboard.ts";
 
 const iso = (at: number) => new Date(at).toISOString().slice(0, 10);
-
-const discord = async (path: string) => {
-  const response = await discordFetch(path);
-  if (!response.ok) throw new Error(String(response.status));
-  return response.json();
-};
-
-const channelNames = ttlCacheAsync<string, Record<string, string>>(async guildId => {
-  const channels = await discord(`/guilds/${guildId}/channels`) as { id: string; name: string }[];
-  return Object.fromEntries(channels.map(channel => [channel.id, channel.name]));
-}, DAY_MS, true);
 
 export const GET = guildRoute(async (request, { guildId }) => {
   const lang = guildLang(guildId);
@@ -29,10 +18,8 @@ export const GET = guildRoute(async (request, { guildId }) => {
   const nowMs = Date.now();
   const cutoff = iso(nowMs - windowDays * DAY_MS);
 
-  const dailyRows = statsQueries.daily.all(guildId, cutoff);
-  const byDay = new Map(dailyRows.map(row => [row.day, row]));
-  const days = period === "24h" ? [iso(nowMs)] : Array.from({ length: windowDays }, (_, i) => iso(nowMs - (windowDays - 1 - i) * DAY_MS));
-
+  const days = period === "24h" ? [] : Array.from({ length: windowDays }, (_, i) => iso(nowMs - (windowDays - 1 - i) * DAY_MS));
+  const byDay = new Map((days.length ? statsQueries.daily.all(guildId, cutoff) : []).map(row => [row.day, row]));
   const totals = days.reduce((sum, day) => {
     const row = byDay.get(day);
     return row ? { joins: sum.joins + row.joins, leaves: sum.leaves + row.leaves, messages: sum.messages + row.messages, moderation: sum.moderation + row.moderation } : sum;
@@ -64,11 +51,12 @@ export const GET = guildRoute(async (request, { guildId }) => {
   }
 
   const topUserRows = statsQueries.topUsers.all(guildId, cutoff);
-  const [names, memberNames] = await Promise.all([
-    channelNames.get(guildId).catch(() => ({} as Record<string, string>)),
+  const [snapshot, memberNames] = await Promise.all([
+    guildResourceSnapshot(guildId).catch(() => null),
     guildMemberNamesFor(guildId, topUserRows.map(row => row.id)).catch(() => new Map<string, string>()),
   ]);
-  const topChannels = statsQueries.topChannels.all(guildId, cutoff).map(row => ({ ...row, name: names[row.id] ?? "Неизвестный канал" }));
+  const channelNames = new Map(snapshot?.channels.map(channel => [channel.id, channel.name]) ?? []);
+  const topChannels = statsQueries.topChannels.all(guildId, cutoff).map(row => ({ ...row, name: channelNames.get(row.id) ?? "Неизвестный канал" }));
   const topUsers = topUserRows.map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" }));
 
   const peakHour = statsQueries.peakHour.get(guildId, cutoff) ?? null;

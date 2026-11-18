@@ -44,13 +44,19 @@ export function flushLevels(): LevelUp[] {
   const levelUps: LevelUp[] = [];
   try {
     withTransaction(() => {
-      for (const entry of entries) {
-        const settings = settingsFor(entry.guildId);
-        const row = stmt.levelRow.get(entry.guildId, entry.userId);
-        const newXp = (row?.xp ?? 0) + entry.xp;
-        const newLevel = levelFromXp(newXp, settings.base_xp, settings.growth_percent);
-        stmt.levelUpsert.run({ guild_id: entry.guildId, user_id: entry.userId, xp: entry.xp, level: newLevel, messages: entry.messages, voice_seconds: entry.voiceSeconds, updated_at: Date.now() });
-        if (newLevel > (row?.level ?? 0)) levelUps.push({ guildId: entry.guildId, userId: entry.userId, level: newLevel });
+      for (const [guildId, guildEntries] of Map.groupBy(entries, entry => entry.guildId)) {
+        const settings = settingsFor(guildId);
+        const rows = new Map(
+          stmt.levelRowsFor.all(guildId, JSON.stringify([...new Set(guildEntries.map(entry => entry.userId))]))
+            .map(row => [row.user_id, row]),
+        );
+        for (const entry of guildEntries) {
+          const row = rows.get(entry.userId);
+          const newXp = (row?.xp ?? 0) + entry.xp;
+          const newLevel = levelFromXp(newXp, settings.base_xp, settings.growth_percent);
+          stmt.levelUpsert.run({ guild_id: entry.guildId, user_id: entry.userId, xp: entry.xp, level: newLevel, messages: entry.messages, voice_seconds: entry.voiceSeconds, updated_at: Date.now() });
+          if (newLevel > (row?.level ?? 0)) levelUps.push({ guildId: entry.guildId, userId: entry.userId, level: newLevel });
+        }
       }
     });
   } catch (error) {
@@ -141,11 +147,16 @@ async function notifyLevelUp(client: Client, guild: Guild, settings: LevelSettin
 }
 
 async function applyLevelUps(client: Client, levelUps: LevelUp[]): Promise<void> {
+  const rewardsByGuild = new Map<string, LevelReward[]>();
   for (const up of levelUps) {
     const guild = client.guilds.cache.get(up.guildId);
     if (!guild) continue;
     const settings = settingsFor(guild.id);
-    const rewards = levelRewardsFor(guild.id);
+    let rewards = rewardsByGuild.get(guild.id);
+    if (rewards === undefined) {
+      rewards = levelRewardsFor(guild.id);
+      rewardsByGuild.set(guild.id, rewards);
+    }
     if (rewards.length) guard("LEVELS:ROLES", () => applyRewards(guild, up.userId, up.level, rewards));
     await notifyLevelUp(client, guild, settings, up);
   }

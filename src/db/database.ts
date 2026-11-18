@@ -31,6 +31,12 @@ for (const name of readdirSync(migrations).filter((file) => /^\d+_.+\.sql$/.test
     }
   }
 }
+// Idempotent indexes for queries added after the baseline migration.
+db.exec(`
+CREATE INDEX IF NOT EXISTS idx_events_guild_scheduled ON events(guild_id, scheduled_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dashboard_audit_section ON dashboard_audit(guild_id, section, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(guild_id, status, created_at DESC);
+`);
 export function closeDatabase() { db.close(); }
 
 // Nested calls use savepoints; top-level BEGIN IMMEDIATE avoids lock-upgrade deadlocks.

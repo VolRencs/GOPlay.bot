@@ -104,6 +104,7 @@ export const stmt = {
     ["guild_id"],
   ),
   levelRow: read<MemberLevelRow>("SELECT xp,level,messages,voice_seconds FROM member_levels WHERE guild_id=? AND user_id=?"),
+  levelRowsFor: read<MemberLevelRow>("SELECT * FROM member_levels WHERE guild_id=? AND user_id IN (SELECT value FROM json_each(?))"),
   levelUpsert: upsert<MemberLevelRow>(
     "member_levels",
     ["guild_id", "user_id", "xp", "level", "messages", "voice_seconds", "updated_at"],

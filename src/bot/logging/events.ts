@@ -5,8 +5,7 @@ import { detachEventMessage } from "../../lib/events.ts";
 import { forgetMessage, messageContent, rememberMessage } from "../../db/message-cache.ts";
 import { guard } from "../../lib/errors.ts";
 import { recordPunishmentAndOffer } from "../moderation/index.ts";
-import { auditActor, auditFind, isBotAction, logAction } from "./index.ts";
-import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
+import { auditActor, auditFind, isBotAction, logAction, loggingCategoryEnabled } from "./index.ts";import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 import { channelRef } from "../../lib/format.ts";
 import { count } from "../../lib/perf.ts";
@@ -47,9 +46,10 @@ export function registerLoggingEvents(client: Client) {
       guard("GOODBYE", () => (member.partial ? member.fetch().then(full => sendMemberEvent(full, "goodbye")).catch(() => null) : sendMemberEvent(member, "goodbye")));
     }
     if (kickedByBot) return;
-    if (!recentBans.delete(banKey)) {
+    if (!recentBans.delete(banKey) && loggingCategoryEnabled(member.guild.id, "member_leave")) {
       logAction({ guildId: member.guild.id, type: "member_leave", targetId: member.id, details: t("leaveDetails") });
     }
+    if (!loggingCategoryEnabled(member.guild.id, "member_kick")) return;
     void auditFind(member.guild, AuditLogEvent.MemberKick, member.id, { priority: true, retries: 2, retryDelay: 800 }).then(entry => {
       if (entry) logAction({ guildId: member.guild.id, type: "member_kick", targetId: member.id, moderatorId: entry.executor?.id, details: t("reason", { reason: entry.reason ?? "—" }) });
     }, () => null);
@@ -81,11 +81,14 @@ export function registerLoggingEvents(client: Client) {
   on(client, Events.MessageUpdate, "MESSAGE_UPDATE", (oldMessage, newMessage) => {
     count("events.message_edit");
     if (!newMessage.guild || !newMessage.author || newMessage.author.bot) return;
+    const logEdit = loggingCategoryEnabled(newMessage.guild.id, "message_edit");
+    if (!logEdit && !loggingCategoryEnabled(newMessage.guild.id, "message_delete")) return;
     const key = `${newMessage.guildId}:${newMessage.channelId}:${newMessage.id}`;
     const after = newMessage.content ?? "";
     const before = messageContent(newMessage.id) ?? (oldMessage.partial ? "" : oldMessage.content);
     if (before === after) return;
     rememberMessage(newMessage.id, newMessage.guild.id, after);
+    if (!logEdit) return;
     const pending = editPending.get(key);
     if (pending) {
       clearTimeout(pending.timer);
@@ -105,6 +108,7 @@ export function registerLoggingEvents(client: Client) {
     count("events.message_delete");
     if (!message.guild) return;
     const guildId = message.guild.id;
+    const logDelete = loggingCategoryEnabled(guildId, "message_delete");
     const { deleted, content: cachedContent } = withTransaction(() => {
       const deleted = stmt.panelDelete.run(guildId, message.channelId, message.id);
       stmt.embedDetach.run(Date.now(), guildId, message.channelId, message.id);
@@ -112,6 +116,7 @@ export function registerLoggingEvents(client: Client) {
       return { deleted, content: forgetMessage(message.id) };
     });
     if (deleted.changes > 0) invalidateReactionPanels(guildId);
+    if (!logDelete) return;
     const lang = guildLang(message.guild.id);
     const t = trFor(logTr, lang);
     const authorId = message.author?.id ?? t("unknownExecutor");
@@ -136,6 +141,7 @@ export function registerLoggingEvents(client: Client) {
 
   on(client, Events.GuildBanRemove, "GUILD_BAN_REMOVE", ban => {
     recentBans.delete(`${ban.guild.id}:${ban.user.id}`);
+    if (!loggingCategoryEnabled(ban.guild.id, "member_unban")) return;
     const t = guildTr(logTr, ban.guild.id);
     void auditFind(ban.guild, AuditLogEvent.MemberBanRemove, ban.user.id, { priority: true, retries: 1, retryDelay: 800 }).then(entry => {
       logAction({ guildId: ban.guild.id, type: "member_unban", targetId: ban.user.id, moderatorId: entry?.executor?.id, details: t("reason", { reason: entry?.reason ?? t("notSpecified") }) });
@@ -143,6 +149,7 @@ export function registerLoggingEvents(client: Client) {
   });
 
   async function logChannelEvent(channel: GuildBasedChannel, type: AuditLogEvent, kind: "channel_create" | "channel_delete", key: "channelCreated" | "channelDeleted") {
+    if (!loggingCategoryEnabled(channel.guild.id, kind)) return;
     const actor = await auditActor(channel.guild, type, channel.id);
     const t = guildTr(logTr, channel.guild.id);
     logAction({ guildId: channel.guild.id, type: kind, targetId: channel.id, moderatorId: actor, details: t(key, { name: channel.name }) });

@@ -70,16 +70,7 @@ export function useApiResource<T>(enabled: boolean, load: (signal: AbortSignal) 
   return { data, setData, loading, error, reload };
 }
 
-export function useApiLoad<T>(
-  options: {
-    request: (signal: AbortSignal) => Promise<ApiResult<T>>;
-    onData: (data: T) => void;
-    onError?: (error: string) => void;
-  },
-  deps: readonly unknown[],
-) {
-  return useAsyncFetch(options, deps);
-}
+export { useAsyncFetch as useApiLoad };
 
 export function usePanelAction(options: { onDone: PanelNotify; onError: PanelFail }) {
   const { busy, run: runAction } = useAsyncAction();

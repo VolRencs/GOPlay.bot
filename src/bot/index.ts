@@ -10,7 +10,7 @@ import { purgeUserMessages } from "./moderation/index.ts";
 import { autoroleSettingsFor } from "../lib/autorole.ts";
 import { rememberMessage } from "../db/message-cache.ts";
 import { addMessage, addMetric } from "./metrics.ts";
-import { initLogging, logAction, markBotAction } from "./logging/index.ts";
+import { initLogging, logAction, markBotAction, messageLoggingEnabled } from "./logging/index.ts";
 import { cachedRules, purgeConfigCaches } from "./config-cache.ts";
 import { registerTempChannels, cleanupTempChannels } from "./tempchannels/index.ts";
 import { registerAppeals } from "./appeals/index.ts";
@@ -31,7 +31,7 @@ import { on, once } from "./events.ts";
 
 const token = process.env.DISCORD_TOKEN; if (!token) throw new Error("DISCORD_TOKEN is required");
 process.on("unhandledRejection", (reason) => { logger.error("[PROCESS] Unhandled rejection:", reason); });
-process.on("uncaughtException", (error) => { logger.error("[PROCESS] Uncaught exception:", error); });
+process.on("uncaughtException", (error) => { logger.error("[PROCESS] Uncaught exception:", error); process.exit(1); });
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildModeration, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildMessageReactions, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.MessageContent], partials: [Partials.Message, Partials.Reaction, Partials.Channel, Partials.User, Partials.GuildMember], rest: { timeout: 10_000 } });
 initLogging(client);
 registerInteractions(client);
@@ -81,7 +81,7 @@ on(client, Events.GuildMemberAdd, "MEMBER_JOIN", member => {
 on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
   count("events.message_create");
   if (!message.guild || message.author.bot) return;
-  rememberMessage(message.id, message.guild.id, message.content);
+  if (messageLoggingEnabled(message.guild.id)) rememberMessage(message.id, message.guild.id, message.content);
   addMessage(message.guild.id, message.channel.id, message.author.id);
   const cache = cachedRules(message.guild.id);
   if (!cache.protectedChannelId && cache.rules.length === 0) return;
