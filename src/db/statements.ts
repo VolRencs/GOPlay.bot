@@ -6,7 +6,7 @@ import type {
   EventNextSeriesRow, EventNextWaitlistedRow, GuildDailyChannelStatRow, GuildDailyMetricRow,
   GuildDailyUserStatRow, GuildHourlyMessageRow, GuildIdRow, GuildNameRow,
   LevelRankRow, LevelSettingsRow, LevelTopRow, LoggingSettingsReadRow, MemberLevelRow,
-  MessageCacheRow, MessageContentRow, MusicSessionReadRow, MusicSessionRow, MusicSettingsRow,
+  MessageCacheRow, MessageContentRow, MusicSessionRow, MusicSettingsRow,
   ReactionPanelRow, ReminderDueRow, SecuritySettingsReadRow, SelfRoleOptionEmojiRow,
   SelfRolePanelReadRow, TempChannelRow, WarnRow,
 } from "./rows.ts";
@@ -96,7 +96,7 @@ export const stmt = {
     ["guild_id"],
   ),
   musicSessionDelete: write("DELETE FROM music_sessions WHERE guild_id=?"),
-  musicSessionAll: read<MusicSessionReadRow>("SELECT guild_id,channel_id,message_id FROM music_sessions"),
+  musicSessionAll: read<MusicSessionRow>("SELECT guild_id,channel_id,message_id FROM music_sessions"),
   levelSettings: read<LevelSettingsRow>("SELECT * FROM level_settings WHERE guild_id=?"),
   levelSettingsUpsert: upsert<LevelSettingsRow>(
     "level_settings",

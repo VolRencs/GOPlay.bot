@@ -45,11 +45,3 @@ export function toDto(row: Omit<TempPresetRow, "guild_id" | "updated_at">): Temp
     },
   };
 }
-
-export function fromDto(preset: TempPresetInput): TempPresetInput {
-  return {
-    name: preset.name,
-    triggerChannelIds: [...preset.triggerChannelIds],
-    config: { ...preset.config, canRename: Boolean(preset.config.canRename), canManageAccess: Boolean(preset.config.canManageAccess), canClose: Boolean(preset.config.canClose) },
-  };
-}

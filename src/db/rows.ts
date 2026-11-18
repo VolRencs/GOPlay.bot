@@ -114,7 +114,6 @@ export type AppealRow = {
 export type AppealExistingRow = { id: number; number: number; status: AppealStatus };
 export type AppealCounterRow = { appeal_counter: number };
 export type WarnRow = { reason: string; created_at: number };
-export type MusicSessionReadRow = Pick<MusicSessionRow, "guild_id" | "channel_id" | "message_id">;
 export type EventNextSeriesRow = { id: string };
 export type EventCountsRow = { joined: number; waitlist: number };
 export type EventNextWaitlistedRow = { user_id: string };

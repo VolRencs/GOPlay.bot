@@ -109,7 +109,7 @@ function tickVoice(client: Client): void {
     if (!member) { voiceSessions.delete(key); continue; }
     if (guild.afkChannelId === channel.id) continue;
     const voice = member.voice;
-    if (voice && (voice.selfMute || voice.selfDeaf || voice.serverMute || voice.serverDeaf)) continue;
+    if (voice.selfMute || voice.selfDeaf || voice.serverMute || voice.serverDeaf) continue;
     if (channel.members.filter(entry => !entry.user.bot).size < 2) continue;
     const settings = settingsFor(guild.id);
     if (!settings.enabled || settings.xp_per_voice_minute <= 0) continue;
@@ -140,7 +140,7 @@ async function notifyLevelUp(client: Client, guild: Guild, settings: LevelSettin
     void client.users.send(up.userId, text).catch(() => null);
     return;
   }
-  if (settings.notify_mode === "channel" && settings.notify_channel_id) {
+  if (settings.notify_channel_id) {
     const channel = await resolveChannel(settings.notify_channel_id);
     if (channel) await channel.send(text).catch(error => logger.warn("[LEVELS] Не удалось отправить уведомление об уровне", guild.id, error));
   }

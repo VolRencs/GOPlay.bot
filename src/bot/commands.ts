@@ -46,7 +46,7 @@ const handlers: Record<string, CommandHandler> = {
   help: async i => {
     const cmdLang = guildLang(i.guildId ?? "");
     const tC = guildTr(commandsTr, i.guildId ?? "");
-    const lines = commands.map(c => tC("helpCommand", { name: c.name, desc: cmdLang === "en" ? commandDescriptionsEn[c.name] ?? c.description : c.description })).join("\n");
+    const lines = commands.map(c => tC("helpCommand", { name: c.name, desc: cmdLang === "en" ? commandDescriptionsEn[c.name]! : c.description })).join("\n");
     await i.reply({ embeds: [new EmbedBuilder().setTitle(tC("helpTitle")).setDescription(lines)], flags: MessageFlags.Ephemeral });
   },
   user: async i => {

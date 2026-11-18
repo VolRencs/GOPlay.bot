@@ -41,7 +41,7 @@ export const PUT = settingsPutRoute<MusicDto>({
       ok: true,
       value: {
         commandChannelId,
-        voiceChannelIds: [...new Set(ids)],
+        voiceChannelIds: ids,
         allowedRoleIds: [...new Set(roles)],
         leaveAfterSeconds,
         playlistsEnabled,

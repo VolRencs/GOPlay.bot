@@ -41,15 +41,15 @@ export function ServerStatistics() {
     null,
   );
 
+  if (error) return <SectionError message={error} onRetry={reload}/>;
+  if (loading) return <SectionLoading/>;
+
   const totals = data?.totals ?? { joins: 0, leaves: 0, messages: 0, moderation: 0 };
   const points = data?.points ?? [];
   const max = Math.max(1, ...points.map(p => p.messages));
   const avg = points.length ? Math.round(points.reduce((sum, p) => sum + p.messages, 0) / points.length) : 0;
   const periodLabel = PERIOD_LABELS[period];
   const balance = totals.joins - totals.leaves;
-
-  if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">
@@ -66,8 +66,8 @@ export function ServerStatistics() {
       </div>
       <article className="card chart-card">
         <CardHeader title="Активность сообщества" muted={period === "24h" ? "Сообщения по часам." : "Сообщения по дням."}
-          action={loading || !points.length ? null : <span className="chart-average-label">среднее {formatNumber(avg)}</span>}/>
-        {loading ? <p className="hint" role="status">Загружаем статистику…</p> : !points.length ? <p className="hint">Пока нет данных {periodLabel}.</p> : (
+          action={!points.length ? null : <span className="chart-average-label">среднее {formatNumber(avg)}</span>}/>
+        {!points.length ? <p className="hint">Пока нет данных {periodLabel}.</p> : (
           <div className="activity-chart" role="img" aria-label={`Активность сообщества ${periodLabel}: пик ${formatNumber(max)} сообщений, среднее ${formatNumber(avg)}.`}>
             <i className="chart-average" style={{ bottom: `${Math.min(97, (avg / max) * 100)}%` }}/>
             {points.map((p, index) => (

@@ -98,6 +98,7 @@ async function drainChannel(channelId: string) {
       let attempts = 0;
       let sent = false;
       let permanent = false;
+      let retrySmaller = false;
       while (true) {
         let channel: SendableChannels | null;
         try {
@@ -135,7 +136,8 @@ async function drainChannel(channelId: string) {
               maxEmbeds = Math.max(1, Math.floor(batch.length / 2));
               maxChars = Math.max(1, Math.floor(maxChars / 2));
               logger.warn("[LOG] Discord отклонил пакет embed'ов, уменьшаю размер.", channelId, batch.length, maxEmbeds);
-              continue;
+              retrySmaller = true;
+              break;
             }
             permanent = true;
             logger.error("[LOG] Discord отклонил embed, запись отброшена.", channelId, error);
@@ -150,6 +152,7 @@ async function drainChannel(channelId: string) {
           await sleep(1_000 * attempts);
         }
       }
+      if (retrySmaller) continue;
       if (!sent && !permanent) {
         const list = queues.get(channelId) ?? [];
         list.unshift(...batch);
@@ -233,6 +236,7 @@ async function drainAuditQueue() {
       if (!guild) { resolve(undefined); continue; }
       const started = performance.now();
       const logs = await guild.fetchAuditLogs({ type, limit: 5 }).catch(error => { auditFailures = logger.warnEvery(auditFailures, 20, "[AUDIT] Не удалось получить журнал аудита", guildId, error); return null; });
+      if (logs) auditFailures = 0;
       time("audit.rest", performance.now() - started);
       count("audit.lookups");
       const entry = logs?.entries.find(x => x.targetId === targetId && Date.now() - x.createdTimestamp < 15_000);

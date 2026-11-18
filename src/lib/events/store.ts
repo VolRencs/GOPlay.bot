@@ -198,7 +198,7 @@ export function updateEvent(guildId: string, id: string, input: EventInputDto): 
     if (input.status === "completed" && current.status !== "completed") {
       completedAt = now;
       if (!startedAt) startedAt = now;
-      statsJson = JSON.stringify(recordStats({ ...current, status: "completed", started_at: startedAt, max_participants: input.maxParticipants, created_at: current.created_at }, completedAt));
+      statsJson = JSON.stringify(recordStats({ id: current.id, started_at: startedAt, max_participants: input.maxParticipants, created_at: current.created_at }, completedAt));
     } else if (input.status !== "completed" && current.status === "completed") {
       completedAt = null;
       statsJson = null;
@@ -212,7 +212,7 @@ export function updateEvent(guildId: string, id: string, input: EventInputDto): 
   });
 }
 
-function recordStats(event: EventRow, completedAt: number): Record<string, unknown> {
+function recordStats(event: Pick<EventRow, "id" | "max_participants" | "created_at" | "started_at">, completedAt: number): Record<string, unknown> {
   const counts = eventCounts(event.id);
   return {
     registered: counts.joined + counts.waitlist,

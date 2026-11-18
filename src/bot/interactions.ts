@@ -30,12 +30,11 @@ async function handleRoleInteraction(i: ButtonInteraction | StringSelectMenuInte
 
 async function routeInteraction(i: Interaction) {
   try {
-    const cmdLang = guildLang(i.guildId ?? "");
     count("events.interaction");
-    if (await handleMusicCommand(i)) return;
-    if (await handleLevelCommand(i)) return;
     if (i.isChatInputCommand()) {
-      if (!await handleChatCommand(i)) await i.reply({ content: trModeration(cmdLang, "genericError"), flags: MessageFlags.Ephemeral }).catch(() => null);
+      if (await handleMusicCommand(i)) return;
+      if (await handleLevelCommand(i)) return;
+      if (!await handleChatCommand(i)) await i.reply({ content: trModeration(guildLang(i.guildId ?? ""), "genericError"), flags: MessageFlags.Ephemeral }).catch(() => null);
     }
     if (i.isButton() && i.customId.startsWith("role:")) {
       const [, id, roleId] = i.customId.split(":");

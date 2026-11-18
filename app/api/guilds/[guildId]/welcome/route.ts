@@ -76,11 +76,7 @@ export const PUT = settingsPutRoute<WelcomeDto>({
 export const DELETE = guildRoute(async (_request, { guildId, user }) => {
   const hadBackground = Boolean(welcomeState(guildId).state.backgroundPath);
   welcomeQueries.clearBackground.run(Date.now(), guildId);
-  try {
-    await deleteWelcomeBackgrounds(guildId);
-  } catch (error) {
-    logger.warn("[WELCOME] Не удалось удалить файлы фона", guildId, error);
-  }
+  await deleteWelcomeBackgrounds(guildId);
   if (hadBackground) recordDashboardChange(guildId, user, AUDIT_SECTION.welcome, "Удалён фон картинки приветствия.");
   return NextResponse.json({ ok: true, backgroundPath: null, removed: hadBackground });
 });
@@ -120,13 +116,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   }
   const welcomeInput = { ...welcomeDefaults, imageEnabled: true };
   welcomeQueries.backgroundUpsert.run({ ...fromDto(welcomeInput), guild_id: guildId, background_path: storedPath, updated_at: Date.now() });
-  const saved = welcomeState(guildId).state;
-  if (saved.backgroundPath !== storedPath || !saved.imageEnabled) {
-    logger.error("[WELCOME] Не удалось сохранить фон в базе", guildId, { backgroundPath: saved.backgroundPath, imageEnabled: saved.imageEnabled });
-    if (saved.backgroundPath !== storedPath) await unlink(path).catch(() => null);
-    return jsonError("Не удалось сохранить фон. Попробуйте ещё раз.", 500);
-  }
-  await deleteWelcomeBackgrounds(guildId, filename).catch(error => logger.warn("[WELCOME] Не удалось удалить старый фон", guildId, error));
+  await deleteWelcomeBackgrounds(guildId, filename);
   recordDashboardChange(guildId, user, AUDIT_SECTION.welcome, "Загружен новый фон картинки приветствия.");
   return NextResponse.json({ ok: true, backgroundPath: storedPath, imageEnabled: true });
 });

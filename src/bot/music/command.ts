@@ -96,7 +96,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
       const resolved = await resolveTracks(query, i.user.id, playlistLimit);
       time("music.resolve", performance.now() - resolveStart);
       limitedPlaylist = resolved.playlist && !playlistAllowed;
-      tracks = limitedPlaylist ? resolved.tracks.slice(0, 1) : resolved.tracks;
+      tracks = resolved.tracks;
       if (tracks.length === 0) {
         await i.editReply(t(resolved.error ? RESOLVE_ERROR_KEYS[resolved.error] : "invalidQuery"));
         leaveIfIdle(i.guildId);
@@ -107,26 +107,21 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     let added = 0;
     let firstTitle = "";
     for (const track of tracks.slice(0, Math.max(0, room))) {
-      track.requestedBy = i.user.id;
       if (enqueueTrack(i.guildId!, track)) { added++; if (!firstTitle) firstTitle = track.title; }
     }
     if (added === 0) { await i.editReply(t("queueFull", { max: String(MAX_QUEUE) })); leaveIfIdle(i.guildId); return true; }
 
     if (!hasCurrent(i.guildId!)) {
-      const started = playNext(i.guildId!);
-      if (started) {
-        if (fastPath) hydrateTrackMeta(started, i.guildId!);
-        await i.editReply(fastPath && !limitedPlaylist
-          ? t("launching")
-          : { content: limitedPlaylist ? t(playlistNotice, { title: firstTitle }) : t("nowPlaying", { title: started.title }), allowedMentions: NO_MENTIONS });
-        return true;
-      }
+      const started = playNext(i.guildId!)!;
+      if (fastPath) hydrateTrackMeta(started, i.guildId!);
+      await i.editReply(fastPath
+        ? t("launching")
+        : { content: limitedPlaylist ? t(playlistNotice, { title: firstTitle }) : t("nowPlaying", { title: started.title }), allowedMentions: NO_MENTIONS });
+      return true;
     }
     if (fastPath) {
       hydrateTrackMeta(tracks[0]!, i.guildId!);
-      await i.editReply(hasCurrent(i.guildId!)
-        ? { content: t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }), allowedMentions: NO_MENTIONS }
-        : t("launching"));
+      await i.editReply({ content: t("addedToQueue", { title: firstTitle, position: String(queueSizeOf(i.guildId!)) }), allowedMentions: NO_MENTIONS });
       return true;
     }
     if (limitedPlaylist) {

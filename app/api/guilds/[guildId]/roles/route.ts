@@ -86,8 +86,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
         throw new Error("panel deleted concurrently");
       rolesQueries.optionsDelete.run(panelId);
       for (const option of options) {
-        const emoji = option.emoji ? stripVariationSelectors(option.emoji).slice(0, 96) : "";
-        rolesQueries.optionInsert.run(panelId, option.roleId, (option.label || embed.name).slice(0, 80), emoji || null, option.buttonColor);
+        rolesQueries.optionInsert.run(panelId, option.roleId, (option.label || embed.name).slice(0, 80), option.emoji || null, option.buttonColor);
       }
     });
   };

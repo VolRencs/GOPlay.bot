@@ -26,7 +26,7 @@ function PreviewFrame({ hint, children }: { hint: string; children: ReactNode })
 function DiscordMessageShell({ children }: { children: ReactNode }) {
   return (
     <div className="message-preview">
-      <img className="preview-avatar" src="/bot-logo.avif" alt="GOPlay"/>
+      <img className="preview-avatar" src="/bot-avatar.avif" alt="GOPlay"/>
       <div className="preview-message-body">
         <strong>GOPlay</strong>
         <span className="muted"> сегодня</span>
@@ -159,15 +159,15 @@ export function WelcomePreview({ message, config: committed, background, enabled
     setSnap({ x: false, y: false });
   };
 
-  const svg = buildWelcomeSvg({
+  const svg = enabled ? buildWelcomeSvg({
     backgroundHref: background,
     backgroundWidth: size.width,
     backgroundHeight: size.height,
-    avatarHref: "/bot-logo.avif",
+    avatarHref: "/bot-avatar.avif",
     title: render(live.title),
     subtitle: render(live.subtitle),
     config: live,
-  });
+  }) : "";
 
   const handleStyle = (dir: ResizeDir): React.CSSProperties => {
     const base: React.CSSProperties = { position: "absolute", width: 9, height: 9, background: "#fff", border: "1.5px solid var(--violet)", borderRadius: 2 };

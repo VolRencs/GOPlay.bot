@@ -278,7 +278,6 @@ export function playNext(guildId: string): Track | null {
   return next;
 }
 
-const RESUME_MIN_PROGRESS = 5;
 const OUTCOME_RACE_MS = 1_500;
 const RETRY_DELAYS_MS = [3_000, 8_000] as const;
 const STREAM_WAIT_TIMEOUT_MS = 5 * 60_000;
@@ -375,7 +374,7 @@ function tryResumeOrForward(s: Session, track: Track, playedSec: number, outcome
     failForward(s, outcome.kind === "source-error" ? outcome.detail || "источник недоступен" : outcome.kind);
     return;
   }
-  if (s.recovery === "none" && (playedSec >= s.lastResumeSec + RESUME_MIN_PROGRESS || playedSec < RESUME_MIN_PROGRESS)) {
+  if (s.recovery === "none") {
     s.recovery = "resumed";
     s.lastResumeSec = Math.max(s.lastResumeSec, playedSec);
     count("music.resume");

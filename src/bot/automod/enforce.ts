@@ -72,7 +72,7 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
   }
   const banApplied = applied.includes("ban"), timeoutApplied = applied.includes("timeout");
   const appealType = banApplied ? "ban" : timeoutApplied ? "timeout" : applied.includes("warn") && warnPunishmentId !== null ? "warn" : null;
-  if (appealType && firstInWindow) {
+  if (appealType) {
     const appealTarget = appealType === "warn" ? warnPunishmentId : punishmentId;
     if (appealTarget !== null) void offerAppeal(client, { punishmentId: appealTarget, guildId: guild.id, guildName: guild.name, userId: author.id, appealType, reason });
   }

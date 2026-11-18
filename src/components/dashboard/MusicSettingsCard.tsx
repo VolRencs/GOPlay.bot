@@ -33,7 +33,7 @@ export function MusicSettingsCard() {
   const leaveLabel = formatLeaveAfter(value.leaveAfterSeconds);
   return (
     <section className="panel-stack">
-      <article className="card settings-card music-settings">
+      <article className="card settings-card">
         <CardHeader
           title="Музыка"
           note={`автовыход: ${leaveLabel}`}
@@ -97,7 +97,7 @@ export function MusicSettingsCard() {
             <div className="music-leave-row">
               <NumberField label="Секунд" hint="(0 — выкл; 30–3600)" min={0} max={3600}
                 value={value.leaveAfterSeconds}
-                onChange={leaveAfterSeconds => setValue({ ...value, leaveAfterSeconds: Number.isFinite(leaveAfterSeconds) ? leaveAfterSeconds : value.leaveAfterSeconds })}/>
+                onChange={leaveAfterSeconds => setValue({ ...value, leaveAfterSeconds })}/>
               <div className="music-presets" role="group" aria-label="Быстрый выбор автовыхода">
                 {leavePresets.map(preset => (
                   <button type="button" key={preset.value}

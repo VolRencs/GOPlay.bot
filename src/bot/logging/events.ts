@@ -46,7 +46,8 @@ export function registerLoggingEvents(client: Client) {
       guard("GOODBYE", () => (member.partial ? member.fetch().then(full => sendMemberEvent(full, "goodbye")).catch(() => null) : sendMemberEvent(member, "goodbye")));
     }
     if (kickedByBot) return;
-    if (!recentBans.delete(banKey) && loggingCategoryEnabled(member.guild.id, "member_leave")) {
+    if (recentBans.delete(banKey)) return;
+    if (loggingCategoryEnabled(member.guild.id, "member_leave")) {
       logAction({ guildId: member.guild.id, type: "member_leave", targetId: member.id, details: t("leaveDetails") });
     }
     if (!loggingCategoryEnabled(member.guild.id, "member_kick")) return;
@@ -120,7 +121,7 @@ export function registerLoggingEvents(client: Client) {
     const lang = guildLang(message.guild.id);
     const t = trFor(logTr, lang);
     const authorId = message.author?.id ?? t("unknownExecutor");
-    const actor = await auditActor(message.guild, AuditLogEvent.MessageDelete, authorId, { retries: 0 });
+    const actor = message.author ? await auditActor(message.guild, AuditLogEvent.MessageDelete, authorId, { retries: 0 }) : undefined;
     const content = (cachedContent ?? message.content ?? "").trim();
     let details = t("channelField", { channel: channelRef(message.channelId) });
     if (content) details += `\n${t("contentLabel", { content: content.slice(0, 500) })}`;

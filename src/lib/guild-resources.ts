@@ -24,7 +24,6 @@ type ChannelSpec = {
 type RoleSpec = {
   ids: readonly (string | null | undefined)[];
   assignable?: boolean;
-  allowEveryone?: boolean;
 };
 
 type MessageSpec = { channelId: string; messageId: string };
@@ -101,7 +100,7 @@ export function validateSnapshot(
     for (const id of roleIds) {
       const role = byId.get(id);
       if (!role) return { ok: false, error: "Роль не найдена на этом сервере.", status: 400 };
-      if (!spec.roles?.allowEveryone && (id === guildId || role.name === "@everyone")) {
+      if (id === guildId || role.name === "@everyone") {
         return { ok: false, error: "Нельзя выбрать роль @everyone.", status: 400 };
       }
     }
@@ -157,9 +156,9 @@ export function createGuildResourceValidator(fetcher: GuildResourceFetcher = dis
       return cache.get(guildId);
     },
     async validate(guildId: string, spec: ResourceSpec): Promise<ResourceValidation> {
-      const needsSnapshot = Boolean(
-        (spec.channels?.ids?.length) || (spec.roles?.ids?.length) || (spec.messages?.length),
-      );
+      const needsSnapshot = uniqueIds(spec.channels?.ids ?? []).length > 0
+        || uniqueIds(spec.roles?.ids ?? []).length > 0
+        || Boolean(spec.messages?.length);
       if (!needsSnapshot) return { ok: true };
       if (!process.env.DISCORD_TOKEN) {
         return { ok: false, error: "Бот недоступен. Попробуйте позже.", status: 503 };

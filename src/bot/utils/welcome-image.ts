@@ -206,7 +206,7 @@ async function prepareBackground(data: Buffer, key: string): Promise<PreparedBac
 
 export async function welcomeImage(input: { avatar: string; name: string; username?: string; userId?: string; server: string; count: number; backgroundPath?: string | null; config?: unknown }) {
   const config: WelcomeImageConfig = parseImageConfig(input.config);
-  const values = { ...welcomeValues(input), userAvatar: "", serverIcon: "" };
+  const values = welcomeValues({ ...input, avatar: "" });
   const title = renderWelcomeTemplate(config.title, values);
   const subtitle = renderWelcomeTemplate(config.subtitle, values);
   const background = await backgroundFingerprint(input.backgroundPath);

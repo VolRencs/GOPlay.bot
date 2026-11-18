@@ -19,11 +19,7 @@ export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) 
 
   if (wipe) {
     wipeGuildData(guildId);
-    try {
-      await deleteGuildFiles(guildId);
-    } catch {
-      return NextResponse.json({ ok: true, leftOnDiscord, wiped: false, warning: "Данные стёрты, но часть файлов не удалена." });
-    }
+    await deleteGuildFiles(guildId);
   }
 
   return NextResponse.json({ ok: true, leftOnDiscord, wiped: wipe });

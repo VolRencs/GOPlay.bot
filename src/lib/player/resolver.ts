@@ -50,8 +50,9 @@ export function redactMediaUrl(value: string): string {
 }
 
 export function isSingleYouTubeVideoUrl(query: string): boolean {
-  if (!/^https?:\/\//i.test(query) || !URL.canParse(query)) return false;
-  const url = new URL(query);
+  if (!/^https?:\/\//i.test(query)) return false;
+  let url: URL;
+  try { url = new URL(query); } catch { return false; }
   const host = url.hostname.toLowerCase();
   if (!ALLOWED_MEDIA_HOSTS.has(host)) return false;
   if (url.searchParams.has("list")) return false;
@@ -119,8 +120,9 @@ function evictOldest<K, V>(map: Map<K, V>): void {
 
 export function normalizeTrackKey(query: string): string {
   const trimmed = query.trim();
-  if (!/^https?:\/\//i.test(trimmed) || !URL.canParse(trimmed)) return trimmed.toLowerCase();
-  const url = new URL(trimmed);
+  if (!/^https?:\/\//i.test(trimmed)) return trimmed.toLowerCase();
+  let url: URL;
+  try { url = new URL(trimmed); } catch { return trimmed.toLowerCase(); }
   url.hostname = url.hostname.replace(/^(?:www|m|music)\./i, "").toLowerCase();
   for (const junk of ["t", "si", "feature", "pp"]) url.searchParams.delete(junk);
   const list = url.searchParams.get("list");
@@ -309,8 +311,8 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
   const cacheKey = normalizeTrackKey(query);
   const cached = listMeta.get(cacheKey);
   if (cached && Date.now() - cached.at < LIST_META_TTL) {
-    const tracks = cached.tracks.map(track => ({ ...track, requestedBy }));
-    return { tracks: limited ? tracks.slice(0, limit) : tracks, error: null, playlist: true };
+    const picked = limited ? cached.tracks.slice(0, limit) : cached.tracks;
+    return { tracks: picked.map(track => ({ ...track, requestedBy })), error: null, playlist: true };
   }
   const { meta, error } = await runResolve(query, limit);
   if (!meta) return { tracks: [], error: mapBackendError(error?.code ?? "UNKNOWN"), playlist: false };
@@ -461,12 +463,13 @@ export async function ensureFreshMediaUrl(track: Track, force = false): Promise<
     const current = freshSource(track.mediaUrl, track.mediaHeaders, track.mediaUrlExpiresAt);
     if (current) return { ok: true, source: current };
     const cached = singleMeta.get(key);
-    const cachedExpiresAt = cached?.mediaUrlExpiresAt;
-    const cachedSource = freshSource(cached?.mediaUrl, cached?.mediaHeaders, cachedExpiresAt);
-    if (cachedSource && cachedExpiresAt) {
-      if (cached) applyCachedMeta(track, cached);
-      setMedia(track, cachedSource.url, cachedSource.headers, cachedExpiresAt);
-      return { ok: true, source: cachedSource };
+    if (cached) {
+      const cachedSource = freshSource(cached.mediaUrl, cached.mediaHeaders, cached.mediaUrlExpiresAt);
+      if (cachedSource) {
+        applyCachedMeta(track, cached);
+        setMedia(track, cachedSource.url, cachedSource.headers, cached.mediaUrlExpiresAt!);
+        return { ok: true, source: cachedSource };
+      }
     }
   }
   const existing = mediaRefreshes.get(key);

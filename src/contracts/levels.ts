@@ -29,19 +29,7 @@ export const levelRangesDto = {
   growthPercent: levelRanges.growth_percent,
 } as const;
 
-export const levelDefaultsDto: LevelSettingsDto = {
-  enabled: levelDefaults.enabled,
-  xpPerMessage: levelDefaults.xp_per_message,
-  messageCooldownSeconds: levelDefaults.message_cooldown_seconds,
-  minMessageLength: levelDefaults.min_message_length,
-  xpPerVoiceMinute: levelDefaults.xp_per_voice_minute,
-  baseXp: levelDefaults.base_xp,
-  growthPercent: levelDefaults.growth_percent,
-  ignoredChannelIds: [...levelDefaults.ignored_channel_ids],
-  ignoredRoleIds: [...levelDefaults.ignored_role_ids],
-  notifyMode: levelDefaults.notify_mode,
-  notifyChannelId: levelDefaults.notify_channel_id,
-};
+export const levelDefaultsDto: LevelSettingsDto = toDto({ settings: levelDefaults, rewards: [] }).settings;
 
 export function toDto(domain: LevelsDomain): LevelsDto {
   return {

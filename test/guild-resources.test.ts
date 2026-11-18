@@ -82,3 +82,13 @@ test("недоступный Discord даёт 502, отсутствие токе
     process.env.DISCORD_TOKEN = previous;
   }
 });
+
+test("пустые и null ID не требуют снапшота и токена", async () => {
+  const previous = process.env.DISCORD_TOKEN;
+  delete process.env.DISCORD_TOKEN;
+  try {
+    assert.deepEqual(await validator.validate("g1", { channels: { ids: [null, ""] }, roles: { ids: [undefined] } }), { ok: true });
+  } finally {
+    process.env.DISCORD_TOKEN = previous;
+  }
+});

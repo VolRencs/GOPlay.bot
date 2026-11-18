@@ -5,6 +5,7 @@ import { logger } from "../lib/logger.ts";
 const FILE = join(process.cwd(), "data", "heartbeat");
 const startedAt = Date.now();
 let failures = 0;
+let timer: ReturnType<typeof setInterval> | null = null;
 
 function write() {
   try {
@@ -18,9 +19,10 @@ function write() {
 
 export function startHeartbeat() {
   write();
-  setInterval(write, 60_000).unref();
+  timer = setInterval(write, 60_000).unref();
 }
 
 export function stopHeartbeat() {
+  if (timer) { clearInterval(timer); timer = null; }
   try { rmSync(FILE, { force: true }); } catch (error) { logger.warn("[HEARTBEAT] Не удалось удалить файл", error); }
 }

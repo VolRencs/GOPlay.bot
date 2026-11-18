@@ -57,7 +57,7 @@ export function pruneDetectors() {
   const cutoff = Date.now() - 61 * 60_000;
   for (const [key, values] of memory) {
     const last = values[values.length - 1];
-    if (!values.length || !last || last.at < cutoff) memory.delete(key);
+    if (!last || last.at < cutoff) memory.delete(key);
   }
   for (const [key, at] of warned) if (at < cutoff) warned.delete(key);
 }

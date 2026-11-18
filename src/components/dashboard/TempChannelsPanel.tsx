@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import type { Channel } from "./types.ts";
 import { clampUserLimit } from "#lib/tempchannels.ts";
 import { defaultTempConfig, type TempChannelConfigDto, type TempPresetDto, type TempchannelsDto } from "#contracts/tempchannels.ts";
-import { CardHeader, CheckList, SectionError, SectionLoading, confirmAction, NumberField, SaveButton, Select, stableStringify, TemplateLibrary, TemplateRow } from "./ui.tsx";
+import { CardHeader, CheckList, SectionError, SectionLoading, confirmAction, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
@@ -28,7 +28,7 @@ const channelLabel = (count: number) => count === 1 ? "1 канал" : count >= 
 
 export function TemporaryChannelsSettings() {
   const { resources } = useDashboard();
-  const { value, setValue: onChange, saved, loading, loadError, reload, saving, saveNow } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
+  const { value, setValue: onChange, dirty, loading, loadError, reload, saving, saveNow } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
     initial: { presets: [] },
     fromGet: data => ({ presets: data.presets }),
     toBody: value => ({ presets: value.presets }),
@@ -44,7 +44,6 @@ export function TemporaryChannelsSettings() {
   const voiceChannels = resources?.voiceChannels ?? [];
   const categories = resources?.categories ?? [];
   const editing = value.presets.find(p => p.id === editingId) ?? null;
-  const changed = saved !== null && stableStringify(saved) !== stableStringify(value);
 
   const update = (change: Partial<TempPresetDto>) => onChange({ ...value, presets: value.presets.map(p => p.id === editingId ? { ...p, ...change } : p) });
   const newPreset = () => {
@@ -85,7 +84,7 @@ export function TemporaryChannelsSettings() {
           muted="Выберите каналы-триггеры и настройте их, затем сохраните — шаблон появится в списке выше."
           action={<div className="template-actions">
             <button type="button" className="btn secondary" onClick={newPreset}>Новый шаблон</button>
-            {(editing || changed) && (
+            {(editing || dirty) && (
               <SaveButton saving={saving} onClick={saveNow} label="Сохранить настройки"/>
             )}
           </div>}/>

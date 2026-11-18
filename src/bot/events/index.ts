@@ -83,9 +83,10 @@ function refreshMessage(guildId: string, eventId: string): Promise<void> {
 
 async function buildEventMessage(event: EventRow): Promise<{ embed: EventEmbedPayload; components: ActionRowBuilder<ButtonBuilder>[]; files: { attachment: Buffer; name: string }[] }> {
   const counts = eventCounts(event.id);
-  const embed = renderEventEmbed(guildLang(event.guild_id), renderableOf(event), parseEventEmbed(event.embed_json), counts);
+  const renderable = renderableOf(event);
+  const embed = renderEventEmbed(guildLang(event.guild_id), renderable, parseEventEmbed(event.embed_json), counts);
   const files = await attachLocalImages(event.guild_id, embed);
-  const buttons = renderEventButtons(renderableOf(event), parseEventButtons(event.buttons_json), counts);
+  const buttons = renderEventButtons(renderable, parseEventButtons(event.buttons_json), counts);
   const components = buttons.length ? [new ActionRowBuilder<ButtonBuilder>().addComponents(buttons.map(b => {
     const built = new ButtonBuilder().setCustomId(`event:${b.key}:${event.id}`).setLabel(b.label).setStyle(toDiscordButtonStyle(b.style)).setDisabled(b.disabled);
     if (b.emoji) built.setEmoji(b.emoji);

@@ -4,7 +4,7 @@ import { withTransaction } from "#db/database.ts";
 import { tempchannelQueries } from "#db/queries.ts";
 import { stableJson } from "#lib/json.ts";
 import { clampUserLimit } from "#lib/tempchannels.ts";
-import { defaultTempConfig, fromDto as fromTempPresetDto, toDto as toTempPresetDto, type TempChannelConfigDto, type TempPresetDto, type TempPutBody, type TempchannelsDto } from "#contracts/tempchannels.ts";
+import { defaultTempConfig, toDto as toTempPresetDto, type TempChannelConfigDto, type TempPresetDto, type TempPutBody, type TempchannelsDto } from "#contracts/tempchannels.ts";
 import { stmt } from "#db/statements.ts";
 import { recordDashboardChange } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
@@ -40,8 +40,7 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     if (!name.length) return jsonError("Укажите название шаблона.");
     const triggers = Array.isArray(v.triggerChannelIds) ? v.triggerChannelIds.filter((id): id is string => typeof id === "string" && isSnowflake(id)).slice(0, 50) : [];
     if (!triggers.length) return jsonError("Выберите хотя бы один канал-триггер.");
-    const input = fromTempPresetDto({ name, triggerChannelIds: triggers, config: parseConfig(v.config) });
-    presets.push({ name: input.name, triggerChannelIds: input.triggerChannelIds, config: input.config });
+    presets.push({ name, triggerChannelIds: triggers, config: parseConfig(v.config) });
   }
   const existingRows = stmt.tempPresets.all(guildId);
   const existing = existingRows.map(toTempPresetDto);

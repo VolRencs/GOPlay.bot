@@ -44,13 +44,13 @@ export function EventsPanel() {
   const channels = resources?.channels ?? [];
   const roles = resources?.roles ?? [];
   const emojis = resources?.emojis ?? [];
-  const { data: events, reload, loading, error } = useApiResource<EventListItemDto[] | null>(
+  const { data: events, reload, loading, error } = useApiResource<EventListItemDto[]>(
     Boolean(guildId),
     signal => apiGet<EventListDto>(`/api/guilds/${guildId}/events`, signal).then(result => result.ok
       ? { ok: true as const, data: result.data.events }
       : { ok: false as const, error: result.error }),
     [guildId],
-    null,
+    [],
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventDraft>(defaultEventDraft);
@@ -94,7 +94,7 @@ export function EventsPanel() {
     }));
   });
 
-  const editing = events?.find(e => e.id === editingId) ?? null;
+  const editing = events.find(e => e.id === editingId) ?? null;
 
   function edit(e: EventListItemDto) {
     const join = e.buttons.find(b => b.key === "join"), leave = e.buttons.find(b => b.key === "leave");
@@ -186,14 +186,12 @@ export function EventsPanel() {
     <section className="panel-stack">
       <TemplateLibrary
         title="События сервера"
-        note={events !== null && events.length ? String(events.length) : undefined}
+        note={events.length ? String(events.length) : undefined}
         description="События публикуются сообщением с кнопками «Участвовать» и «Отказаться». Участники, очередь, статус и напоминания обновляются автоматически."
         action={<button type="button" className="btn" onClick={reset}>Новое событие</button>}
         empty="Событий пока нет — создайте первое."
       >
-        {events === null ? (
-          <p className="muted" role="status">Загружаем события…</p>
-        ) : events.length > 0 ? (
+        {events.length > 0 ? (
           <div className="event-list">
             {events.map(e => {
               const ch = channels.find(c => c.id === e.channelId);

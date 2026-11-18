@@ -62,9 +62,7 @@ export function describeChanges(before: Record<string, unknown>, after: Record<s
 export function recordDashboardDiff(
   guildId: string, actor: AuditActor, section: string, prefix: string,
   before: Record<string, unknown>, after: Record<string, unknown>, opaque?: Record<string, string>,
-): boolean {
+): void {
   const changes = describeChanges(before, after, opaque);
-  if (!changes) return false;
-  recordDashboardChange(guildId, actor, section, `${prefix}${changes}`);
-  return true;
+  if (changes) recordDashboardChange(guildId, actor, section, `${prefix}${changes}`);
 }

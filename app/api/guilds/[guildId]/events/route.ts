@@ -12,7 +12,6 @@ import { cleanupUnusedUploads, eventUploadPrefix, eventUploadsDir, extractFilena
 import { AssetError, collectFormAssets, discordMessageBody, persistUploadedAssets, type StoredAsset, type UploadAssetSet } from "#lib/assets.ts";
 import { applyEventRole, clampEventInput, deleteEvent, eventCounts, getEventInGuild, insertEvent, listEvents, parseEventButtons, parseEventEmbed, removeParticipant, renderEventButtons, renderEventEmbed, renderableOf, updateEvent, type EventButton, type EventEmbedPayload, type EventRow, type RenderableEvent, type RenderedEventButton } from "#lib/events.ts";
 import type { EventListDto } from "#contracts/events.ts";
-import { embedCharacterCount, EMBED_LIMITS } from "#contracts/embeds.ts";
 import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-resources.ts";
 
 type EventImageTarget = "thumbnail" | "image";
@@ -111,7 +110,6 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const counts = current ? eventCounts(current.id) : { joined: 0, waitlist: 0 };
   const renderable: RenderableEvent = { status: input.status, scheduledAt: input.scheduledAt, maxParticipants: input.maxParticipants, registrationEnabled: input.registrationEnabled, waitlistEnabled: input.waitlistEnabled };
   const rendered = renderEventEmbed(lang, renderable, embed, counts);
-  if (embedCharacterCount(rendered) > EMBED_LIMITS.total) return jsonError("Сообщение события слишком большое для Discord: сократите описание или поля.");
   const buttons = renderEventButtons(renderable, input.buttons, counts);
   if (current) {
     const sync = await syncDiscord(current, input.channelId, rendered, buttons, assets);

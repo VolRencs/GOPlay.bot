@@ -86,8 +86,9 @@ on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
   const cache = cachedRules(message.guild.id);
   if (!cache.protectedChannelId && cache.rules.length === 0) return;
   const member = message.member;
-  const isAdmin = Boolean(member?.permissions.has(PermissionFlagsBits.Administrator)), isIgnoredMember = Boolean(member && cache.ignoredRoles.some(id => member.roles.cache.has(id)));
-  if (cache.protectedChannelId === message.channel.id && !isAdmin && !isIgnoredMember) {
+  if (cache.protectedChannelId === message.channel.id
+    && !member?.permissions.has(PermissionFlagsBits.Administrator)
+    && !(member && cache.ignoredRoles.some(id => member.roles.cache.has(id)))) {
     await message.delete().catch(() => null);
     void purgeUserMessages(message.guild, message.author.id, 24);
     const t = guildTr(automodTr, message.guild.id);
@@ -101,7 +102,7 @@ on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
     logAction({ guildId: message.guild.id, type: "automod", targetId: message.author.id, moderatorId: "automod", details: t(banned ? "protectedWiped" : "protectedWipedFailed") });
     return;
   }
-  const data: MessageData = { id: message.id, guildId: message.guild.id, userId: message.author.id, channelId: message.channel.id, content: message.content, roleIds: member?.roles.cache.map(r => r.id) ?? [], mentionCount: message.mentions.users.size + message.mentions.roles.size, everyone: message.mentions.everyone, attachments: [...message.attachments.values()].map(a => ({ contentType: a.contentType })), at: Date.now() };
+  const data: MessageData = { id: message.id, guildId: message.guild.id, userId: message.author.id, channelId: message.channel.id, content: message.content, roleIds: cache.ignoredRoles.length ? member?.roles.cache.map(r => r.id) ?? [] : [], mentionCount: message.mentions.users.size + message.mentions.roles.size, everyone: message.mentions.everyone, attachments: [...message.attachments.values()].map(a => ({ contentType: a.contentType })), at: Date.now() };
   const ignored = isIgnored(data, cache.ignoredRoles);
   if (ignored) return;
   let matched: { row: (typeof cache.rules)[number]; threshold: Record<string, unknown> } | null = null;
@@ -130,6 +131,7 @@ on(client, Events.GuildDelete, "GUILD_DELETE", guild => {
   logger.info("[GUILD] Бот удалён с сервера, данные сохранены:", guild.id);
 });
 
-process.on("SIGINT", () => { shutdown(client).catch(error => { logger.error("Ошибка остановки:", error); process.exit(1); }); });
-process.on("SIGTERM", () => { shutdown(client).catch(error => { logger.error("Ошибка остановки:", error); process.exit(1); }); });
+const stop = () => { shutdown(client).catch(error => { logger.error("Ошибка остановки:", error); process.exit(1); }); };
+process.on("SIGINT", stop);
+process.on("SIGTERM", stop);
 client.login(token).catch(error => { logger.error("Не удалось подключиться к Discord:", error); process.exit(1); });

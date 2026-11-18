@@ -362,9 +362,8 @@ async function handleMusicSelect(i: StringSelectMenuInteraction): Promise<void> 
       if (!pending || Date.now() - pending.at > PENDING_MOVE_TTL_MS || !Number.isInteger(to)) { await deny(t("queueChanged")); return; }
       const current = queue[pending.from];
       if (!current || trackIdentity(current) !== pending.id) { await deny(t("queueChanged")); return; }
-      const moved = current;
       const at = moveQueueTrack(guildId, pending.from, to);
-      await deny(at >= 0 && moved ? t("movedDone", { title: moved.title, n: at + 1 }) : t("queueChanged"));
+      await deny(at >= 0 ? t("movedDone", { title: current.title, n: at + 1 }) : t("queueChanged"));
       return;
     }
   } catch (error) {

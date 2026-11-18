@@ -1663,7 +1663,7 @@
   box-shadow: var(--focus-ring);
 }
 
-.muted, .select-trigger .placeholder { color: var(--muted); }
+.select-trigger .placeholder { color: var(--muted); }
 
 .select-trigger .chevron {
   flex: none;
