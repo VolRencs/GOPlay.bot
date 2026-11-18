@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { authClient } from "#lib/auth-client.ts";
+import { Brand } from "#components/brand.tsx";
 import { useAsyncAction } from "#components/dashboard/ui.tsx";
 
 export default function Login() {
@@ -18,7 +19,7 @@ export default function Login() {
   return (
     <main className="auth-page">
       <section className="card auth-card">
-        <a className="brand" href="/"><img src="/bot-logo.avif" alt="GOPlay"/><span>GOPlay</span></a>
+        <Brand/>
         <span className="tile"><ShieldCheck size={24}/></span>
         <h1>Вход в Dashboard</h1>
         <p className="muted">Авторизуйтесь через Discord, чтобы настроить серверы, которыми вы управляете.</p>

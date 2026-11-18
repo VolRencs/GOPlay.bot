@@ -10,6 +10,8 @@ export const MAX_MUSIC_LEAVE_SECONDS = 3600;
 export const BOT_TOKEN_ERROR = "Бот недоступен. Попробуйте позже.";
 export const SERVER_FALLBACK_NAME = "Discord server";
 
+export const GITHUB_REPO = "https://github.com/VolRencs/GOPlay.bot";
+
 export const discordInviteUrl = () => `https://discord.com/oauth2/authorize?client_id=${process.env.DISCORD_CLIENT_ID ?? ""}&scope=bot%20applications.commands&permissions=8`;
 
 export const BUTTON_STYLE_IDS = { primary: 1, secondary: 2, success: 3, danger: 4 } as const;

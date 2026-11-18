@@ -2,6 +2,8 @@
 
 import { Suspense, use, useEffect, useState, useTransition } from "react";
 import { Bot } from "lucide-react";
+import { Brand } from "#components/brand.tsx";
+import { PageHeader } from "#components/page-header.tsx";
 import { ConfirmHost, ModalShell, SectionError, SectionLoading } from "#components/dashboard/ui.tsx";
 import { DashboardProvider, useDashboard } from "#components/dashboard/DashboardContext.tsx";
 import { TAB_DEFS, TAB_GROUPS, isTabKey, type TabKey } from "#components/dashboard/tabs.tsx";
@@ -88,7 +90,7 @@ function DashboardShell() {
 
   return <main className={isDirty ? "settings-shell is-dirty" : "settings-shell"}>
     <aside className="sidebar" aria-label="Настройки сервера">
-      <a href="/dashboard" className="brand"><Bot size={22}/> GOPlay</a>
+      <Brand href="/dashboard"/>
       <label className="mobile-section-picker">
         <span className="mobile-section-picker-label">Раздел</span>
         <span className="mobile-section-select">
@@ -116,17 +118,13 @@ function DashboardShell() {
       </div>
     </aside>
     <section className="settings-content">
-      <header className="settings-top">
-        <a className="back-link" href="/dashboard">← Все серверы</a>
-        <div className="server-heading">
-          <div className="server-heading-icon">{guildIconUrl(guildId, server.icon) ? <img src={guildIconUrl(guildId, server.icon)!} alt=""/> : <Bot size={24}/>}</div>
-          <div className="server-heading-copy">
-            <p className="eyebrow">GOPLAY · {server.name}</p>
-            <h1>{TAB_DEFS[tab].title}</h1>
-            <p className="page-description">{TAB_DEFS[tab].description}</p>
-          </div>
-        </div>
-      </header>
+      <PageHeader
+        back={{ href: "/dashboard", label: "Все серверы" }}
+        icon={guildIconUrl(guildId, server.icon) ? <img src={guildIconUrl(guildId, server.icon)!} alt=""/> : <Bot size={24}/>}
+        eyebrow={`GOPLAY · ${server.name}`}
+        title={TAB_DEFS[tab].title}
+        description={TAB_DEFS[tab].description}
+      />
       {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
       {!loading && resourcesError && <SectionError message={resourcesError} onRetry={reloadResources}/>}
       {!loading && !resourcesError && <Suspense fallback={<SectionLoading/>}><ActiveTab/></Suspense>}

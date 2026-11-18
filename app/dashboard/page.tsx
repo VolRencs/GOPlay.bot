@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation.js";
 import { Bot } from "lucide-react";
 import { SiteHeader } from "#components/site-header.tsx";
+import { PageHeader } from "#components/page-header.tsx";
 import { accessFrom } from "#lib/access.ts";
 import { DiscordRateLimitError, configuredGuilds, resolveSession, type DashboardGuild } from "#lib/guild-access.ts";
 import { discordInviteUrl } from "#lib/constants.ts";
@@ -24,17 +25,15 @@ export default async function Dashboard() {
 
   return <main className="container page">
     <SiteHeader access={access} />
-    <div className="page-heading">
-      <div>
-        <p className="eyebrow">GOPLAY · DASHBOARD</p>
-        <h1>Ваши серверы</h1>
-        <p className="muted">Выберите сервер, чтобы настроить бота.</p>
-      </div>
-      <div className="page-heading-actions">
+    <PageHeader
+      eyebrow="GOPLAY · DASHBOARD"
+      title="Ваши серверы"
+      description="Выберите сервер, чтобы настроить бота."
+      actions={<>
         {guilds.length > 0 && <span className="pill pill-accent">Серверов: {guilds.length}</span>}
         <a className="btn secondary" href={discordInviteUrl()}><Bot size={18}/>Добавить бота</a>
-      </div>
-    </div>
+      </>}
+    />
     {!access.allowed && <p className="error-note" role="alert">⚠ У этого аккаунта нет доступа к панели.</p>}
     {loadError && <p className="error-note" role="alert">⚠ {loadError}</p>}
     {access.allowed && !loadError && (guilds.length ? (

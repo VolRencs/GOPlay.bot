@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation.js";
 import { SiteHeader } from "#components/site-header.tsx";
+import { PageHeader } from "#components/page-header.tsx";
 import { AdminPanel } from "#components/admin-panel.tsx";
 import { accountAccess } from "#lib/access.ts";
 
@@ -9,13 +10,11 @@ export default async function AdminPage() {
 
   return <main className="container page">
     <SiteHeader access={access} />
-    <div className="page-heading">
-      <div>
-        <p className="eyebrow">GOPLAY · АДМИН</p>
-        <h1>Администрирование</h1>
-        <p className="muted">Управление ботом и его серверами.</p>
-      </div>
-    </div>
+    <PageHeader
+      eyebrow="GOPLAY · АДМИН"
+      title="Администрирование"
+      description="Управление ботом и его серверами."
+    />
     {access.isAdmin ? <AdminPanel/> : <p className="error-note" role="alert">⚠ Админ-панель доступна только владельцу бота.</p>}
   </main>;
 }

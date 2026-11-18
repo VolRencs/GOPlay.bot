@@ -1,23 +1,7 @@
-import { Bot, CalendarDays, Medal, Music, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
-import { HeroPanelPreview } from "#components/HeroPanelPreview.tsx";
+import { Bot, PanelsTopLeft, ShieldCheck, Sparkles, Tags } from "lucide-react";
 import { SiteHeader } from "#components/site-header.tsx";
 import { accountAccess } from "#lib/access.ts";
 import { discordInviteUrl } from "#lib/constants.ts";
-
-function GithubMark() {
-  return <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
-  </svg>;
-}
-
-const GITHUB_REPO = "https://github.com/VolRencs/GOPlay.bot";
-const GITHUB_ISSUES = "https://github.com/VolRencs/GOPlay.bot/issues";
-const GITHUB_LICENSE = "https://github.com/VolRencs/GOPlay.bot/blob/Dev/LICENSE";
-
-const footerLinks = [
-  { href: GITHUB_REPO, label: "GitHub", mark: true },
-  { href: GITHUB_ISSUES, label: "Сообщить об ошибке", mark: false },
-] as const;
 
 const features = [
   [Sparkles, "Приветствия", "Текст, изображения и шаблоны для новых участников."],
@@ -26,48 +10,43 @@ const features = [
   [PanelsTopLeft, "Сообщения", "Embed-сообщения, медиа и сохранённые шаблоны."],
 ] as const;
 
-const modules = [
-  [Music, "Музыка"],
-  [CalendarDays, "События"],
-  [Medal, "Уровни"],
-] as const;
-
 export default async function Home() {
   const access = await accountAccess();
+  const inviteUrl = discordInviteUrl();
 
   return <main className="container page landing">
-    <SiteHeader access={access} />
+    <SiteHeader access={access} landing/>
     <section className="hero">
       <div>
         <p className="eyebrow">Discord-бот и панель управления</p>
-        <h1>Управляйте сервером проще.</h1>
+        <h1>Управляйте сервером <span className="grad-text">проще.</span></h1>
         <p className="lead">Один бот и одна понятная панель: приветствия, автомодерация, роли, события, музыка и статистика.</p>
         <div className="hero-cta">
-          <a className="btn lg" href={discordInviteUrl()}><Bot size={18}/>Добавить бота</a>
-          <a className="btn secondary lg" href="/dashboard">Открыть панель</a>
+          <a className="btn lg" href={inviteUrl}><Bot size={18}/>Добавить бота</a>
         </div>
-        <ul className="hero-modules" aria-label="Модули бота">
-          {modules.map(([Icon, label]) => <li key={label}><Icon size={15}/>{label}</li>)}
-        </ul>
       </div>
       <div className="hero-art">
-        <HeroPanelPreview />
+        <img
+          src="/mascot.avif"
+          width={1024}
+          height={1536}
+          alt="Маскот GOPlay — аниме-котёнок в наушниках"
+          fetchPriority="high"
+        />
       </div>
     </section>
     <section className="features">
+      <div className="section-head">
+        <h2>Всё нужное — в одной панели</h2>
+        <p>Настройте сообщество без десятка ботов и разрозненных команд.</p>
+      </div>
       <div className="feature-grid">
-        {features.map(([Icon, title, text]) => <article className="feature-card" key={title}>
-          <span className="tile"><Icon size={21}/></span>
+        {features.map(([Icon, title, text]) => <article className="card feature-card" key={title}>
+          <span className="tile"><Icon size={20}/></span>
           <h2>{title}</h2>
           <p>{text}</p>
         </article>)}
       </div>
     </section>
-    <footer className="landing-footer">
-      <p>GOPlay — открытый исходный код под <a href={GITHUB_LICENSE} target="_blank" rel="noreferrer">GPL-3.0</a>.</p>
-      <nav className="landing-footer-links" aria-label="Ссылки проекта">
-        {footerLinks.map(link => <a key={link.href} href={link.href} target="_blank" rel="noreferrer">{link.mark && <GithubMark/>}{link.label}</a>)}
-      </nav>
-    </footer>
   </main>;
 }
