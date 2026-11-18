@@ -9,7 +9,7 @@
 
 Discord bot and server-management web dashboard in a single repository, run as
 two processes (Next.js + bot) sharing one SQLite database. Stack
-(versions in `package.json`, locked in `pnpm-lock.yaml`): Node **≥ 26**,
+(versions in `package.json`, locked in `pnpm-lock.yaml`): Node **≥ 26.13.1**,
 pnpm **12.21.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
 Node's native TypeScript type stripping and
 `node:sqlite` (no separate DB driver).
@@ -49,7 +49,7 @@ SQLite storage (`node:sqlite`, WAL), RU/EN bot i18n, `node --test` tests.
 
 ## Quickstart (local)
 
-Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.21.0**,
+Requirements: **Linux x64 (glibc 2.35+)**, **Node ≥ 26.13.1**, **pnpm 12.21.0**,
 **ffmpeg with libopus**. The native `ytrust 1.5.1` module is installed by `pnpm`.
 
 ```bash
@@ -155,7 +155,7 @@ pnpm start
 - In the Discord Portal, add the prod redirect `https://YOUR_DOMAIN/api/auth/callback/discord`.
 - Keep Next bound only to `127.0.0.1:3000`, expose via nginx
   (example: [`deploy/nginx-ip-https.conf`](deploy/nginx-ip-https.conf),
-  `client_max_body_size 8m`).
+  `client_max_body_size 34m`).
 - Back up `data/bot.sqlite` (plus `-wal`/`-shm` alongside while running).
 - `data/logs/bot.log` rotation happens automatically on start via `pnpm logs:rotate`.
 

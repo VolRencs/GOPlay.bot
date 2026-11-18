@@ -43,10 +43,16 @@ async function sendOrEdit(channelId: string, messageId: string | null, embed: Ev
 
 async function syncDiscord(current: EventRow, channelId: string, embed: EventEmbedPayload, buttons: RenderedEventButton[], files: readonly StoredAsset<EventImageTarget>[]): Promise<{ messageId: string | null; warning: string | null }> {
   if (!current.message_id || current.channel_id !== channelId) {
-    if (current.message_id) await discordFetch(`/channels/${current.channel_id}/messages/${current.message_id}`, { method: "DELETE" }).catch(() => null);
+    // Publish first: a failed send must not destroy the existing announcement.
     const sent = await sendOrEdit(channelId, null, embed, buttons, current.id, files);
-    if ("id" in sent) return { messageId: sent.id, warning: null };
-    return { messageId: null, warning: "Не удалось отправить сообщение события в канал." };
+    if (!("id" in sent)) return { messageId: null, warning: "Не удалось отправить сообщение события в канал." };
+    let warning: string | null = null;
+    if (current.message_id) {
+      const deleted = await discordFetch(`/channels/${current.channel_id}/messages/${current.message_id}`, { method: "DELETE" })
+        .then(response => response.ok || response.status === 404, () => false);
+      if (!deleted) warning = "Новое сообщение отправлено, но старое удалить не удалось.";
+    }
+    return { messageId: sent.id, warning };
   }
   const patched = await sendOrEdit(channelId, current.message_id, embed, buttons, current.id, files);
   if ("id" in patched) return { messageId: patched.id, warning: null };

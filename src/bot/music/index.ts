@@ -172,13 +172,14 @@ async function refreshPanelNow(guildId: string): Promise<void> {
 
 async function handlePanelButton(i: ButtonInteraction): Promise<void> {
   const t = musicTFor(i.guildId ?? "");
+  const deny = (content: string) => i.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => null);
   try {
     if (!i.inGuild()) return;
     const guildId = i.guildId;
     const queueMenuPage = /^music:(remove|move):(\d+)$/.exec(i.customId);
     if (queueMenuPage) {
       if (!isAdminInteraction(i)) {
-        await i.reply({ content: t("notAdmin"), flags: MessageFlags.Ephemeral }).catch(() => null);
+        await deny(t("notAdmin"));
         return;
       }
       await openQueueMenu(i, queueMenuPage[1] as "remove" | "move", Number(queueMenuPage[2]), true);
@@ -187,7 +188,7 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
     const state = playbackStateOf(guildId);
     if (!state) {
       forgetPanel(guildId);
-      await i.reply({ content: t("playerGone"), flags: MessageFlags.Ephemeral }).catch(() => null);
+      await deny(t("playerGone"));
       return;
     }
     const queueViewPage = /^music:queue:(\d+)$/.exec(i.customId);
@@ -202,14 +203,14 @@ async function handlePanelButton(i: ButtonInteraction): Promise<void> {
     const isAdmin = isAdminInteraction(i);
     if (i.customId === "music:remove" || i.customId === "music:move") {
       if (!isAdmin) {
-        await i.reply({ content: t("notAdmin"), flags: MessageFlags.Ephemeral }).catch(() => null);
+        await deny(t("notAdmin"));
         return;
       }
       await openQueueMenu(i, i.customId === "music:remove" ? "remove" : "move", 0, false);
       return;
     }
     if (state.current.requestedBy !== i.user.id && !isAdmin) {
-      await i.reply({ content: t("notController"), flags: MessageFlags.Ephemeral }).catch(() => null);
+      await deny(t("notController"));
       return;
     }
     switch (i.customId.slice("music:".length)) {

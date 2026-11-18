@@ -16,7 +16,7 @@ function redirectOnUnauthorized(status: number): void {
 export async function apiGet<T>(url: string, signal?: AbortSignal): Promise<ApiResult<T>> {
   let response: Response;
   try {
-    response = await fetch(url, signal ? { signal } : {});
+    response = await fetch(url, { cache: "no-store", ...(signal ? { signal } : {}) });
   } catch {
     return { ok: false, error: "Нет соединения с сервером." };
   }

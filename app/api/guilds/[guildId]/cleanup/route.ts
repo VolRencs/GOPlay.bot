@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server.js";
+import { withTransaction } from "#db/database.ts";
 import { guildRoute, jsonError, readJsonRecord } from "#lib/guild-access.ts";
 import { cleanupTargetsM, type CleanupTarget } from "#lib/labels.ts";
 import { recordDashboardChange } from "#lib/dashboard-audit.ts";
@@ -14,10 +15,15 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const target = body?.target as CleanupTarget | undefined;
   if (!target || !targetKeys.includes(target)) return jsonError("Некорректная цель очистки.");
 
-  const removed = runCleanupTarget(guildId, target);
+  // The audit row doubles as a cross-process cleanup marker: the bot checks it
+  // inside its flush transaction so pending buffers cannot resurrect deleted rows.
+  const removed = withTransaction(() => {
+    const removed = runCleanupTarget(guildId, target);
+    recordDashboardChange(guildId, user, AUDIT_SECTION.cleanup, `Очищено: ${targetLabel(target)}${target !== "audit" ? ` (${removed} записей)` : ""}`, true);
+    return removed;
+  });
   if (target === "events") {
     await cleanupUnusedUploads(eventUploadsDir(guildId), [], () => []);
   }
-  recordDashboardChange(guildId, user, AUDIT_SECTION.cleanup, `Очищено: ${targetLabel(target)}${target !== "audit" ? ` (${removed} записей)` : ""}`);
   return NextResponse.json({ ok: true, removed });
 });

@@ -234,6 +234,15 @@
 .unsaved-float .btn { min-height: 34px; padding: .38rem .7rem; font-size: .76rem; }
 .warn-dot { flex: none; width: .45rem; height: .45rem; border-radius: 50%; background: #fbbf24; box-shadow: 0 0 12px rgba(251, 191, 36, .65); }
 
+.unsaved-float.is-nudge {
+  border-color: rgb(255 90 106 / 80%);
+}
+
+.unsaved-float.is-nudge .warn-dot {
+  background: #ff5a6a;
+  box-shadow: 0 0 12px rgba(255, 90, 106, .85);
+}
+
 @keyframes unsaved-in { from { opacity: 0; transform: translate(-50%, 10px); } }
 
 .sidebar-groups { display: grid; gap: .9rem; }

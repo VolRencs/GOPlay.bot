@@ -5,7 +5,8 @@ import { Trash2 } from "lucide-react";
 import { CardHeader, channelOptions, confirmAction, EmbedComposer, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiJsonMutate, apiMutate, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
-import { useDashboard } from "./DashboardContext.tsx";
+import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
+import { stableJson } from "../../lib/json.ts";
 import { colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type EmbedPayload } from "./types.ts";
 import type { EmbedDto, EmbedSendingDto, EmbedsGetDto } from "#contracts/embeds.ts";
 
@@ -41,6 +42,8 @@ export function EmbedsPanel() {
   const { embeds: items, sendings } = data;
   const [channel, setChannel] = useState("");
   const [form, setFormState] = useState<EmbedForm>(emptyEmbedForm);
+  const [savedForm, setSavedForm] = useState(() => stableJson(emptyEmbedForm()));
+  const dirty = stableJson(form) !== savedForm;
   const setForm = (patch: Partial<EmbedForm>) => setFormState(current => ({ ...current, ...patch }));
   const { busy, run } = usePanelAction({ onDone, onError });
   const { busy: verifying, run: runVerify } = usePanelAction({ onDone, onError });
@@ -50,7 +53,7 @@ export function EmbedsPanel() {
   const authorIcon = useMediaField(form.authorIcon);
 
   const draftKey = `goplay-draft-embeds-${guildId}`;
-  useSessionDraft(draftKey, Boolean(guildId), [form], () => form);
+  useSessionDraft(draftKey, Boolean(guildId) && dirty, [form], () => form);
   useSessionDraftRestore(draftKey, Boolean(guildId), d => {
     const hasContent = asString(d.title) || asString(d.description) || asString(d.name);
     if (d.id || !hasContent) return;
@@ -81,7 +84,7 @@ export function EmbedsPanel() {
 
   function editTemplate(item: EmbedDto) {
     const p = item.payload;
-    setForm({
+    const next: EmbedForm = {
       id: item.id,
       published: Boolean(item.messageId),
       name: item.name,
@@ -96,13 +99,16 @@ export function EmbedsPanel() {
       fields: (p.fields ?? []).map(field => ({ ...field, inline: Boolean(field.inline) })),
       image: p.image?.url ?? "",
       thumbnail: p.thumbnail?.url ?? "",
-    });
+    };
+    setFormState(next);
+    setSavedForm(stableJson(next));
     image.clear(); thumbnail.clear(); authorIcon.clear();
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function reset() {
     setFormState(emptyEmbedForm());
+    setSavedForm(stableJson(emptyEmbedForm()));
     image.clear(); thumbnail.clear(); authorIcon.clear();
     try { sessionStorage.removeItem(draftKey); } catch {}
   }
@@ -111,23 +117,29 @@ export function EmbedsPanel() {
   const clearThumbnail = () => { setForm({ thumbnail: "" }); thumbnail.clear(); };
   const clearAuthor = () => { setForm({ authorIcon: "" }); authorIcon.clear(); };
 
-  async function submit(action: "save" | "update") {
-    if (!form.name.trim()) return onError("Укажите название шаблона.");
+  async function submit(action: "save" | "update", report = true): Promise<boolean> {
+    if (!form.name.trim()) { onError("Укажите название шаблона."); return false; }
+    const requestForm = form;
     const upload = new FormData();
     upload.set("data", JSON.stringify({ id: form.id, name: form.name, mode: form.mode, saveOnly: action === "save", updateMessage: action === "update", payload }));
     if (image.file) upload.set("imageFile", image.file);
     if (thumbnail.file) upload.set("thumbnailFile", thumbnail.file);
     if (authorIcon.file) upload.set("authorFile", authorIcon.file);
-    await run(
+    const ok = await run(
       () => apiSend<{ id?: number }>(`/api/guilds/${guildId}/embeds`, { method: "POST", body: upload }, "Не удалось сохранить сообщение."),
       data => {
-        if (action === "save" && data.id) setForm({ id: data.id });
-        sessionStorage.removeItem(draftKey);
-        return { message: action === "save" ? "Шаблон сохранён. Его можно отправить из списка выше." : "Опубликованное сообщение обновлено." };
+        const savedId = action === "save" && data.id ? data.id : requestForm.id;
+        setFormState(current => savedId ? { ...current, id: savedId } : current);
+        setSavedForm(stableJson({ ...requestForm, ...(savedId ? { id: savedId } : {}) }));
+        try { sessionStorage.removeItem(draftKey); } catch {}
+        return report ? { message: action === "save" ? "Шаблон сохранён. Его можно отправить из списка выше." : "Опубликованное сообщение обновлено." } : undefined;
       },
       reload,
     );
+    return ok === true;
   }
+
+  useRegisterChanges("embeds", { dirty, save: report => submit("save", report), discard: reset });
 
   async function resend(item: EmbedDto) {
     const targetChannel = channel || item.channelId;
@@ -161,7 +173,7 @@ export function EmbedsPanel() {
   }
 
   if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading) return <SectionLoading/>;
+  if (loading && !items.length) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">

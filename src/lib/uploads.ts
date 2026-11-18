@@ -60,16 +60,23 @@ async function cleanupOrphanedFiles(dir: string, referenced: Set<string>, minAge
   } catch {  }
 }
 
-export async function deleteWelcomeBackgrounds(guildId: string, keep?: string) {
+export async function deleteWelcomeBackgrounds(guildId: string, keep?: string): Promise<string[]> {
   const dir = welcomeUploadsDir();
   const files = await readdir(dir).catch(() => [] as string[]);
-  await Promise.all(files.filter(name => name.startsWith(`${guildId}-welcome.`) && name !== keep).map(name => unlink(join(dir, name)).catch(() => null)));
+  const results = await Promise.all(files.filter(name => name.startsWith(`${guildId}-welcome.`) && name !== keep).map(async name => {
+    try { await unlink(join(dir, name)); return null; }
+    catch { return name; }
+  }));
+  return results.filter((name): name is string => name !== null);
 }
 
-export async function deleteGuildFiles(guildId: string) {
-  await rm(embedUploadsDir(guildId), { recursive: true, force: true }).catch(() => null);
-  await rm(eventUploadsDir(guildId), { recursive: true, force: true }).catch(() => null);
-  await deleteWelcomeBackgrounds(guildId);
+export async function deleteGuildFiles(guildId: string): Promise<string[]> {
+  if (!guildId) return ["Некорректный ID сервера"];
+  const errors: string[] = [];
+  try { await rm(embedUploadsDir(guildId), { recursive: true, force: true }); } catch { errors.push("embed-файлы"); }
+  try { await rm(eventUploadsDir(guildId), { recursive: true, force: true }); } catch { errors.push("файлы событий"); }
+  errors.push(...await deleteWelcomeBackgrounds(guildId));
+  return errors;
 }
 
 // formData()/json() buffer the whole body before per-file limits, so reject early.

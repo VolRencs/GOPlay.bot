@@ -9,7 +9,7 @@
 
 Discord-бот и веб-панель управления сервером в одном репозитории, но в двух
 процессах (Next.js + бот) с одной SQLite-базой. Стек
-(версии в `package.json`, зафиксированы в `pnpm-lock.yaml`): Node **≥ 26**,
+(версии в `package.json`, зафиксированы в `pnpm-lock.yaml`): Node **≥ 26.13.1**,
 pnpm **12.21.0**, Next.js **16.4.6**, React **19.3.1**, TypeScript **7.0.2**,
 нативное снятие типов TypeScript в Node и `node:sqlite` (без отдельного драйвера БД).
 
@@ -50,7 +50,7 @@ SQLite-хранилище (`node:sqlite`, WAL), i18n бота RU/EN, тесты 
 
 ## Быстрый старт (локально)
 
-Требования: **Linux x64 (glibc 2.35+)**, **Node ≥ 26**, **pnpm 12.21.0**,
+Требования: **Linux x64 (glibc 2.35+)**, **Node ≥ 26.13.1**, **pnpm 12.21.0**,
 **ffmpeg с libopus**. Нативный модуль `ytrust 1.5.1` устанавливается через `pnpm`.
 
 ```bash
@@ -155,7 +155,7 @@ pnpm start
 - В Discord Portal добавьте прод-redirect `https://ВАШ_ДОМЕН/api/auth/callback/discord`.
 - Next держите только на `127.0.0.1:3000`, наружу — nginx
   (пример: [`deploy/nginx-ip-https.conf`](deploy/nginx-ip-https.conf),
-  `client_max_body_size 8m`).
+  `client_max_body_size 34m`).
 - Бекапьте `data/bot.sqlite` (и `-wal`/`-shm` рядом при работе).
 - Ротация `data/logs/bot.log` — автоматически при старте (`pnpm logs:rotate`).
 

@@ -8,7 +8,7 @@ const root = join(import.meta.dirname, "..");
 const nextArgs = [mode, "-H", "127.0.0.1"];
 const children: ChildProcess[] = [
   spawn(join(root, "node_modules", ".bin", "next"), nextArgs, { stdio: "inherit", cwd: root }),
-  spawn(process.execPath, ["--env-file=.env", join(root, "src", "bot", "index.ts")], { stdio: "inherit", cwd: root }),
+  spawn(process.execPath, ["--env-file-if-exists=.env", join(root, "src", "bot", "index.ts")], { stdio: "inherit", cwd: root }),
 ];
 
 let stopping = false;

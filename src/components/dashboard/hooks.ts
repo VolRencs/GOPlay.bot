@@ -79,10 +79,11 @@ export function usePanelAction(options: { onDone: PanelNotify; onError: PanelFai
   const run = <T,>(request: () => Promise<ApiResult<T>>, done: (data: T) => PanelOutcome, reload?: () => void) =>
     runAction(async () => {
       const result = await request();
-      if (!result.ok) { optionsRef.current.onError(result.error); return; }
+      if (!result.ok) { optionsRef.current.onError(result.error); return false; }
       const outcome = done(result.data);
       if (outcome?.message) optionsRef.current.onDone(outcome.message, outcome.tone);
       reload?.();
+      return true;
     });
   return { busy, run };
 }

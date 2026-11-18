@@ -43,10 +43,13 @@ test("withTransaction отклоняет async-колбэк и не оставл
   assert.doesNotThrow(() => withTransaction(() => {}));
 });
 
-test("isSnowflake держит границы длины", () => {
+test("isSnowflake держит границы длины и не принимает не-строки", () => {
   for (const bad of ["", "1234567890123", "123456789012345678901234", "12abc", ".."]) assert.equal(isSnowflake(bad), false, bad);
   assert.equal(isSnowflake("123456789012345"), true);
   assert.equal(isSnowflake("1234567890123456789012"), true);
+  assert.equal(isSnowflake(123456789012345), false);
+  assert.equal(isSnowflake(["123456789012345"]), false);
+  assert.equal(isSnowflake({ toString: () => "123456789012345" }), false);
 });
 
 test("parseActions возвращает общий дефолт для пустых данных", () => {

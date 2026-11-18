@@ -83,3 +83,13 @@ test("пустые и null ID не требуют снапшота и токен
     process.env.DISCORD_TOKEN = previous;
   }
 });
+
+test("не-строковые ID отклоняются, а не отбрасываются молча", async () => {
+  const channel = await validator.validate("g1", { channels: { ids: [["c-text"]] } });
+  assert.equal(channel.ok, false);
+  if (!channel.ok) assert.equal(channel.status, 400);
+
+  const role = await validator.validate("g1", { roles: { ids: [{ id: "r-low" }] } });
+  assert.equal(role.ok, false);
+  if (!role.ok) assert.equal(role.status, 400);
+});

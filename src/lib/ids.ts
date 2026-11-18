@@ -1,4 +1,5 @@
-export const isSnowflake = (value: string) => /^\d{15,22}$/.test(value);
+export const isSnowflake = (value: unknown): value is string =>
+  typeof value === "string" && /^\d{15,22}$/.test(value);
 
 export const isSnowflakeArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every(item => typeof item === "string" && isSnowflake(item));

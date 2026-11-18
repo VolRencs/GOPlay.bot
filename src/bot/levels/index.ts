@@ -8,13 +8,14 @@ import { levelFromXp, levelProgress, rewardForLevel, type LevelReward, type Leve
 import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import { levelsTr } from "../../lib/i18n/bot/levels.ts";
+import { AUDIT_SECTION } from "../../lib/audit-sections.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
 import { progressBar, userRef } from "../../lib/format.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { fetchMember } from "../utils/members.ts";
 
 type PendingXp = { guildId: string; userId: string; xp: number; messages: number; voiceSeconds: number };
-type LevelUp = { guildId: string; userId: string; level: number };
+export type LevelUp = { guildId: string; userId: string; level: number };
 
 const FLUSH_INTERVAL = 5_000;
 const VOICE_INTERVAL = 60_000;
@@ -24,9 +25,13 @@ const BAR_SIZE = 12;
 const settingsCache = ttlCacheSync<string, LevelSettings>((guildId) => levelSettingsFor(guildId), 10_000);
 const settingsFor = (guildId: string) => settingsCache.get(guildId);
 const pending = new Map<string, PendingXp>();
+const lastCleanup = new Map<string, number>();
+const startedAt = Date.now();
 const messageCooldowns = new Map<string, number>();
 const voiceSessions = new Map<string, { guildId: string; userId: string; channelId: string }>();
 let levelFlushFailures = 0;
+let levelTimer: ReturnType<typeof setInterval> | null = null;
+let voiceTimer: ReturnType<typeof setInterval> | null = null;
 
 const keyFor = (guildId: string, userId: string) => `${guildId}:${userId}`;
 
@@ -42,9 +47,18 @@ export function flushLevels(): LevelUp[] {
   const entries = [...pending.values()];
   pending.clear();
   const levelUps: LevelUp[] = [];
+  const cleaned = new Set<string>();
+  const markers = new Map<string, number>();
   try {
     withTransaction(() => {
       for (const [guildId, guildEntries] of Map.groupBy(entries, entry => entry.guildId)) {
+        if (!markers.has(guildId)) markers.set(guildId, Number(stmt.cleanupMarker.get(guildId, AUDIT_SECTION.cleanup)?.created_at ?? 0));
+        const marker = markers.get(guildId)!;
+        const previous = lastCleanup.get(guildId);
+        if ((previous !== undefined && marker > previous) || (previous === undefined && marker >= startedAt)) {
+          cleaned.add(guildId);
+          continue;
+        }
         const settings = settingsFor(guildId);
         const rows = new Map(
           stmt.levelRowsFor.all(guildId, JSON.stringify([...new Set(guildEntries.map(entry => entry.userId))]))
@@ -61,9 +75,11 @@ export function flushLevels(): LevelUp[] {
     });
   } catch (error) {
     const missing = isForeignKeyError(error) ? missingGuilds(entries) : null;
-    for (const entry of entries) if (!missing?.has(entry.guildId)) addPending(entry.guildId, entry.userId, entry.xp, entry.messages, entry.voiceSeconds);
+    for (const entry of entries) if (!missing?.has(entry.guildId) && !cleaned.has(entry.guildId)) addPending(entry.guildId, entry.userId, entry.xp, entry.messages, entry.voiceSeconds);
     levelFlushFailures = logger.warnEvery(levelFlushFailures, 12, "[LEVELS] Не удалось слить XP — повторю позже", error);
     return [];
+  } finally {
+    for (const [guildId, marker] of markers) lastCleanup.set(guildId, marker);
   }
   levelFlushFailures = 0;
   return levelUps;
@@ -72,9 +88,7 @@ export function flushLevels(): LevelUp[] {
 function missingGuilds(entries: PendingXp[]): Set<string> | null {
   const alive = aliveGuildIds();
   if (!alive) return null;
-  const missing = new Set<string>();
-  for (const entry of entries) if (!alive.has(entry.guildId)) missing.add(entry.guildId);
-  return missing;
+  return new Set(entries.map(entry => entry.guildId).filter(id => !alive.has(id)));
 }
 
 function handleMessage(message: Message): void {
@@ -122,14 +136,16 @@ async function applyRewards(guild: Guild, userId: string, level: number, rewards
   if (!target) return;
   const member = await fetchMember(guild, userId);
   if (!member) return;
-  for (const reward of rewards) {
-    if (reward.level >= target.level || !member.roles.cache.has(reward.role_id)) continue;
-    const role = guild.roles.cache.get(reward.role_id);
-    if (role?.editable) await member.roles.remove(role).catch(error => logger.warn("[LEVELS] Не удалось снять роль награды", guild.id, error));
-  }
-  if (member.roles.cache.has(target.role_id)) return;
+  // Validate the target before removing anything: a deleted/misconfigured reward
+  // must not strip the previous reward role.
   const role = guild.roles.cache.get(target.role_id);
   if (!role || !role.editable) { logger.warn("[LEVELS] Роль награды недоступна или выше роли бота", guild.id, target.role_id); return; }
+  for (const reward of rewards) {
+    if (reward.role_id === target.role_id || reward.level >= target.level || !member.roles.cache.has(reward.role_id)) continue;
+    const oldRole = guild.roles.cache.get(reward.role_id);
+    if (oldRole?.editable) await member.roles.remove(oldRole).catch(error => logger.warn("[LEVELS] Не удалось снять роль награды", guild.id, error));
+  }
+  if (member.roles.cache.has(target.role_id)) return;
   await member.roles.add(role).catch(error => logger.warn("[LEVELS] Не удалось выдать роль за уровень", guild.id, error));
 }
 
@@ -146,17 +162,13 @@ async function notifyLevelUp(client: Client, guild: Guild, settings: LevelSettin
   }
 }
 
-async function applyLevelUps(client: Client, levelUps: LevelUp[]): Promise<void> {
+export async function applyLevelUps(client: Client, levelUps: LevelUp[]): Promise<void> {
   const rewardsByGuild = new Map<string, LevelReward[]>();
   for (const up of levelUps) {
     const guild = client.guilds.cache.get(up.guildId);
     if (!guild) continue;
     const settings = settingsFor(guild.id);
-    let rewards = rewardsByGuild.get(guild.id);
-    if (rewards === undefined) {
-      rewards = levelRewardsFor(guild.id);
-      rewardsByGuild.set(guild.id, rewards);
-    }
+    const rewards = rewardsByGuild.getOrInsertComputed(guild.id, () => levelRewardsFor(guild.id));
     if (rewards.length) guard("LEVELS:ROLES", () => applyRewards(guild, up.userId, up.level, rewards));
     await notifyLevelUp(client, guild, settings, up);
   }
@@ -164,7 +176,8 @@ async function applyLevelUps(client: Client, levelUps: LevelUp[]): Promise<void>
 
 function purgeLevelsGuild(guildId: string): void {
   const prefix = `${guildId}:`;
-  for (const key of [...pending.keys()]) if (key.startsWith(prefix)) pending.delete(key);
+  // Keep pending XP: GuildDelete retains guild data, and the next flush persists
+  // the last window. A real wipe is rejected by the guild FK.
   for (const key of [...voiceSessions.keys()]) if (key.startsWith(prefix)) voiceSessions.delete(key);
   for (const key of [...messageCooldowns.keys()]) if (key.startsWith(prefix)) messageCooldowns.delete(key);
   settingsCache.delete(guildId);
@@ -186,25 +199,31 @@ export function registerLevels(client: Client): void {
   client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("LEVELS_VOICE", () => handleVoiceState(oldState, newState)));
   client.on(Events.GuildDelete, guild => purgeLevelsGuild(guild.id));
   client.once(Events.ClientReady, () => seedVoiceSessions(client));
-  setInterval(() => {
+  levelTimer = setInterval(() => {
     const levelUps = flushLevels();
     if (levelUps.length) guard("LEVELS", () => applyLevelUps(client, levelUps));
   }, FLUSH_INTERVAL).unref();
-  setInterval(() => guard("LEVELS:VOICE", () => tickVoice(client)), VOICE_INTERVAL).unref();
+  voiceTimer = setInterval(() => guard("LEVELS:VOICE", () => tickVoice(client)), VOICE_INTERVAL).unref();
+}
+
+export function stopLevels(): void {
+  if (levelTimer) { clearInterval(levelTimer); levelTimer = null; }
+  if (voiceTimer) { clearInterval(voiceTimer); voiceTimer = null; }
 }
 
 export async function handleLevelCommand(i: Interaction): Promise<boolean> {
   if (!i.isChatInputCommand() || (i.commandName !== "lvl" && i.commandName !== "top")) return false;
   const t = guildTr(levelsTr, i.guildId ?? "");
+  const reply = (content: string) => i.reply({ content, flags: MessageFlags.Ephemeral }).catch(() => null);
   try {
     if (!i.inGuild() || !i.guild) {
-      await i.reply({ content: t("notGuild"), flags: MessageFlags.Ephemeral }).catch(() => null);
+      await reply(t("notGuild"));
       return true;
     }
     const guild = i.guild;
     const settings = settingsFor(guild.id);
     if (!settings.enabled) {
-      await i.reply({ content: t("disabled"), flags: MessageFlags.Ephemeral }).catch(() => null);
+      await reply(t("disabled"));
       return true;
     }
     if (i.commandName === "top") {
@@ -218,7 +237,7 @@ export async function handleLevelCommand(i: Interaction): Promise<boolean> {
     const user = i.options.getUser("user") ?? i.user;
     const member = await fetchMember(guild, user.id);
     if (!member) {
-      await i.reply({ content: t("memberNotFound"), flags: MessageFlags.Ephemeral }).catch(() => null);
+      await reply(t("memberNotFound"));
       return true;
     }
     const row = stmt.levelRow.get(guild.id, member.id);

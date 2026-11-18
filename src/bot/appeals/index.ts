@@ -56,6 +56,7 @@ async function handleModal(i: ModalSubmitInteraction) {
   if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral });
   await i.reply({ content: trAppeals(guildLang(guildId), "appealCreated", { number: String(result.value.number) }), flags: MessageFlags.Ephemeral });
   await i.message?.edit({ components: [] }).catch(() => null);
+  return;
 }
 
 export function offerAppeal(client: Client, input: { punishmentId: number; guildId: string; guildName: string; userId: string; reason: string | null; appealType: AppealPunishmentType }) {

@@ -5,7 +5,8 @@ import { detachEventMessage } from "../../lib/events.ts";
 import { forgetMessage, messageContent, rememberMessage } from "../../db/message-cache.ts";
 import { guard } from "../../lib/errors.ts";
 import { recordPunishmentAndOffer } from "../moderation/index.ts";
-import { auditActor, auditFind, isBotAction, logAction, loggingCategoryEnabled } from "./index.ts";import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
+import { auditActor, auditFind, isBotAction, logAction, loggingCategoryEnabled } from "./index.ts";
+import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 import { channelRef } from "../../lib/format.ts";
 import { count } from "../../lib/perf.ts";
@@ -69,10 +70,11 @@ export function registerLoggingEvents(client: Client) {
     if (fullOld && !isBotAction(fullNew.guild.id, "member_timeout", fullNew.id) && fullOld.communicationDisabledUntilTimestamp !== fullNew.communicationDisabledUntilTimestamp) {
       const isSet = Boolean(fullNew.communicationDisabledUntilTimestamp);
       const logTimeout = (actor?: string) => logAction({ guildId: fullNew.guild.id, type: "member_timeout", targetId: fullNew.id, moderatorId: actor, details: isSet ? t("timeoutSet") : t("timeoutCleared") });
-      void auditFind(fullNew.guild, AuditLogEvent.MemberUpdate, fullNew.id, { priority: isSet, retries: 1, retryDelay: 800 }).then(entry => {
+      const recordTimeout = (entry?: { executor?: { id?: string } | null; reason?: string | null }) => {
         logTimeout(entry?.executor?.id);
-        if (isSet && entry) recordPunishmentAndOffer(client, { guildId: fullNew.guild.id, guildName: fullNew.guild.name, userId: fullNew.id, type: "timeout", reason: entry.reason ?? t("noReason"), moderatorId: entry.executor?.id ?? null });
-      }, () => logTimeout());
+        if (isSet) recordPunishmentAndOffer(client, { guildId: fullNew.guild.id, guildName: fullNew.guild.name, userId: fullNew.id, type: "timeout", reason: entry?.reason ?? t("noReason"), moderatorId: entry?.executor?.id ?? null });
+      };
+      void auditFind(fullNew.guild, AuditLogEvent.MemberUpdate, fullNew.id, { priority: isSet, retries: 1, retryDelay: 800 }).then(recordTimeout, () => recordTimeout());
     }
   });
 
@@ -91,18 +93,19 @@ export function registerLoggingEvents(client: Client) {
     rememberMessage(newMessage.id, newMessage.guild.id, after);
     if (!logEdit) return;
     const pending = editPending.get(key);
-    if (pending) {
-      clearTimeout(pending.timer);
-      pending.after = after;
-      pending.timer = setTimeout(() => { editPending.delete(key); guard("EDIT_LOG", () => fireEditLog(newMessage, pending.before, pending.after)); }, EDIT_DEBOUNCE_MS).unref();
-      return;
-    }
-    editPending.set(key, { before, after, timer: setTimeout(() => { editPending.delete(key); guard("EDIT_LOG", () => fireEditLog(newMessage, before, after)); }, EDIT_DEBOUNCE_MS).unref() });
+    if (pending) clearTimeout(pending.timer);
+    const beforeText = pending?.before ?? before;
+    const guildId = newMessage.guild.id, authorId = newMessage.author.id, channelId = newMessage.channelId;
+    const timer = setTimeout(() => {
+      editPending.delete(key);
+      guard("EDIT_LOG", () => fireEditLog(guildId, authorId, channelId, beforeText, after));
+    }, EDIT_DEBOUNCE_MS).unref();
+    editPending.set(key, { before: beforeText, after, timer });
   });
 
-  function fireEditLog(newMessage: Message, before: string, after: string) {
-    const t = guildTr(logTr, newMessage.guild!.id);
-    logAction({ guildId: newMessage.guild!.id, type: "message_edit", targetId: newMessage.author!.id, details: `${t("channelField", { channel: channelRef(newMessage.channelId) })}\n${t("beforeLabel")}:\n${code(before.slice(0, 450))}\n${t("afterLabel")}:\n${code(after.slice(0, 450))}` });
+  function fireEditLog(guildId: string, authorId: string, channelId: string, before: string, after: string) {
+    const t = guildTr(logTr, guildId);
+    logAction({ guildId, type: "message_edit", targetId: authorId, details: `${t("channelField", { channel: channelRef(channelId) })}\n${t("beforeLabel")}:\n${code(before.slice(0, 450))}\n${t("afterLabel")}:\n${code(after.slice(0, 450))}` });
   }
 
   on(client, Events.MessageDelete, "MESSAGE_DELETE", async message => {

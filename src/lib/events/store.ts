@@ -137,6 +137,10 @@ export function dueReminders(at: number): { id: number; event_id: string }[] {
   return stmt.remindersDue.all(at);
 }
 
+export function eventsMissingMessage(): EventRow[] {
+  return stmt.eventsMissingMessage.all();
+}
+
 export function transitionDueEvents(now: number, guildAllowed?: (guildId: string) => boolean): { changed: EventRow[]; created: EventRow[] } {
   const changed: EventRow[] = [];
   const created: EventRow[] = [];

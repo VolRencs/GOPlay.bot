@@ -70,18 +70,26 @@ export function DashboardProvider({ guildId, children }: { guildId: string; chil
     return () => { changes.current.delete(key); bumpChanges(); };
   }, [bumpChanges]);
   const isDirty = useMemo(() => [...changes.current.values()].some(ref => ref.current.dirty), [changeVersion]);
+  const savingAll = useRef(false);
   const saveAll = useCallback(async () => {
-    let ok = true;
-    let hadDirty = false;
-    for (const ref of [...changes.current.values()]) {
-      const entry = ref.current;
-      if (!entry.dirty) continue;
-      hadDirty = true;
-      ok = await entry.save(false) && ok;
+    if (savingAll.current) return false;
+    savingAll.current = true;
+    try {
+      let ok = true;
+      let hadDirty = false;
+      for (const ref of [...changes.current.values()]) {
+        const entry = ref.current;
+        if (!entry.dirty) continue;
+        hadDirty = true;
+        ok = await entry.save(false) && ok;
+      }
+      const clean = [...changes.current.values()].every(ref => !ref.current.dirty);
+      bumpChanges();
+      if (ok && hadDirty && clean) notify("Все изменения сохранены.");
+      return ok && clean;
+    } finally {
+      savingAll.current = false;
     }
-    bumpChanges();
-    if (ok && hadDirty) notify("Все изменения сохранены.");
-    return ok;
   }, [bumpChanges, notify]);
   const discardAll = useCallback(() => {
     for (const ref of [...changes.current.values()]) ref.current.discard();

@@ -17,10 +17,16 @@ export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) 
     return jsonError("Не удалось связаться с Discord.", 502);
   }
 
+  let fileErrors: string[] = [];
   if (wipe) {
     wipeGuildData(guildId);
-    await deleteGuildFiles(guildId);
+    fileErrors = await deleteGuildFiles(guildId);
   }
 
-  return NextResponse.json({ ok: true, leftOnDiscord, wiped: wipe });
+  return NextResponse.json({
+    ok: true,
+    leftOnDiscord,
+    wiped: wipe && fileErrors.length === 0,
+    ...(fileErrors.length ? { warning: `Данные в БД удалены, но не удалось удалить: ${fileErrors.join(", ")}.` } : {}),
+  });
 });

@@ -34,7 +34,7 @@ export async function sendDiscordDM(userId: string, content: string): Promise<bo
   if (!process.env.DISCORD_TOKEN) return false;
   try {
     const headers = { "content-type": "application/json" };
-    const channel = await discordFetch(`/users/${userId}/channels`, { method: "POST", headers, body: JSON.stringify({ recipient_id: userId }) });
+    const channel = await discordFetch("/users/@me/channels", { method: "POST", headers, body: JSON.stringify({ recipient_id: userId }) });
     if (!channel.ok) return false;
     const { id } = await channel.json() as { id: string };
     const message = await discordFetch(`/channels/${id}/messages`, { method: "POST", headers, body: JSON.stringify({ content: content.slice(0, 2000) }) });

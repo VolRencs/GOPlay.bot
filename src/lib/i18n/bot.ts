@@ -63,6 +63,7 @@ export const tempTr = makeTr({
   channelClosed: { ru: "Канал закрыт.", en: "Channel locked." },
   deleting: { ru: "Канал удаляется.", en: "Deleting channel." },
   emptyName: { ru: "Название не может быть пустым.", en: "Name cannot be empty." },
+  actionFailed: { ru: "❌ Не удалось применить изменение в Discord.", en: "❌ Failed to apply the change in Discord." },
   renamed: { ru: "Канал переименован в «{name}».", en: "Channel renamed to \"{name}\"." },
   limitRange: { ru: "Лимит должен быть числом от 0 до 99.", en: "Limit must be a number from 0 to 99." },
   limitSet: { ru: "Лимит установлен: {n} участников.", en: "Limit set: {n} members." },

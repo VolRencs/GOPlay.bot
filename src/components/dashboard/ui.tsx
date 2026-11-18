@@ -1,11 +1,11 @@
 "use client";
 
-import { Suspense, lazy, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
+import { Suspense, lazy, useCallback, useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { stripVariationSelectors } from "goemoji/discord";
 import { ArrowDown, ArrowRight, Check, ChevronDown, Image, Smile, User } from "lucide-react";
 import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "./types.ts";
-import { safeJson, stableJson } from "../../lib/json.ts";
+import { safeJson } from "../../lib/json.ts";
 import { EMBED_LIMITS } from "#contracts/embeds.ts";
 
 export function SectionLoading() {
@@ -62,7 +62,7 @@ function FieldsEditor({ fields, onChange }: { fields: EmbedField[]; onChange: (f
           </div>
         </div>
       ))}
-      <button type="button" className="btn secondary" onClick={() => onChange([...fields, { name: "", value: "", inline: false }])}>Добавить поле</button>
+      <button type="button" className="btn secondary" disabled={fields.length >= EMBED_LIMITS.fields} onClick={() => onChange([...fields, { name: "", value: "", inline: false }])}>Добавить поле</button>
     </div>
   );
 }
@@ -142,8 +142,6 @@ export function EmbedComposer({ color, onColorChange, value, onChange, image, th
 
 export { formatNumber, formatTime } from "../../lib/format.ts";
 
-export const stableStringify = stableJson;
-
 export function useAsyncAction() {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -151,7 +149,7 @@ export function useAsyncAction() {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
-    try { await action(); } finally { busyRef.current = false; setBusy(false); }
+    try { return await action(); } finally { busyRef.current = false; setBusy(false); }
   };
   return { busy, run };
 }
@@ -188,7 +186,10 @@ export const asString = (value: unknown, fallback = ""): string => typeof value 
 export const asNumber = (value: unknown, fallback: number): number => typeof value === "number" && Number.isFinite(value) ? value : fallback;
 export const asBoolean = (value: unknown, fallback: boolean): boolean => typeof value === "boolean" ? value : fallback;
 export const asFields = (value: unknown): EmbedField[] => Array.isArray(value)
-  ? value.map(field => ({ name: asString((field as { name?: unknown })?.name), value: asString((field as { value?: unknown })?.value), inline: Boolean((field as { inline?: unknown })?.inline) }))
+  ? value.map(field => {
+    const item = (field ?? {}) as { name?: unknown; value?: unknown; inline?: unknown };
+    return { name: asString(item.name), value: asString(item.value), inline: Boolean(item.inline) };
+  })
   : [];
 
 export function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
@@ -218,20 +219,14 @@ export function NumberField({ label, hint, value, min, max, onChange }: { label:
 }
 
 export function CheckList({ items, selected, onChange, channel = false, label }: CheckListProps) {
+  const selectedSet = new Set(selected);
   const toggle = (id: string) => onChange(
-    selected.includes(id) ? selected.filter(value => value !== id) : [...selected, id],
+    selectedSet.has(id) ? selected.filter(value => value !== id) : [...selected, id],
   );
-  if (!items.length) {
-    return (
-      <div className="choice-list" role="group" aria-label={label}>
-        <span className="hint">Нет доступных вариантов.</span>
-      </div>
-    );
-  }
   return (
     <div className="choice-list" role="group" aria-label={label}>
-      {items.map(item => {
-        const active = selected.includes(item.id);
+      {items.length ? items.map(item => {
+        const active = selectedSet.has(item.id);
         return (
           <button
             key={item.id}
@@ -244,7 +239,7 @@ export function CheckList({ items, selected, onChange, channel = false, label }:
             <span>{channel ? "# " : ""}{item.name}</span>
           </button>
         );
-      })}
+      }) : <span className="hint">Нет доступных вариантов.</span>}
     </div>
   );
 }
@@ -255,7 +250,8 @@ type PopoverCoords = { left: number; width: number; top?: number; bottom?: numbe
 
 const placeEmojiPopover = (rect: DOMRect): PopoverCoords => {
   const width = Math.min(340, window.innerWidth - 24);
-  const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
+  // Center the picker under the emoji trigger, not under the whole input row.
+  const left = Math.max(12, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 12));
   const below = window.innerHeight - rect.bottom;
   const above = rect.top;
   const upwards = below < Math.min(360, window.innerHeight * 0.6) && above > below;
@@ -316,16 +312,16 @@ function useFloatingPopover(options: {
 
 export function EmojiPicker({value,onChange,serverEmojis}:{value:string;onChange:(value:string)=>void;serverEmojis:ServerEmoji[]}) {
   const rootRef=useRef<HTMLDivElement>(null);
-  const anchorRef=useRef<HTMLDivElement>(null);
+  const anchorRef=useRef<HTMLButtonElement>(null);
   const popoverRef=useRef<HTMLDivElement>(null);
   const { open, coords, close, openPopover } = useFloatingPopover({ anchorRef, rootRef, popoverRef, place: placeEmojiPopover });
   const select=(emoji:string)=>{onChange(stripVariationSelectors(emoji));close();};
   return (
     <div className="emoji-picker" ref={rootRef}>
       <div className="emoji-current">
-        <div className="emoji-input-wrap" ref={anchorRef}>
+        <div className="emoji-input-wrap">
           <input value={value} maxLength={96} onChange={e => onChange(e.target.value)} placeholder="Выберите эмодзи" aria-label="Эмодзи"/>
-          <button type="button" className="emoji-trigger" onClick={() => open ? close() : openPopover()} aria-expanded={open} aria-label="Выбрать эмодзи" title="Выбрать эмодзи">
+          <button type="button" ref={anchorRef} className="emoji-trigger" onClick={() => open ? close() : openPopover()} aria-expanded={open} aria-label="Выбрать эмодзи" title="Выбрать эмодзи">
             <Smile size={16}/>
           </button>
           {open&&coords&&createPortal(
@@ -353,8 +349,13 @@ export function useDismissOnOutside<T extends HTMLElement>(ref: RefObject<T | nu
 }
 
 export function useObjectUrl(file: File | null) {
-  const url = useMemo(() => file ? URL.createObjectURL(file) : "", [file]);
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!file) { setUrl(""); return; }
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
   return url;
 }
 
@@ -477,16 +478,21 @@ export function Select({ value, onChange, options, ariaLabel, placeholder, disab
   );
 }
 
+const modalStack: symbol[] = [];
+
 export function ModalShell({ labelledBy, onClose, children }: { labelledBy: string; onClose?: () => void; children: ReactNode }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
   const close = useEffectEvent(() => onClose?.());
   useEffect(() => {
+    const id = Symbol("modal");
+    modalStack.push(id);
     restoreRef.current = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     dialogRef.current?.querySelector<HTMLElement>("[data-autofocus]")?.focus();
     const onKey = (event: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== id) return;
       if (event.key === "Escape") { event.preventDefault(); close(); return; }
       if (event.key !== "Tab") return;
       const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>(
@@ -500,6 +506,8 @@ export function ModalShell({ labelledBy, onClose, children }: { labelledBy: stri
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
+      const at = modalStack.indexOf(id);
+      if (at !== -1) modalStack.splice(at, 1);
       document.body.style.overflow = previousOverflow;
       restoreRef.current?.focus();
     };
@@ -529,6 +537,12 @@ export function confirmAction(message: string, confirmLabel = "Подтверд�
 
 export function ConfirmHost() {
   const items = useSyncExternalStore(subscribeConfirms, getConfirmSnapshot, getConfirmServerSnapshot);
+  useEffect(() => () => {
+    const pending = queue;
+    queue = [];
+    emit();
+    for (const item of pending) item.resolve(false);
+  }, []);
   const current = items[0];
   const close = (ok: boolean) => {
     if (!current) return;

@@ -15,7 +15,7 @@ const pruneStmt = db.prepare(
   "DELETE FROM dashboard_audit WHERE guild_id=? AND created_at < (SELECT created_at FROM dashboard_audit WHERE guild_id=? ORDER BY created_at DESC LIMIT 1 OFFSET ?)",
 );
 
-export function recordDashboardChange(guildId: string, actor: AuditActor, section: string, summary: string) {
+export function recordDashboardChange(guildId: string, actor: AuditActor, section: string, summary: string, strict = false) {
   const count = (pendingPrune.get(guildId) ?? 0) + 1;
   try {
     withTransaction(() => {
@@ -24,6 +24,7 @@ export function recordDashboardChange(guildId: string, actor: AuditActor, sectio
     });
     pendingPrune.set(guildId, count >= PRUNE_EVERY ? 0 : count);
   } catch (error) {
+    if (strict) throw error;
     logger.warn("[AUDIT] Не удалось записать изменение", guildId, section, error);
   }
 }

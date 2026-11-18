@@ -94,37 +94,24 @@ function markAvatarFailure(url: string): void {
 }
 
 async function fetchAvatar(url: string): Promise<Buffer | null> {
+  const reject = (message: string, detail: unknown): null => {
+    logger.warn(message, url, detail);
+    markAvatarFailure(url);
+    return null;
+  };
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) {
-      logger.warn("[WELCOME] Не удалось загрузить аватар", url, response.status);
-      markAvatarFailure(url);
-      return null;
-    }
+    if (!response.ok) return reject("[WELCOME] Не удалось загрузить аватар", response.status);
     const type = response.headers.get("content-type") ?? "";
-    if (!type.startsWith("image/")) {
-      logger.warn("[WELCOME] Аватар вернул не изображение", url, type);
-      markAvatarFailure(url);
-      return null;
-    }
+    if (!type.startsWith("image/")) return reject("[WELCOME] Аватар вернул не изображение", type);
     const length = Number(response.headers.get("content-length") ?? 0);
-    if (length > AVATAR_MAX_BYTES) {
-      logger.warn("[WELCOME] Аватар больше лимита", url, length);
-      markAvatarFailure(url);
-      return null;
-    }
+    if (length > AVATAR_MAX_BYTES) return reject("[WELCOME] Аватар больше лимита", length);
     const bytes = Buffer.from(await response.arrayBuffer());
-    if (bytes.length > AVATAR_MAX_BYTES) {
-      logger.warn("[WELCOME] Аватар больше лимита", url, bytes.length);
-      markAvatarFailure(url);
-      return null;
-    }
+    if (bytes.length > AVATAR_MAX_BYTES) return reject("[WELCOME] Аватар больше лимита", bytes.length);
     avatarCache.set(url, bytes);
     return bytes;
   } catch (error) {
-    logger.warn("[WELCOME] Не удалось загрузить аватар", url, error);
-    markAvatarFailure(url);
-    return null;
+    return reject("[WELCOME] Не удалось загрузить аватар", error);
   }
 }
 

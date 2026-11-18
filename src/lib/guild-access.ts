@@ -10,13 +10,10 @@ import { DiscordRateLimitError, discordFetch, withRateLimitRetry } from "./disco
 export { DiscordRateLimitError, discordFetch } from "./discord-api.ts";
 type DiscordGuild = { id:string; permissions:string; owner:boolean; name:string; icon:string|null };
 const manage=0x20n, admin=0x8n;
+function envIdList(name: string): string[] { return (process.env[name] ?? "").split(",").map(id => id.trim()).filter(Boolean); }
 // Single source of truth for dashboard access; every entry point uses this predicate.
-function allowedDiscordIds(): string[] {
-  return (process.env.DASHBOARD_ALLOWED_DISCORD_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean);
-}
-export function allowedAdminIds(): string[] {
-  return (process.env.ADMIN_DISCORD_IDS ?? "").split(",").map(id => id.trim()).filter(Boolean);
-}
+function allowedDiscordIds(): string[] { return envIdList("DASHBOARD_ALLOWED_DISCORD_IDS"); }
+export function allowedAdminIds(): string[] { return envIdList("ADMIN_DISCORD_IDS"); }
 export function isAllowedAccount(discordAccount: { accountId: string } | undefined | null): boolean {
   const allowedIds = allowedDiscordIds();
   return !allowedIds.length || Boolean(discordAccount && allowedIds.includes(discordAccount.accountId));
@@ -34,13 +31,9 @@ export function discordAccountOf(userId: string) {
 
 class DiscordAuthError extends Error {}
 
-function guildsRequest(accessToken: string): Promise<Response> {
-  return fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) });
-}
-
 async function requestGuilds(accessToken: string, retry = true): Promise<DiscordGuild[]> {
   return withRateLimitRetry<DiscordGuild[]>(
-    await guildsRequest(accessToken),
+    await fetch("https://discord.com/api/users/@me/guilds", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) }),
     retry,
     (settled) => {
       if (!settled.ok) throw new Error(`Discord guilds request failed (${settled.status})`);
@@ -75,7 +68,11 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
       delete entry.lastError; delete entry.errorExpiresAt;
       return guilds;
     } catch (error) {
-      if (entry.guilds && entry.staleUntil > Date.now() && error instanceof DiscordRateLimitError) return entry.guilds;
+      if (entry.guilds && entry.staleUntil > Date.now() && error instanceof DiscordRateLimitError) {
+        // Serve the stale list without hammering Discord on every dashboard request.
+        entry.expiresAt = Math.min(entry.staleUntil, Date.now() + 60_000);
+        return entry.guilds;
+      }
       entry.lastError = error;
       entry.errorExpiresAt = Date.now() + 5_000 + Math.random() * 10_000;
       throw error;
@@ -84,7 +81,11 @@ export async function discordGuilds(requestHeaders: Headers, accountId?: string)
   entry.pending = load(); guildCache.set(key, entry);
   return entry.pending;
 }
-export function canManageGuild(guild: DiscordGuild) { return guild.owner || (BigInt(guild.permissions) & (manage | admin)) !== 0n; }
+export function canManageGuild(guild: DiscordGuild) {
+  if (guild.owner) return true;
+  try { return (BigInt(guild.permissions) & (manage | admin)) !== 0n; }
+  catch { return false; }
+}
 
 export type DashboardGuild = { id: string; name: string; icon: string | null };
 
@@ -98,11 +99,6 @@ export async function configuredGuilds(requestHeaders: Headers, accountId?: stri
   return allowed.filter(guild => configured.has(guild.id)).sort((a, b) => a.name.localeCompare(b.name)).map(({ id, name, icon }) => ({ id, name, icon }));
 }
 
-async function withGuild(guildId: string) {
-  const access = await authorize(guildId);
-  return access.ok ? access : Response.json({ error: access.error }, { status: access.status });
-}
-
 type SessionUser = NonNullable<Awaited<ReturnType<typeof resolveSession>>>["user"];
 
 export function guildRoute<P extends { guildId: string } = { guildId: string }>(
@@ -110,8 +106,8 @@ export function guildRoute<P extends { guildId: string } = { guildId: string }>(
 ) {
   return async (request: Request, context: { params: Promise<P> }): Promise<Response> => {
     const { guildId, ...rest } = await context.params;
-    const access = await withGuild(guildId);
-    if (access instanceof Response) return access;
+    const access = await authorize(guildId);
+    if (!access.ok) return jsonError(access.error, access.status);
     return handler(request, { guildId, user: access.user, params: rest });
   };
 }
@@ -121,7 +117,7 @@ export function adminRoute<P extends Record<string, string> = Record<string, nev
 ) {
   return async (request: Request, context: { params: Promise<P> }): Promise<Response> => {
     const gate = await requireAdmin();
-    if (gate instanceof Response) return gate;
+    if (gate) return gate;
     return handler(request, await context.params);
   };
 }
@@ -141,12 +137,12 @@ async function requireUser() {
   return { ok: true as const, user, discordAccount, requestHeaders };
 }
 
-async function requireAdmin(): Promise<{ ok: true } | Response> {
+async function requireAdmin(): Promise<Response | null> {
   const resolved = await resolveSession();
-  if (!resolved) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!resolved) return jsonError("Unauthorized", 401);
   const accountId = resolved.discordAccount?.accountId;
-  if (!allowedAdminIds().includes(accountId ?? "")) return Response.json({ error: "Админ-панель доступна только владельцу бота." }, { status: 403 });
-  return { ok: true };
+  if (!allowedAdminIds().includes(accountId ?? "")) return jsonError("Админ-панель доступна только владельцу бота.", 403);
+  return null;
 }
 
 function accessError(error: unknown) {
@@ -241,18 +237,24 @@ const guildMemberNames = (guildId: string): Promise<Map<string, string>> => memb
 
 // Small ID sets use per-member lookups; large sets fall back to full pagination.
 const memberNameCache = ttlCacheAsync<string, string | null>(async key => {
-  const [guildId, userId] = key.split(":");
+  const [guildId = "", userId = ""] = key.split(":");
   const response = await discordFetch(`/guilds/${guildId}/members/${userId}`, { signal: AbortSignal.timeout(5000) });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Discord member request failed (${response.status})`);
   const member = await response.json() as { nick?: string | null; user?: { username?: string; global_name?: string | null } };
-  return member.user ? member.nick ?? member.user.global_name ?? member.user.username ?? userId! : null;
+  return member.user ? member.nick ?? member.user.global_name ?? member.user.username ?? userId : null;
 }, DAY_MS, true);
 
 export async function guildMemberNamesFor(guildId: string, ids: readonly string[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids)];
   if (!unique.length) return new Map();
-  if (unique.length > 50) return guildMemberNames(guildId);
-  const entries = await Promise.all(unique.map(async id => [id, await memberNameCache.get(`${guildId}:${id}`).catch(() => null)] as const));
+  // One paginated members request is cheaper and safer than dozens of per-member
+  // calls that can trip Discord's rate limit.
+  if (unique.length > 10) return guildMemberNames(guildId);
+  const entries: (readonly [string, string | null])[] = [];
+  for (let i = 0; i < unique.length; i += 3) {
+    entries.push(...await Promise.all(unique.slice(i, i + 3).map(async id =>
+      [id, await memberNameCache.get(`${guildId}:${id}`).catch(() => null)] as const)));
+  }
   return new Map(entries.filter((entry): entry is readonly [string, string] => entry[1] !== null));
 }

@@ -6,7 +6,8 @@ import { AutoModSettings } from "./AutomodPanel.tsx";
 import { apiJson, apiSend } from "./api.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
 import { useApiLoad } from "./hooks.ts";
-import { SectionError, SectionLoading, stableStringify } from "./ui.tsx";
+import { SectionError, SectionLoading } from "./ui.tsx";
+import { stableJson } from "../../lib/json.ts";
 
 export function AutomodTab() {
   const { guildId, resources, notify, fail } = useDashboard();
@@ -29,16 +30,19 @@ export function AutomodTab() {
     onError: fail,
   }, [guildId, fail]);
 
-  const ruleDirty = (kind: string) => savedRules !== null && (savedRules[kind] === undefined || stableStringify(savedRules[kind]) !== stableStringify(rules[kind]));
+  const ruleDirty = (kind: string) => savedRules !== null && (savedRules[kind] === undefined || stableJson(savedRules[kind]) !== stableJson(rules[kind]));
   const rulesDirty = Object.keys(rules).some(ruleDirty);
-  const securityDirty = savedSecurity !== null && (stableStringify(savedSecurity.roles) !== stableStringify(ignoredRoleIds) || savedSecurity.channel !== protectedChannelId);
+  const securityDirty = savedSecurity !== null && (stableJson(savedSecurity.roles) !== stableJson(ignoredRoleIds) || savedSecurity.channel !== protectedChannelId);
   const dirty = rulesDirty || securityDirty;
 
   async function saveRule(kind: string): Promise<boolean> {
     const current = rules[kind] ?? defaultRule(kind);
     const sent = await apiJson<{ unchanged?: boolean }>(`/api/guilds/${guildId}/automod`, "PUT", current, "Не удалось сохранить правило.");
     if (!sent.ok) { fail(sent.error); return false; }
-    setRules(value => ({ ...value, [kind]: current }));
+    // Keep edits made while the request was in flight; the server has `current`.
+    setRules(value => stableJson(value[kind] ?? defaultRule(kind)) === stableJson(current)
+      ? { ...value, [kind]: current }
+      : value);
     setSavedRules(value => value ? { ...value, [kind]: current } : { [kind]: current });
     return true;
   }

@@ -1,9 +1,13 @@
 "use client";
 import { useRef, useState } from "react";
+import NextLink from "next/link.js";
+import type { ComponentProps, ComponentType } from "react";
 import { ArrowRight, Check, LogOut, ShieldCheck, X } from "lucide-react";
 import { authClient } from "../lib/auth-client.ts";
 import { useAsyncAction, useDismissOnOutside } from "./dashboard/ui.tsx";
 import type { AccountAccess } from "../lib/access.ts";
+
+const Link = NextLink as unknown as ComponentType<ComponentProps<"a">>;
 
 export default function UserMenu({ access }: { access: AccountAccess }) {
   const [open, setOpen] = useState(false);
@@ -13,7 +17,7 @@ export default function UserMenu({ access }: { access: AccountAccess }) {
   useDismissOnOutside(root, open, () => setOpen(false));
 
   if (!access.authenticated) {
-    return <a className="btn secondary small" href="/login"><span>Войти</span><ArrowRight size={16} /></a>;
+    return <Link className="btn secondary small" href="/login"><span>Войти</span><ArrowRight size={16} /></Link>;
   }
 
   async function signOut() {
@@ -43,8 +47,8 @@ export default function UserMenu({ access }: { access: AccountAccess }) {
           {access.canManage ? "Есть права на добавление и редактирование" : "Нет прав на добавление и редактирование"}
         </span>
       </div>
-      {access.isAdmin && <a className="btn" href="/admin">Админ панель <ShieldCheck size={15} /></a>}
-      {access.allowed && access.canManage && <a className="btn" href="/dashboard">Панель управления <ArrowRight size={15} /></a>}
+      {access.isAdmin && <Link className="btn" href="/admin">Админ панель <ShieldCheck size={15} /></Link>}
+      {access.allowed && access.canManage && <Link className="btn" href="/dashboard">Панель управления <ArrowRight size={15} /></Link>}
       <button type="button" className="btn danger" onClick={() => void signOut()} disabled={busy}>
         <LogOut size={15} />{busy ? "Выход…" : "Выйти из аккаунта"}
       </button>

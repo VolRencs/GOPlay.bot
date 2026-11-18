@@ -73,3 +73,9 @@ test("fitEmbed trims user fields and text to the Discord limit", () => {
   assert.deepEqual(trimmed.fields, [{ name: "generated", value: "z" }]);
   assert.ok(embedCharacterCount(trimmed) <= EMBED_LIMITS.total);
 });
+
+test("normalizeEmbedContent rejects colors outside the Discord range", () => {
+  assert.equal(normalizeEmbedContent({ color: -1 }).content.color, undefined);
+  assert.equal(normalizeEmbedContent({ color: 0x1000000 }).content.color, undefined);
+  assert.equal(normalizeEmbedContent({ color: 0xffffff }).content.color, 0xffffff);
+});

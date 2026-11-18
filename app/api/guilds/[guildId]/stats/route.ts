@@ -16,7 +16,8 @@ export const GET = guildRoute(async (request, { guildId }) => {
   const period = requested === "24h" || requested === "30d" ? requested : "7d";
   const windowDays = ({"24h":1,"7d":7,"30d":30} as const)[period];
   const nowMs = Date.now();
-  const cutoff = iso(nowMs - windowDays * DAY_MS);
+  // Day buckets include today; 7d must mean today + the previous six days, not eight.
+  const cutoff = iso(nowMs - (period === "24h" ? 1 : windowDays - 1) * DAY_MS);
 
   const days = period === "24h" ? [] : Array.from({ length: windowDays }, (_, i) => iso(nowMs - (windowDays - 1 - i) * DAY_MS));
   const byDay = new Map((days.length ? statsQueries.daily.all(guildId, cutoff) : []).map(row => [row.day, row]));
@@ -26,16 +27,20 @@ export const GET = guildRoute(async (request, { guildId }) => {
   }, { joins: 0, leaves: 0, messages: 0, moderation: 0 });
 
   let points: { label: string; messages: number }[];
+  let peakInWindow: { day: string; hour: number; messages: number } | null = null;
   if (period === "24h") {
     const rows = statsQueries.hourly.all(guildId, iso(nowMs - DAY_MS));
     const byHour = new Map(rows.map(row => [`${row.day}:${row.hour}`, row]));
     let joins = 0, leaves = 0;
     points = Array.from({ length: 24 }, (_, i) => {
       const t = new Date(nowMs - (23 - i) * 3_600_000);
-      const row = byHour.get(`${iso(t.getTime())}:${t.getUTCHours()}`);
+      const day = iso(t.getTime());
+      const hour = t.getUTCHours();
+      const row = byHour.get(`${day}:${hour}`);
       joins += row?.joins ?? 0;
       leaves += row?.leaves ?? 0;
-      return { label: `${String(t.getUTCHours()).padStart(2, "0")}:00`, messages: row?.messages ?? 0 };
+      if (row && (!peakInWindow || row.messages > peakInWindow.messages)) peakInWindow = { day, hour, messages: row.messages };
+      return { label: `${String(hour).padStart(2, "0")}:00`, messages: row?.messages ?? 0 };
     });
     totals.joins = joins;
     totals.leaves = leaves;
@@ -59,7 +64,7 @@ export const GET = guildRoute(async (request, { guildId }) => {
   const topChannels = statsQueries.topChannels.all(guildId, cutoff).map(row => ({ ...row, name: channelNames.get(row.id) ?? "Неизвестный канал" }));
   const topUsers = topUserRows.map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" }));
 
-  const peakHour = statsQueries.peakHour.get(guildId, cutoff) ?? null;
+  const peakHour = peakInWindow ?? statsQueries.peakHour.get(guildId, cutoff) ?? null;
 
   return NextResponse.json<StatsGet>({ points, totals, moderation, topChannels, topUsers, peakHour });
 });

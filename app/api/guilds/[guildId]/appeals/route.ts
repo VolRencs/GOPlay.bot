@@ -17,8 +17,10 @@ export const GET = guildRoute(async (request, { guildId }) => {
   const to = toRaw === null || toRaw === "" ? undefined : Number(toRaw);
   if ((from !== undefined && !Number.isFinite(from)) || (to !== undefined && !Number.isFinite(to)))
     return jsonError("Некорректный диапазон дат.");
-  const limit = Math.max(1, Math.min(200, Math.trunc(Number(url.searchParams.get("limit")) || 100)));
-  const offset = Math.max(0, Math.trunc(Number(url.searchParams.get("offset")) || 0));
+  const rawLimit = Number(url.searchParams.get("limit"));
+  const rawOffset = Number(url.searchParams.get("offset"));
+  const limit = Number.isSafeInteger(rawLimit) && rawLimit > 0 ? Math.min(200, rawLimit) : 100;
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset > 0 ? Math.min(10_000_000, rawOffset) : 0;
   const query: AppealListQuery = { guildId, status, limit, offset };
   if (userId !== undefined) query.userId = userId;
   if (moderatorId !== undefined) query.moderatorId = moderatorId;

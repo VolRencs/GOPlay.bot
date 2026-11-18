@@ -23,13 +23,14 @@ const modeValueLabels: Record<string, string> = {
   any: "фото и видео", image: "только фото", video: "только видео",
 };
 function thresholdDisplay(threshold: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(threshold).filter(([key]) => thresholdLabels[key]).map(([key, value]) => [
-    thresholdLabels[key]!,
-    key === "channels" && Array.isArray(value) ? value.map(id => channelRef(String(id))) : typeof value === "string" ? (modeValueLabels[value] ?? value) : value,
-  ]));
+  return Object.fromEntries(Object.entries(threshold).flatMap(([key, value]) => {
+    const label = thresholdLabels[key];
+    if (!label) return [];
+    return [[label, key === "channels" && Array.isArray(value) ? value.map(id => channelRef(String(id))) : typeof value === "string" ? (modeValueLabels[value] ?? value) : value]];
+  }));
 }
 
-const kinds: readonly string[] = Object.keys(automodRulesM);
+const kinds = Object.keys(automodRulesM);
 function isValidThreshold(threshold: Record<string, unknown>): boolean {
   for (const [key, range] of Object.entries(automodThresholdRanges)) {
     const value = threshold[key];
@@ -57,7 +58,8 @@ export const PUT = guildRoute(async (request, { guildId, user }) => {
     const roles = r.ignoredRoleIds ?? [], channel = r.protectedChannelId ?? null;
     if(!isSnowflakeArray(roles)||(channel!==null&&(typeof channel!=="string"||!isSnowflake(channel))))return jsonError("Некорректные роли или канал.");
     const savedSecurity=stmt.security.get(guildId);
-    const storedRoles=(()=>{const parsed=safeJson<unknown>(savedSecurity?.ignored_role_ids_json,[]);return isSnowflakeArray(parsed)?parsed.toSorted():[]})();
+    const parsedRoles=safeJson<unknown>(savedSecurity?.ignored_role_ids_json,[]);
+    const storedRoles=isSnowflakeArray(parsedRoles)?parsedRoles.toSorted():[];
     const unchangedSecurity=savedSecurity ? stableJson(storedRoles)===stableJson([...roles].sort())&&(savedSecurity.protected_channel_id??null)===channel : roles.length===0&&channel===null;
     if(unchangedSecurity)return NextResponse.json({ok:true,unchanged:true});
     const channelCheck = await validateResources(guildId, { channels: { ids: [channel], types: CHANNEL_TYPES.text } });

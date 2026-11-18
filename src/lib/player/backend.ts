@@ -100,20 +100,19 @@ export function probeMusicBackend(): Promise<boolean> {
   return pending;
 }
 
-export async function resolveMedia(input: string, options: ResolveOptions = backendOptions()): Promise<BackendResult<ResolveResult>> {
+async function callBackend<T>(run: (module: YtrustModule) => Promise<T>): Promise<BackendResult<T>> {
   try {
     const module = await loadBackend();
-    return { ok: true, value: await module.resolve(input, options) };
+    return { ok: true, value: await run(module) };
   } catch (error) {
     return normalizeFailure(error);
   }
 }
 
-export async function resolveAudioMedia(input: string, options: ResolveOptions = audioOptions()): Promise<BackendResult<AudioResult>> {
-  try {
-    const module = await loadBackend();
-    return { ok: true, value: await module.resolveAudio(input, options) };
-  } catch (error) {
-    return normalizeFailure(error);
-  }
+export function resolveMedia(input: string, options: ResolveOptions = backendOptions()): Promise<BackendResult<ResolveResult>> {
+  return callBackend(module => module.resolve(input, options));
+}
+
+export function resolveAudioMedia(input: string, options: ResolveOptions = audioOptions()): Promise<BackendResult<AudioResult>> {
+  return callBackend(module => module.resolveAudio(input, options));
 }

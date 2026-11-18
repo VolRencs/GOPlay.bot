@@ -1,7 +1,11 @@
+import NextLink from "next/link.js";
+import type { ComponentProps, ComponentType } from "react";
 import UserMenu from "./user-menu.tsx";
 import { Brand } from "./brand.tsx";
 import { GITHUB_REPO } from "../lib/constants.ts";
 import type { AccountAccess } from "../lib/access.ts";
+
+const Link = NextLink as unknown as ComponentType<ComponentProps<"a">>;
 
 function GithubMark() {
   return <svg width={15} height={15} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -13,7 +17,7 @@ export function SiteHeader({ access, landing = false }: { access: AccountAccess;
   return <header className="site-header">
     <Brand/>
     {landing && <nav className="site-nav" aria-label="Навигация по сайту">
-      <a href="/dashboard">Панель</a>
+      <Link href="/dashboard">Панель</Link>
       <a href={GITHUB_REPO} target="_blank" rel="noreferrer">GitHub</a>
     </nav>}
     <div className="nav-user-area">

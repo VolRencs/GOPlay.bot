@@ -69,7 +69,7 @@ export function renderEventButtons(event: RenderableEvent, buttons: EventButton[
   const closed = event.status !== "scheduled" && event.status !== "live";
   const limitReached = event.maxParticipants > 0 && counts.joined >= event.maxParticipants;
   return buttons
-    .sort((a, b) => a.order - b.order)
+    .toSorted((a, b) => a.order - b.order)
     .map(b => ({ ...b, disabled: !b.enabled || (b.key === "join" ? event.status !== "scheduled" || !event.registrationEnabled || (limitReached && !event.waitlistEnabled) : closed) }));
 }
 

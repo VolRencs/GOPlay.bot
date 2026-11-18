@@ -4,8 +4,13 @@ export type Rule = { kind: RuleKind; threshold: Record<string, unknown>; window:
 type Timed = { at: number; text: string; amount: number; id: string; channelId: string };
 const memory = new Map<string, Timed[]>();
 const warned = new Map<string, number>();
+const MAX_BUCKET = 1_000;
 function keyFor(rule: Rule, message: MessageData) { return `${message.guildId}:${rule.kind}:${message.userId}`; }
 function bucket(key: string, at: number, window: number) { const values = (memory.get(key) ?? []).filter((x) => x.at >= at - window * 1000); memory.set(key, values); return values; }
+function pushBucket(values: Timed[], entry: Timed) {
+  values.push(entry);
+  if (values.length > MAX_BUCKET) values.splice(0, values.length - MAX_BUCKET);
+}
 const URL_RE = /(?:https?:\/\/|www\.)[^\s<]+/gi;
 const DOMAIN_RE = /(?:^|[\s(])([a-zа-яё][\wа-яё-]*(\.[a-zа-яё][\wа-яё-]*)+)/gi;
 const EMOJI_RE = /<a?:\w+:\d+>|\p{Extended_Pictographic}/gu;
@@ -18,9 +23,9 @@ export const isBurstKind = (kind: RuleKind) => BURST_KINDS.has(kind);
 
 function record(rule: Rule, message: MessageData): void {
   const key = keyFor(rule, message);
-  if (rule.kind === "spam") { const a = bucket(key, message.at, rule.window); a.push({ at: message.at, text: "", amount: 1, id: message.id, channelId: message.channelId }); return; }
-  if (rule.kind === "duplicate") { const a = bucket(key, message.at, rule.window); a.push({ at: message.at, text: message.content.trim().toLowerCase(), amount: 1, id: message.id, channelId: message.channelId }); return; }
-  if (rule.kind === "emoji") { const count = emojiCount(message.content); if (count <= 3) return; const a = bucket(key, message.at, rule.window); a.push({ at: message.at, text: "", amount: count, id: message.id, channelId: message.channelId }); }
+  if (rule.kind === "spam") { const a = bucket(key, message.at, rule.window); pushBucket(a, { at: message.at, text: "", amount: 1, id: message.id, channelId: message.channelId }); return; }
+  if (rule.kind === "duplicate") { const a = bucket(key, message.at, rule.window); pushBucket(a, { at: message.at, text: message.content.trim().toLowerCase(), amount: 1, id: message.id, channelId: message.channelId }); return; }
+  if (rule.kind === "emoji") { const count = emojiCount(message.content); if (count <= 3) return; const a = bucket(key, message.at, rule.window); pushBucket(a, { at: message.at, text: "", amount: count, id: message.id, channelId: message.channelId }); }
 }
 
 function matches(rule: Rule, message: MessageData): boolean {

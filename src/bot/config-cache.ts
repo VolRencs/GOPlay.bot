@@ -91,11 +91,7 @@ type ReactionPanel = { id: number; role_mode: string; options: { role_id: string
 const reactionPanelCache = ttlCacheSync<string, Map<string, ReactionPanel>>((guildId) => {
   const panels = new Map<string, ReactionPanel>();
   for (const row of stmt.panelReactions.all(guildId)) {
-    let panel = panels.get(row.message_id);
-    if (!panel) {
-      panel = { id: row.id, role_mode: row.role_mode, options: [] };
-      panels.set(row.message_id, panel);
-    }
+    const panel = panels.getOrInsertComputed(row.message_id, () => ({ id: row.id, role_mode: row.role_mode, options: [] }));
     if (row.role_id !== null) panel.options.push({ role_id: row.role_id, emoji: row.emoji });
   }
   return panels;

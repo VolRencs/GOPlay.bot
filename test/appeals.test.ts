@@ -3,7 +3,7 @@ import type { Client } from "discord.js";
 import { seedGuilds, useTempDb, withToken } from "./helpers.ts";
 
 useTempDb("goplay-test-");
-const { createAppeal, declineAppeal, reviewAppeal, listAppeals, applyAppealReversal, notifyAppealStatus, reversalFor } = await import("../src/lib/appeals.ts");
+const { createAppeal, declineAppeal, reviewAppeal, reopenAppeal, listAppeals, applyAppealReversal, notifyAppealStatus, reversalFor } = await import("../src/lib/appeals.ts");
 const { punishmentLabelsM: punishmentLabels } = await import("../src/lib/labels.ts");
 const { db } = await import("../src/db/database.ts");
 const { recordDashboardChange } = await import("../src/lib/dashboard-audit.ts");
@@ -148,6 +148,18 @@ test("punishment reversal talks to Discord REST and swallows failures", async t 
   });
 });
 
+test("a failed reversal can reopen an approved appeal for retry", () => {
+  const punishmentId = Number(stmt.moderationInsert.run("g1", "u-retry", "mod", "ban", "retry", Date.now()).lastInsertRowid);
+  const appeal = createAppeal({ guildId: "g1", userId: "u-retry", punishmentId, reason: "Повторная попытка снятия наказания." });
+  assert.ok(appeal.ok);
+  const approved = reviewAppeal({ guildId: "g1", appealId: appeal.value.id, action: "approved", reviewerId: "mod" });
+  assert.ok(approved.ok);
+  assert.equal(approved.value.appeal.status, "approved");
+  assert.equal(reopenAppeal("g1", appeal.value.id, "mod"), true);
+  const row = db.prepare("SELECT status FROM appeals WHERE id=?").get(appeal.value.id) as { status: string };
+  assert.equal(row.status, "reviewing");
+});
+
 test("status DM: content is sent, failures never change the stored status", async t => {
   const created = createAppeal({ guildId: "g1", userId: "u1", punishmentId: 6, reason: "Несколько длинная причина апелляции." });
   assert.ok(created.ok);
@@ -162,7 +174,7 @@ test("status DM: content is sent, failures never change the stored status", asyn
   });
   await withToken("test-token", async () => {
     assert.equal(await notifyAppealStatus(taken.value.appeal), true);
-    assert.match(bodies[0]!.url, /\/users\/u1\/channels$/);
+    assert.match(bodies[0]!.url, /\/users\/@me\/channels$/);
     assert.match(bodies[0]!.body, /recipient_id/);
     assert.match(bodies[0]!.body, /"recipient_id":"u1"/);
     assert.match(bodies[1]!.body, /Апелляция #\d+.*взята в работу/);

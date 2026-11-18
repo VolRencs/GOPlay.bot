@@ -121,13 +121,11 @@ export function refreshSessionActivity(guildId: string): void {
 export function connectToVoice(guild: Guild, voiceChannelId: string, textChannelId: string): void {
   const guildId = guild.id;
   const existing = sessions.get(guildId);
-  if (existing) {
-    if (existing.connection.state.status !== VoiceConnectionStatus.Destroyed) {
-      existing.textChannelId = textChannelId;
-      return;
-    }
-    destroySession(guildId);
+  if (existing && existing.connection.state.status !== VoiceConnectionStatus.Destroyed) {
+    existing.textChannelId = textChannelId;
+    return;
   }
+  if (existing) destroySession(guildId);
   const connection = joinVoiceChannel({ channelId: voiceChannelId, guildId, adapterCreator: guild.voiceAdapterCreator, selfDeaf: true });
   const player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.Play, maxMissedFrames: 250 } });
   connection.subscribe(player);
@@ -159,23 +157,24 @@ export function connectToVoice(guild: Guild, voiceChannelId: string, textChannel
   if (connection.state.status === VoiceConnectionStatus.Disconnected) onDisconnected();
   connection.on(VoiceConnectionStatus.Disconnected, onDisconnected);
   connection.on(VoiceConnectionStatus.Destroyed, () => { if (alive()) destroySession(guildId); });
+  connection.on("error", error => {
+    logger.warn("[MUSIC] Ошибка голосового соединения", guildId, error);
+  });
 
   player.on(AudioPlayerStatus.Playing, () => {
-    const s = sessions.get(guildId);
-    if (!s) return;
-    refreshActivityTimer(s);
-    s.failedStarts = 0;
+    if (sessions.get(guildId) !== session) return;
+    refreshActivityTimer(session);
+    session.failedStarts = 0;
   });
   player.on("error", error => {
-    if (sessions.get(guildId)) logger.warn("[MUSIC] Ошибка аудиопотока", guildId, redactMediaUrl(error.message));
+    if (sessions.get(guildId) === session) logger.warn("[MUSIC] Ошибка аудиопотока", guildId, redactMediaUrl(error.message));
   });
   player.on(AudioPlayerStatus.Idle, oldState => {
-    if (!sessions.get(guildId)) return;
+    if (sessions.get(guildId) !== session) return;
     const playedMs = oldState.status === AudioPlayerStatus.Playing || oldState.status === AudioPlayerStatus.Paused || oldState.status === AudioPlayerStatus.AutoPaused
       ? oldState.playbackDuration
       : 0;
-    const handle = session.handle;
-    if (handle) void handleIdle(session, playedMs, session.generation, handle);
+    if (session.handle) void handleIdle(session, playedMs, session.generation, session.handle);
   });
   refreshActivityTimer(session);
 }
@@ -233,13 +232,9 @@ export function moveQueueTrack(guildId: string, from: number, to: number): numbe
 export function togglePause(guildId: string): void {
   const s = sessions.get(guildId);
   if (!s?.current) return;
-  if (s.player.state.status === AudioPlayerStatus.Paused) {
-    s.player.unpause();
-    refreshActivityTimer(s);
-  } else {
-    s.player.pause();
-    refreshActivityTimer(s);
-  }
+  if (s.player.state.status === AudioPlayerStatus.Paused) s.player.unpause();
+  else s.player.pause();
+  refreshActivityTimer(s);
   notify(guildId);
 }
 
@@ -306,8 +301,8 @@ function launch(s: Session, track: Track, offsetSec: number, forceRefresh = fals
   }
   if (activeStreamCount() >= ACTIVE_STREAM_LIMIT) {
     count("music.limit_wait");
-    const waitSince = s.streamWaitSince ?? Date.now();
-    s.streamWaitSince = waitSince;
+    s.streamWaitSince ??= Date.now();
+    const waitSince = s.streamWaitSince;
     const gen = s.generation;
     const retry = () => {
       if (sessions.get(s.guildId) !== s || s.generation !== gen || s.current !== track) return;
@@ -343,9 +338,10 @@ async function handleIdle(s: Session, playedMs: number, generation: number, hand
   if (sessions.get(s.guildId) !== s || s.generation !== generation || s.handle !== handle) return;
   const finished = s.current;
   const playedSec = s.lastResumeSec + playedMs / 1000;
-  const outcome: StreamOutcome | null = await Promise.race([handle.outcome, delay(OUTCOME_RACE_MS, null)]);
+  const outcome = await Promise.race([handle.outcome, delay(OUTCOME_RACE_MS, null)]);
   if (sessions.get(s.guildId) !== s || s.generation !== generation || s.current !== finished || s.handle !== handle) return;
   s.handle = null;
+  if (!outcome) handle.cancel();
   if (s.skipFlag) { s.skipFlag = false; advance(s, finished, false); return; }
   if (outcome?.kind === "source-error" && outcome.code === "TOO_LONG") {
     logger.info("[MUSIC] Трек длиннее лимита — пропускаю", s.guildId, finished?.title ?? "");
@@ -353,9 +349,7 @@ async function handleIdle(s: Session, playedMs: number, generation: number, hand
     return;
   }
 
-  const naturalEnd = outcome
-    ? outcome.kind === "eof" && isNaturalEnd(playedSec, finished?.duration)
-    : isNaturalEnd(playedSec, finished?.duration);
+  const naturalEnd = (!outcome || outcome.kind === "eof") && isNaturalEnd(playedSec, finished?.duration);
   if (finished && s.loopMode === "track" && naturalEnd) {
     s.lastResumeSec = 0;
     s.recovery = "none";

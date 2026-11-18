@@ -103,6 +103,12 @@ export function reversalFor(type: string): "unban" | "untimeout" | null {
   return null;
 }
 
+/** Keep an approved appeal retryable when Discord rejected the reversal. */
+export function reopenAppeal(guildId: string, appealId: number, reviewerId: string): boolean {
+  const at = Date.now();
+  return stmt.appealReopen.run(at, reviewerId, at, appealId, guildId).changes === 1;
+}
+
 export async function applyAppealReversal(lang: Locale, guildId: string, userId: string, reversal: "unban" | "untimeout"): Promise<{ ok: boolean; label: string }> {
   const label = punishmentLabel(lang, reversal === "unban" ? "ban" : "timeout");
   if (!process.env.DISCORD_TOKEN) return { ok: false, label };
@@ -110,7 +116,7 @@ export async function applyAppealReversal(lang: Locale, guildId: string, userId:
     const response = reversal === "unban"
       ? await discordFetch(`/guilds/${guildId}/bans/${userId}`, { method: "DELETE" })
       : await discordFetch(`/guilds/${guildId}/members/${userId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ communication_disabled_until: null }) });
-    return { ok: response.ok, label };
+    return { ok: response.ok || (reversal === "unban" && response.status === 404), label };
   } catch { return { ok: false, label }; }
 }
 

@@ -15,15 +15,23 @@ import { CHANNEL_TYPES, resourceError, validateResources } from "#lib/guild-reso
 const isButtonStyle = (value: unknown): value is ButtonStyleName => typeof value === "string" && Object.hasOwn(BUTTON_STYLE_IDS, value);
 
 function readOptions(value: RolePanelInput) {
-  const valid = (raw: { roleId: string; label?: string; emoji?: string; buttonColor?: string }[]) => raw
-    .filter(o => Boolean(o) && typeof o === "object" && typeof o.roleId === "string" && o.roleId)
-    .slice(0, SELECT_OPTION_LIMIT)
-    .map(o => ({
-      roleId: o.roleId,
-      label: String(o.label ?? ""),
-      emoji: typeof o.emoji === "string" ? stripVariationSelectors(o.emoji).slice(0, 96) : "",
-      buttonColor: isButtonStyle(o.buttonColor) ? o.buttonColor : "primary",
-    }));
+  const valid = (raw: { roleId: string; label?: string; emoji?: string; buttonColor?: string }[]) => {
+    const seen = new Set<string>();
+    return raw
+      .filter(o => Boolean(o) && typeof o === "object" && typeof o.roleId === "string" && o.roleId)
+      .filter(o => {
+        if (seen.has(o.roleId)) return false;
+        seen.add(o.roleId);
+        return true;
+      })
+      .slice(0, SELECT_OPTION_LIMIT)
+      .map(o => ({
+        roleId: o.roleId,
+        label: String(o.label ?? ""),
+        emoji: typeof o.emoji === "string" ? stripVariationSelectors(o.emoji).slice(0, 96) : "",
+        buttonColor: isButtonStyle(o.buttonColor) ? o.buttonColor : "primary",
+      }));
+  };
   if (Array.isArray(value.options)) return valid(value.options);
   return [];
 }
@@ -68,7 +76,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const template = (typeof value.notifyTemplate === "string" ? value.notifyTemplate.slice(0, 500) : "") || "✅ Выдана роль **{role}**";
   let panelId: number;
   let created = false;
-  let beforePanel: { title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null } | undefined;
+  let beforePanel: { channel_id: string | null; message_id: string | null; title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string | null } | undefined;
   let beforeRoleIds: string[] = [];
   if (value.panelId) {
     if (!Number.isInteger(value.panelId) || value.panelId < 1) return jsonError("Некорректная панель.");
@@ -90,12 +98,19 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       }
     });
   };
-  const patchComponents = async (components: unknown[]) => {
-    const response = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ components }) });
+  const patchMessage = async (channelId: string, messageId: string, components: unknown[]) => {
+    const response = await discordFetch(`/channels/${channelId}/messages/${messageId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ components }) });
     if (!response.ok) throw new Error(`patch ${response.status}`);
+  };
+  const clearReactions = async (channelId: string, messageId: string) => {
+    const response = await discordFetch(`/channels/${channelId}/messages/${messageId}/reactions`, { method: "DELETE" });
+    if (!response.ok) throw new Error(`reactions ${response.status}`);
   };
   try {
   if (style === "reaction") {
+    if (beforePanel?.style === "reaction" && beforePanel.channel_id === embed.channel_id && beforePanel.message_id === embed.message_id) {
+      await clearReactions(embed.channel_id, embed.message_id);
+    }
     for (const option of options) {
       const added = await discordFetch(`/channels/${embed.channel_id}/messages/${embed.message_id}/reactions/${encodeURIComponent(toDiscordReaction(option.emoji || "✅"))}/@me`, { method: "PUT" });
       if (!added.ok) throw new Error(`reaction ${added.status}`);
@@ -103,12 +118,12 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   } else if (style === "select") {
     const maxValues = roleLimit <= 0 ? Math.min(options.length, SELECT_OPTION_LIMIT) : Math.min(roleLimit, options.length);
     const component = { type: 3, custom_id: `roles:${panelId}`, placeholder: "Выберите роли", min_values: 0, max_values: maxValues, options: options.map(o => ({ label: (o.label || embed.name).slice(0, 100), value: o.roleId, emoji: toDiscordEmoji(o.emoji) })) };
-    await patchComponents([{ type: 1, components: [component] }]);
+    await patchMessage(embed.channel_id, embed.message_id, [{ type: 1, components: [component] }]);
   } else {
     const buttons = options.map(o => ({ type: 2, style: buttonStyleId(o.buttonColor), label: (o.label || embed.name).slice(0, 80), custom_id: `role:${panelId}:${o.roleId}`, emoji: toDiscordEmoji(o.emoji) }));
     const rows = [];
     for (let i = 0; i < buttons.length; i += 5) rows.push({ type: 1, components: buttons.slice(i, i + 5) });
-    await patchComponents(rows);
+    await patchMessage(embed.channel_id, embed.message_id, rows);
   }
   } catch (error) {
     logger.warn("[ROLES] Привязка панели к сообщению не удалась", guildId, error);
@@ -118,9 +133,28 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   try {
     persistOptions();
   } catch (error) {
-    logger.warn("[ROLES] Панель удалена параллельно во время сохранения", guildId, error);
-    void patchComponents([]).catch(() => null);
-    return jsonError("Панель была удалена другим модератором во время сохранения.", 409);
+    const concurrent = error instanceof Error && error.message === "panel deleted concurrently";
+    logger.warn(concurrent ? "[ROLES] Панель удалена параллельно во время сохранения" : "[ROLES] Не удалось сохранить панель", guildId, error);
+    if (created) rolesQueries.rollbackDelete.run(panelId);
+    else void patchMessage(embed.channel_id, embed.message_id, []).catch(() => null);
+    return concurrent
+      ? jsonError("Панель была удалена другим модератором во время сохранения.", 409)
+      : jsonError("Не удалось сохранить панель.", 500);
+  }
+  if (beforePanel) {
+    const moved = beforePanel.channel_id !== embed.channel_id || beforePanel.message_id !== embed.message_id;
+    try {
+      if (moved && beforePanel.channel_id && beforePanel.message_id) {
+        await patchMessage(beforePanel.channel_id, beforePanel.message_id, []);
+        if (beforePanel.style === "reaction") await clearReactions(beforePanel.channel_id, beforePanel.message_id);
+      } else if (beforePanel.style === "reaction" && style !== "reaction") {
+        await clearReactions(embed.channel_id, embed.message_id);
+      } else if (beforePanel.style !== "reaction" && style === "reaction") {
+        await patchMessage(embed.channel_id, embed.message_id, []);
+      }
+    } catch (error) {
+      logger.warn("[ROLES] Не удалось очистить старые элементы панели", guildId, error);
+    }
   }
   const styleLabel = roleStyleLabels[style] ?? style;
   if (beforePanel) {

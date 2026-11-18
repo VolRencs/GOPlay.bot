@@ -10,12 +10,14 @@ import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACC
 import { CardHeader, channelOptions, confirmAction, EmojiPicker, EmbedComposer, formatTime, NumberField, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
-import { useDashboard } from "./DashboardContext.tsx";
+import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
+import { stableJson } from "../../lib/json.ts";
 
 const EVENT_TONE: Record<string, string> = { scheduled: "pill-info", live: "pill-ok", completed: "pill-accent", cancelled: "pill-err" };
 type EventDraft = { channelId: string; scheduledAt: string; maxParticipants: number; registrationEnabled: boolean; waitlistEnabled: boolean; status: EventStatus; eventRoleId: string; reminders: string; recurrenceFreq: RecurrenceFrequency; recurrenceInterval: number; title: string; description: string; color: string; footer: string; timestamp: boolean; thumbnail: string; image: string; fields: EmbedField[]; joinLabel: string; joinEmoji: string; joinStyle: EventButtonStyle; joinEnabled: boolean; leaveLabel: string; leaveEmoji: string; leaveStyle: EventButtonStyle; leaveEnabled: boolean };
 const toLocalInput = (ts: number) => new Date(ts - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 const defaultEventDraft = (): EventDraft => ({ channelId: "", scheduledAt: toLocalInput(Date.now() + 3_600_000), maxParticipants: 0, registrationEnabled: true, waitlistEnabled: true, status: "scheduled", eventRoleId: "", reminders: "", recurrenceFreq: "none", recurrenceInterval: 7, title: "", description: "", color: DEFAULT_ACCENT, footer: "", timestamp: true, thumbnail: "", image: "", fields: [], joinLabel: "Участвовать", joinEmoji: "✅", joinStyle: "primary", joinEnabled: true, leaveLabel: "Отказаться", leaveEmoji: "❌", leaveStyle: "danger", leaveEnabled: true });
+const eventSnapshot = (id: string | null, draft: EventDraft) => stableJson({ id, draft });
 
 function ButtonEditor({ title, label, emoji, style, enabled, emojis, onChange }: { title: string; label: string; emoji: string; style: string; enabled: boolean; emojis: ServerEmoji[]; onChange: (change: { label?: string; emoji?: string; style?: string; enabled?: boolean }) => void }) {
   return (
@@ -54,12 +56,14 @@ export function EventsPanel() {
   );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventDraft>(defaultEventDraft);
+  const [savedSnapshot, setSavedSnapshot] = useState(() => eventSnapshot(null, draft));
+  const dirty = eventSnapshot(editingId, draft) !== savedSnapshot;
   const { busy, run } = usePanelAction({ onDone, onError });
   const image = useMediaField(draft.image);
   const thumbnail = useMediaField(draft.thumbnail);
 
   const draftKey = `goplay-draft-event-${guildId}`;
-  useSessionDraft(draftKey, Boolean(guildId), [editingId, draft], () => ({ editingId, ...draft }));
+  useSessionDraft(draftKey, Boolean(guildId) && dirty, [editingId, draft], () => ({ editingId, ...draft }));
   useSessionDraftRestore(draftKey, Boolean(guildId), saved => {
     if (!asString(saved.title) && !asString(saved.description)) return;
     setEditingId(asString(saved.editingId) || null);
@@ -98,7 +102,7 @@ export function EventsPanel() {
 
   function edit(e: EventListItemDto) {
     const join = e.buttons.find(b => b.key === "join"), leave = e.buttons.find(b => b.key === "leave");
-    setDraft({
+    const next: EventDraft = {
       channelId: e.channelId, scheduledAt: toLocalInput(e.scheduledAt), maxParticipants: e.maxParticipants,
       registrationEnabled: e.registrationEnabled, waitlistEnabled: e.waitlistEnabled, status: e.status, eventRoleId: e.eventRoleId ?? "",
       reminders: e.reminders.join(", "), recurrenceFreq: e.recurrence.freq, recurrenceInterval: e.recurrence.interval,
@@ -107,22 +111,27 @@ export function EventsPanel() {
       fields: (e.embed.fields ?? []).map(f => ({ name: f.name, value: f.value, inline: Boolean(f.inline) })),
       joinLabel: join?.label ?? "Участвовать", joinEmoji: join?.emoji ?? "✅", joinStyle: join?.style ?? "primary", joinEnabled: join?.enabled ?? true,
       leaveLabel: leave?.label ?? "Отказаться", leaveEmoji: leave?.emoji ?? "❌", leaveStyle: leave?.style ?? "danger", leaveEnabled: leave?.enabled ?? true,
-    });
+    };
+    setDraft(next);
     setEditingId(e.id);
+    setSavedSnapshot(eventSnapshot(e.id, next));
     image.clear(); thumbnail.clear();
   }
 
   const reset = () => {
+    const next = defaultEventDraft();
     setEditingId(null);
-    setDraft(defaultEventDraft());
+    setDraft(next);
+    setSavedSnapshot(eventSnapshot(null, next));
     image.clear(); thumbnail.clear();
     try { sessionStorage.removeItem(draftKey); } catch {  }
   };
 
-  async function save(statusOverride?: EventStatus) {
+  async function save(statusOverride?: EventStatus, report = true): Promise<boolean> {
     const scheduledMs = new Date(draft.scheduledAt).getTime();
-    if (!Number.isFinite(scheduledMs)) return onError("Укажите дату и время события.");
-    if (!draft.channelId) return onError("Выберите канал события.");
+    if (!Number.isFinite(scheduledMs)) { onError("Укажите дату и время события."); return false; }
+    if (!draft.channelId) { onError("Выберите канал события."); return false; }
+    const requestDraft = draft, requestEditingId = editingId;
     const payload = {
       id: editingId ?? undefined, channelId: draft.channelId, scheduledAt: scheduledMs, maxParticipants: draft.maxParticipants,
       registrationEnabled: draft.registrationEnabled, waitlistEnabled: draft.waitlistEnabled, status: statusOverride ?? draft.status, eventRoleId: draft.eventRoleId || null,
@@ -138,17 +147,23 @@ export function EventsPanel() {
     form.set("data", JSON.stringify(payload));
     if (thumbnail.file) form.set("thumbnailFile", thumbnail.file);
     if (image.file) form.set("imageFile", image.file);
-    await run(
+    const ok = await run(
       () => apiSend<{ warning?: string; id?: string }>(`/api/guilds/${guildId}/events`, { method: "POST", body: form }, "Не удалось сохранить событие."),
       data => {
-        if (!editingId && data.id) setEditingId(data.id);
+        const nextId = requestEditingId ?? data.id ?? null;
+        if (!requestEditingId && data.id) setEditingId(data.id);
         setDraft(d => ({ ...d, status: statusOverride ?? d.status }));
-        const okMessage = statusOverride ? `Событие переведено в «${eventStatusMeta[statusOverride]?.label ?? statusOverride}».` : editingId ? "Событие обновлено." : "Событие создано.";
-        return { message: data.warning ?? okMessage, ...(data.warning ? { tone: "warn" as const } : {}) };
+        setSavedSnapshot(eventSnapshot(nextId, { ...requestDraft, status: statusOverride ?? requestDraft.status }));
+        try { sessionStorage.removeItem(draftKey); } catch {}
+        const okMessage = statusOverride ? `Событие переведено в «${eventStatusMeta[statusOverride]?.label ?? statusOverride}».` : requestEditingId ? "Событие обновлено." : "Событие создано.";
+        return report ? { message: data.warning ?? okMessage, ...(data.warning ? { tone: "warn" as const } : {}) } : undefined;
       },
       reload,
     );
+    return ok === true;
   }
+
+  useRegisterChanges("events", { dirty, save: report => save(undefined, report), discard: reset });
 
   async function remove(e: EventListItemDto) {
     if (!(await confirmAction(`Удалить событие «${e.embed.title ?? "без названия"}»? Сообщение в Discord тоже будет удалено.`, "Удалить"))) return;
@@ -180,7 +195,7 @@ export function EventsPanel() {
   };
 
   if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading) return <SectionLoading/>;
+  if (loading && !events.length) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">

@@ -4,10 +4,12 @@ import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { buttonColorOptionsList, type EmbedDto, type EmbedSendingDto, type EmbedsGetDto, type Role, type RolePanelRowDto, type SavedRolePanel, type ServerEmoji } from "./types.ts";
 import { roleStyleLabels } from "../../lib/labels.ts";
+import { SELECT_OPTION_LIMIT } from "../../lib/constants.ts";
 import { CardHeader, confirmAction, EmojiPicker, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime } from "./ui.tsx";
 import { apiGet, apiJsonMutate, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
-import { useDashboard } from "./DashboardContext.tsx";
+import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
+import { stableJson } from "../../lib/json.ts";
 
 type PanelOptionInput = { roleId: string; label: string; emoji: string; buttonColor: string };
 const defaultPanelOption = { roleId: "", label: "", emoji: "", buttonColor: "primary" };
@@ -83,6 +85,9 @@ export function RoleSettings() {
   const [mode, setMode] = useState("toggle");
   const [notify, setNotify] = useState(true);
   const [template, setTemplate] = useState("✅ Выдана роль **{role}**");
+  const snapshot = (panel?: number, sending = "", opts: PanelOptionInput[] = [defaultPanelOption], panelStyle = "buttons", roleLimit = 0, roleMode = "toggle", notifyEnabled = true, notifyTemplate = "✅ Выдана роль **{role}**") =>
+    stableJson({ panel, sending, opts, panelStyle, roleLimit, roleMode, notifyEnabled, notifyTemplate });
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshot());
 
   const updateOption = (index: number, change: Partial<PanelOptionInput>) => setOptions(options.with(index, { ...options[index]!, ...change }));
 
@@ -96,6 +101,7 @@ export function RoleSettings() {
     setMode(panel.roleMode);
     setNotify(panel.notifyEnabled);
     setTemplate(panel.notifyTemplate);
+    setSavedSnapshot(snapshot(panel.id, matched ? String(matched.id) : "", panel.options.length ? panel.options.map(o => ({ roleId: o.roleId, label: o.label ?? "", emoji: o.emoji ?? "", buttonColor: o.buttonColor ?? "primary" })) : [defaultPanelOption], panel.style, panel.roleLimit, panel.roleMode, panel.notifyEnabled, panel.notifyTemplate));
   }
 
   function reset() {
@@ -107,6 +113,7 @@ export function RoleSettings() {
     setMode("toggle");
     setNotify(true);
     setTemplate("✅ Выдана роль **{role}**");
+    setSavedSnapshot(snapshot());
   }
 
   async function remove(panel: SavedRolePanel) {
@@ -121,23 +128,27 @@ export function RoleSettings() {
     );
   }
 
-  async function publish() {
+  async function publish(report = true): Promise<boolean> {
     const sending = sendings.find(x => x.id === Number(sendingId));
-    if (!sending) return onError("Выберите отправленное сообщение.");
-    if (!options.some(o => o.roleId)) return onError("Добавьте хотя бы одну роль.");
-    await run(
+    if (!sending) { onError("Выберите отправленное сообщение."); return false; }
+    if (!options.some(o => o.roleId)) { onError("Добавьте хотя бы одну роль."); return false; }
+    const ok = await run(
       () => apiJsonMutate(`/api/guilds/${guildId}/roles`, "POST", { panelId, embedId: sending.embedId, channelId: sending.channelId, messageId: sending.messageId, style, roleLimit: limit, roleMode: mode, notifyEnabled: notify, notifyTemplate: template, options }, "Не удалось сохранить панель."),
       () => {
         const message = panelId ? "Панель самовыдачи обновлена." : "Панель самовыдачи сохранена.";
         reset();
-        return { message };
+        return report ? { message } : undefined;
       },
       reload,
     );
+    return ok === true;
   }
 
+  const dirty = snapshot(panelId, sendingId, options, style, limit, mode, notify, template) !== savedSnapshot;
+  useRegisterChanges("roles", { dirty, save: publish, discard: reset });
+
   if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading) return <SectionLoading/>;
+  if (loading && !panels.length) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">
@@ -197,7 +208,7 @@ export function RoleSettings() {
               />
             ))}
           </div>
-          <button type="button" className="btn secondary" onClick={() => setOptions([...options, defaultPanelOption])}>Добавить роль</button>
+          <button type="button" className="btn secondary" disabled={options.length >= SELECT_OPTION_LIMIT} onClick={() => setOptions([...options, defaultPanelOption])}>Добавить роль</button>
         </div>
         <label>Лимит ролей: {limit || "без лимита"}<input type="range" min="0" max="25" value={limit} onChange={e => setLimit(Number(e.target.value))} aria-label="Лимит ролей"/></label>
         <p className="hint">Лимит определяет, сколько ролей из этой панели участник может иметь одновременно (0 — без лимита).</p>

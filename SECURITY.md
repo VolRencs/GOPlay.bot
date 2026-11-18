@@ -27,7 +27,7 @@ code; there are no separate LTS releases yet.
   request is checked against the URL's guild in `src/lib/guild-resources.ts`.
 - Dashboard uploads are isolated per `guildId`; welcome backgrounds are served only
   to users who can manage that guild. Filenames are sanitized (`src/lib/uploads.ts`),
-  with per-route request body limits + `client_max_body_size 8m` in nginx.
+  with per-route request body limits + `client_max_body_size 34m` in nginx.
 - The music resolver is restricted to the YouTube domain allowlist.
 - When the bot is removed from a server, its data is kept; an admin can wipe it
   explicitly with `wipeGuildData` + `deleteGuildFiles` from `/admin`.

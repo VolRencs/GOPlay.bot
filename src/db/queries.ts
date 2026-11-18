@@ -40,7 +40,7 @@ export const automodQueries = {
 export const rolesQueries = {
   list: read<RolePanelRowSource>("SELECT p.*,o.role_id,o.label,o.emoji,o.button_color FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? ORDER BY p.updated_at DESC"),
   embedTemplate: read<{ name: string }>("SELECT name FROM embeds WHERE id=? AND guild_id=?"),
-  panelGet: read<{ title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string }>("SELECT title,style,role_limit,role_mode,notify_enabled,notify_template FROM self_role_panels WHERE id=? AND guild_id=?"),
+  panelGet: read<{ channel_id: string | null; message_id: string | null; title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string }>("SELECT channel_id,message_id,title,style,role_limit,role_mode,notify_enabled,notify_template FROM self_role_panels WHERE id=? AND guild_id=?"),
   panelOptions: read<{ role_id: string }>("SELECT role_id FROM self_role_options WHERE panel_id=?"),
   insert: write("INSERT INTO self_role_panels(guild_id,channel_id,message_id,title,style,role_limit,role_mode,notify_enabled,notify_template,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)"),
   update: write("UPDATE self_role_panels SET channel_id=?,message_id=?,title=?,style=?,role_limit=?,role_mode=?,notify_enabled=?,notify_template=?,updated_at=? WHERE id=? AND guild_id=?"),
@@ -88,6 +88,8 @@ const auditBase = "SELECT id,user_name,section,summary,created_at,COUNT(*) OVER(
 export const auditQueries = {
   list: read<AuditEntrySource>(`${auditBase} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`),
   bySection: read<AuditEntrySource>(`${auditBase} AND section=? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`),
+  count: read<{ total: number }>("SELECT COUNT(*) AS total FROM dashboard_audit WHERE guild_id=?"),
+  countBySection: read<{ total: number }>("SELECT COUNT(*) AS total FROM dashboard_audit WHERE guild_id=? AND section=?"),
 };
 
 export const adminQueries = {

@@ -61,11 +61,12 @@ export function normalizeEmbedContent(value: unknown): { content: EmbedContent; 
   const authorIcon = text(author.iconUrl)?.slice(0, EMBED_LIMITS.url);
   const thumbnail = mediaUrl(v.thumbnail)?.slice(0, EMBED_LIMITS.url);
   const image = mediaUrl(v.image)?.slice(0, EMBED_LIMITS.url);
+  const color = typeof v.color === "number" && Number.isInteger(v.color) && v.color >= 0 && v.color <= 0xffffff ? v.color : undefined;
   return {
     content: {
       ...(title ? { title } : {}),
       ...(description ? { description } : {}),
-      ...(Number.isInteger(v.color) ? { color: v.color as number } : {}),
+      ...(color !== undefined ? { color } : {}),
       ...(footer ? { footer: { text: footer } } : {}),
       ...(authorName ? { author: { name: authorName, ...(authorUrl ? { url: authorUrl } : {}), ...(authorIcon ? { iconUrl: authorIcon } : {}) } } : {}),
       ...(thumbnail ? { thumbnail: { url: thumbnail } } : {}),

@@ -26,6 +26,13 @@ async function cleanupUnusedDraftImages(guildId:string) {
   await cleanupUnusedUploads(embedUploadsDir(guildId), embedsQueries.payloads.all(guildId), row => draftImageNames(row.payload_json, guildId), 60 * 60_000);
 }
 
+async function deleteDiscordMessage(channelId: string, messageId: string): Promise<boolean> {
+  try {
+    const response = await discordFetch(`/channels/${channelId}/messages/${messageId}`, { method: "DELETE" });
+    return response.ok || response.status === 404;
+  } catch { return false; }
+}
+
 function payloadDisplay(payloadJson: string): Record<string, unknown> {
   const p = safeJson<Record<string, unknown>>(payloadJson, {});
   const fields = Array.isArray(p.fields) ? p.fields : [];
@@ -131,13 +138,14 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
       const channelCheck = await validateResources(guildId, { channels: { ids: [data.channelId], types: CHANNEL_TYPES.text } });
       if (!channelCheck.ok) return resourceError(channelCheck);
     }
-    await persistAssets();
     const before=data.id?embedsQueries.byId.get(data.id,guildId):undefined;
+    if (data.id && !before) return jsonError("Шаблон не найден.", 404);
+    after(() => cleanupUnusedDraftImages(guildId));
+    await persistAssets();
     const saved=JSON.stringify(payload), result=data.id
       ? embedsQueries.saveUpdate.run(data.name.trim(),saved,mode,data.channelId??"",Date.now(),data.id,guildId)
       : embedsQueries.saveInsert.run(guildId,data.name.trim(),saved,data.channelId||null,mode,Date.now());
     if (data.id && result.changes === 0) return jsonError("Шаблон не найден.", 404);
-    after(() => cleanupUnusedDraftImages(guildId));
     if(before) recordDashboardDiff(guildId,user,AUDIT_SECTION.embeds,`Шаблон «${data.name.trim()}»: `,
       {"Название":before.name,"Режим":before.mode==="text"?"текст":"embed",...payloadDisplay(before.payload_json)},
       {"Название":data.name.trim(),"Режим":mode==="text"?"текст":"embed",...payloadDisplay(saved)},
@@ -153,15 +161,18 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
   const discordPayload=toDiscordEmbed(payload);
   const bodyData=mode==="text"?{content:payload.description??"",allowed_mentions:{parse:[]}}:{embeds:[discordPayload],allowed_mentions:{parse:[]}}; const { body, headers } = discordMessageBody(bodyData, assets);
   const endpoint=`/channels/${channelId}/messages${data.updateMessage?`/${current!.message_id}`:""}`;
-  let sent: Response | null = null; try { sent=await discordFetch(endpoint,{method:data.updateMessage?"PATCH":"POST",headers,body}); } catch {  }
-  if(!sent?.ok)return jsonError(data.updateMessage?"Не удалось обновить опубликованное сообщение":"Не удалось отправить сообщение в выбранный канал", 502); const message=await sent.json() as {id:string};
+  const sent = await discordFetch(endpoint, { method: data.updateMessage ? "PATCH" : "POST", headers, body }).catch(() => null);
+  if (!sent?.ok) return jsonError(data.updateMessage ? "Не удалось обновить опубликованное сообщение" : "Не удалось отправить сообщение в выбранный канал", 502);
+  const message = await sent.json().catch(() => null) as { id?: string } | null;
+  if (!message?.id) return jsonError(data.updateMessage ? "Не удалось обновить опубликованное сообщение" : "Не удалось отправить сообщение в выбранный канал", 502);
+  const messageId = message.id;
   await persistAssets();
   const persisted=JSON.stringify(payload);
   withTransaction(() => {
     const result=data.id
-      ? embedsQueries.publishUpdate.run(data.name.trim(),persisted,channelId,message.id,mode,Date.now(),data.id,guildId)
-      : embedsQueries.publishInsert.run(guildId,data.name.trim(),persisted,channelId,message.id,mode,Date.now());
-    if(!data.updateMessage){const embedId=data.id??Number(result.lastInsertRowid);embedsQueries.sendingInsert.run(guildId,embedId,channelId,message.id,Date.now());}
+      ? embedsQueries.publishUpdate.run(data.name.trim(),persisted,channelId,messageId,mode,Date.now(),data.id,guildId)
+      : embedsQueries.publishInsert.run(guildId,data.name.trim(),persisted,channelId,messageId,mode,Date.now());
+    if(!data.updateMessage){const embedId=data.id??Number(result.lastInsertRowid);embedsQueries.sendingInsert.run(guildId,embedId,channelId,messageId,Date.now());}
   });
   after(() => cleanupUnusedDraftImages(guildId));
   if(current) recordDashboardDiff(guildId,user,AUDIT_SECTION.embeds,`Шаблон «${data.name.trim()}» ${data.updateMessage ? "обновлён" : "отправлен заново"}: `,
@@ -169,7 +180,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     {"Название":data.name.trim(),"Режим":mode==="text"?"текст":"embed","Канал":channelRef(channelId),...payloadDisplay(persisted)},
     {"Поля":"изменены"});
   else recordDashboardChange(guildId,user,AUDIT_SECTION.embeds,`Опубликован шаблон «${data.name.trim()}» в канале ${channelRef(channelId)}`);
-  return NextResponse.json({ok:true,messageId:message.id});
+  return NextResponse.json({ok:true,messageId});
 });
 
 export const DELETE = guildRoute(async (request, { guildId, user }) => {
@@ -179,13 +190,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
     if (!sending) return jsonError("Отправка не найдена.", 404);
     const tokenError = requireBotToken();
     if (tokenError) return tokenError;
-    let result: Response;
-    try {
-      result = await discordFetch(`/channels/${sending.channel_id}/messages/${sending.message_id}`, { method: "DELETE" });
-    } catch {
-      return jsonError("Не удалось удалить сообщение в Discord.", 502);
-    }
-    if (!result.ok && result.status !== 404) return jsonError("Не удалось удалить сообщение в Discord.", 502);
+    if (!(await deleteDiscordMessage(sending.channel_id, sending.message_id))) return jsonError("Не удалось удалить сообщение в Discord.", 502);
     embedsQueries.sendingDelete.run(sendingId, guildId);
     recordDashboardChange(guildId, user, AUDIT_SECTION.embeds, `Удалено отправленное сообщение embed в канале ${channelRef(sending.channel_id)}`);
     return NextResponse.json({ ok: true });
@@ -193,7 +198,11 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   if(!Number.isInteger(id)||id<1)return jsonError("Некорректный идентификатор сообщения.");
   const item=embedsQueries.byId.get(id,guildId);
   if(!item)return jsonError("Сообщение не найдено.", 404);
-  if(item.channel_id&&item.message_id){const tokenError=requireBotToken();if(tokenError)return tokenError;let result:Response;try{result=await discordFetch(`/channels/${item.channel_id}/messages/${item.message_id}`,{method:"DELETE"});}catch{return jsonError("Не удалось удалить сообщение в Discord.", 502);}if(!result.ok&&result.status!==404)return jsonError("Не удалось удалить сообщение в Discord.", 502);}
+  if (item.channel_id && item.message_id) {
+    const tokenError = requireBotToken();
+    if (tokenError) return tokenError;
+    if (!(await deleteDiscordMessage(item.channel_id, item.message_id))) return jsonError("Не удалось удалить сообщение в Discord.", 502);
+  }
   embedsQueries.sendingsByEmbedDelete.run(id,guildId);
   embedsQueries.delete.run(id,guildId);
   after(() => cleanupUnusedDraftImages(guildId));

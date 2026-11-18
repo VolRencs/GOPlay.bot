@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { WelcomeImageConfig } from "#lib/welcome.ts";
 import { welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
+import { parseImageConfig } from "#lib/welcome.ts";
 import { WelcomePreview } from "./WelcomePreview.tsx";
 import { CardHeader, SectionError, SectionLoading, channelOptions, ColorRow, confirmAction, NumberField, SaveButton, Select } from "./ui.tsx";
 import { apiMutate, apiUpload, type UploadProgress } from "./api.ts";
@@ -22,6 +23,7 @@ export function WelcomeSettings() {
     initial: { ...welcomeDefaults },
     fromGet: data => ({ ...welcomeDefaults, ...data }),
     toBody: value => value,
+    afterSave: value => ({ ...value, imageConfig: parseImageConfig(value.imageConfig) }),
     saveMode: "markSaved",
     loadError: "Не удалось загрузить настройки приветствия.",
     saveError: "Не удалось сохранить настройки приветствия.",

@@ -6,6 +6,7 @@ import { useTempDb } from "./helpers.ts";
 const dbPath = useTempDb("goplay-message-cache-");
 const { db } = await import("../src/db/database.ts");
 const { rememberMessage, messageContent, forgetMessage, flushMessageCache, enforceMessageCap, MESSAGE_CACHE_PER_GUILD } = await import("../src/db/message-cache.ts");
+for (const id of ["g1", "g2", "g3"]) db.prepare("INSERT OR IGNORE INTO guilds(id,name) VALUES(?,?)").run(id, id);
 
 const plain = <T extends object>(value: T | undefined): T | undefined => value ? { ...value } : undefined;
 const row = (messageId: string) => plain(db.prepare("SELECT guild_id,content,created_at FROM message_cache WHERE message_id=?").get(messageId) as { guild_id: string; content: string; created_at: number } | undefined);
@@ -59,4 +60,10 @@ test("other guilds are unaffected by a guild hitting the limit", () => {
   assert.equal(messageContent("g2-keep"), "не тронуто");
   flushMessageCache();
   assert.equal(countFor("g2"), 2);
+});
+
+test("a wiped guild does not get its pending messages back", () => {
+  rememberMessage("gone-1", "gone", "deleted guild", 7_000);
+  flushMessageCache();
+  assert.equal(countFor("gone"), 0);
 });

@@ -6,8 +6,9 @@ import { automodTr, guildTr } from "../lib/i18n/bot.ts";
 import { logTr } from "../lib/i18n/bot/logs.ts";
 import { detect, isIgnored, pruneDetectors, type MessageData } from "./automod/detectors.ts";
 import { enforceAutoMod } from "./automod/enforce.ts";
-import { purgeUserMessages } from "./moderation/index.ts";
+import { purgeUserMessages, recordPunishmentAndOffer } from "./moderation/index.ts";
 import { autoroleSettingsFor } from "../lib/autorole.ts";
+import { parseActions } from "../lib/json.ts";
 import { rememberMessage } from "../db/message-cache.ts";
 import { addMessage, addMetric } from "./metrics.ts";
 import { initLogging, logAction, markBotAction, messageLoggingEnabled } from "./logging/index.ts";
@@ -97,6 +98,7 @@ on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
       markBotAction(message.guild.id, "member_ban", message.author.id);
       banned = await member.ban({ reason: t("protectedAdminOnly") }).then(() => true, () => false);
       if (!banned) logger.warn("[AUTOMOD] Бан в защищённом канале не применён", message.guild.id, message.author.id);
+      else recordPunishmentAndOffer(client, { guildId: message.guild.id, guildName: message.guild.name, userId: message.author.id, type: "ban", reason: t("protectedAdminOnly"), moderatorId: "automod" });
     }
     addMetric(message.guild.id, "moderation");
     logAction({ guildId: message.guild.id, type: "automod", targetId: message.author.id, moderatorId: "automod", details: t(banned ? "protectedWiped" : "protectedWipedFailed") });
@@ -105,14 +107,19 @@ on(client, Events.MessageCreate, "MESSAGE_CREATE", async message => {
   const data: MessageData = { id: message.id, guildId: message.guild.id, userId: message.author.id, channelId: message.channel.id, content: message.content, roleIds: cache.ignoredRoles.length ? member?.roles.cache.map(r => r.id) ?? [] : [], mentionCount: message.mentions.users.size + message.mentions.roles.size, everyone: message.mentions.everyone, attachments: [...message.attachments.values()].map(a => ({ contentType: a.contentType })), at: Date.now() };
   const ignored = isIgnored(data, cache.ignoredRoles);
   if (ignored) return;
-  let matched: { row: (typeof cache.rules)[number]; threshold: Record<string, unknown> } | null = null;
+  const matches: { row: (typeof cache.rules)[number]; threshold: Record<string, unknown> }[] = [];
   for (const row of cache.rules) {
     const threshold = row.threshold;
     if (threshold === null) continue;
-    if (!detect({ kind: row.kind, threshold, window: row.window_seconds }, data)) continue;
-    if (!matched) matched = { row, threshold };
+    if (detect({ kind: row.kind, threshold, window: row.window_seconds }, data)) matches.push({ row, threshold });
   }
-  if (matched) await enforceAutoMod(client, message, matched.row, matched.threshold, data);
+  if (matches.length) {
+    // A long-window spam rule must not shadow a ban/kick rule that also matched.
+    const rank = (actions: string[]) => actions.includes("ban") ? 5 : actions.includes("kick") ? 4 : actions.includes("timeout") ? 3 : actions.includes("warn") ? 2 : 1;
+    matches.sort((a, b) => rank(parseActions(b.row.action_json)) - rank(parseActions(a.row.action_json)));
+    const matched = matches[0]!;
+    await enforceAutoMod(client, message, matched.row, matched.threshold, data);
+  }
 });
 
 on(client, Events.MessageReactionAdd, "REACTION_ADD", (reaction, user) => handleReaction(reaction, user, false));

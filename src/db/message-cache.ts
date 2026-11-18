@@ -1,6 +1,6 @@
 import { withTransaction } from "./database.ts";
 import { logger } from "../lib/logger.ts";
-import { stmt } from "./statements.ts";
+import { aliveGuildIds, stmt } from "./statements.ts";
 
 export const MESSAGE_CACHE_PER_GUILD = 1000;
 
@@ -24,6 +24,10 @@ function ensureFlushTimer(): void {
   }
 }
 
+export function stopMessageCache(): void {
+  if (flushTimer) { clearInterval(flushTimer); flushTimer = null; }
+}
+
 let flushFailures = 0;
 const PRUNE_EVERY = 100;
 const writesSincePrune = new Map<string, number>();
@@ -34,7 +38,10 @@ export function flushMessageCache(): void {
   const touchedGuilds = new Map<string, number>();
   try {
     withTransaction(() => {
+      const alive = aliveGuildIds();
       for (const [messageId, entry] of entries) {
+        // message_cache has no guild FK; a wipe in the other process must not be undone here.
+        if (alive && !alive.has(entry.guildId)) continue;
         stmt.messageUpsert.run({ message_id: messageId, guild_id: entry.guildId, content: entry.content, created_at: entry.createdAt });
         touchedGuilds.set(entry.guildId, (touchedGuilds.get(entry.guildId) ?? 0) + 1);
       }

@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, type Client, type Interaction } from "discord.js";
-import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, getEvent, getEventInGuild, guildNameFor, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
+import { applyEventRole, claimReminder, detachEventMessage, dueReminders, eventCounts, eventParticipants, eventsMissingMessage, getEvent, getEventInGuild, guildNameFor, joinEvent, leaveEvent, parseEventButtons, parseEventEmbed, removeParticipantFromGuild, renderEventButtons, renderEventEmbed, renderableOf, sendReminderDm, transitionDueEvents, updateEventMessage, type EventButton, type EventEmbedPayload, type EventRow } from "../../lib/events.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { logger } from "../../lib/logger.ts";
 import { guard, isMissingDiscordResource } from "../../lib/errors.ts";
@@ -11,6 +11,18 @@ import { eventsTr, guildLang, guildTr } from "../../lib/i18n/bot.ts";
 
 const toDiscordButtonStyle = (name: EventButton["style"]): ButtonStyle => buttonStyleId(name) as ButtonStyle;
 let registered = false;
+let eventsTimer: ReturnType<typeof setInterval> | null = null;
+const roleLocks = new Map<string, Promise<void>>();
+const publishRetryAt = new Map<string, number>();
+function withEventRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const previous = roleLocks.get(key) ?? Promise.resolve();
+  const { promise, resolve } = Promise.withResolvers<void>();
+  roleLocks.set(key, promise);
+  return previous.then(fn).finally(() => {
+    resolve();
+    if (roleLocks.get(key) === promise) roleLocks.delete(key);
+  });
+}
 
 async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
   const setAsset = (target: "thumbnail" | "image", url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
@@ -34,13 +46,17 @@ export function registerEvents(client: Client) {
     for (const result of removeParticipantFromGuild(member.guild.id, member.user.id)) {
       const event = getEvent(result.eventId);
       if (event?.event_role_id) {
-        void applyEventRole(member.guild.id, member.user.id, event.event_role_id, false);
-        if (result.promotedUserId) void applyEventRole(member.guild.id, result.promotedUserId, event.event_role_id, true);
+        void withEventRoleLock(`${member.guild.id}:${member.user.id}`, () => applyEventRole(member.guild.id, member.user.id, event.event_role_id, false));
+        if (result.promotedUserId) void withEventRoleLock(`${member.guild.id}:${result.promotedUserId}`, () => applyEventRole(member.guild.id, result.promotedUserId!, event.event_role_id, true));
       }
       void refreshMessage(member.guild.id, result.eventId);
     }
   }));
-  setInterval(() => void tick(client), 30_000).unref();
+  eventsTimer = setInterval(() => void tick(client), 30_000).unref();
+}
+
+export function stopEvents(): void {
+  if (eventsTimer) { clearInterval(eventsTimer); eventsTimer = null; }
 }
 
 async function handleInteraction(i: Interaction) {
@@ -55,15 +71,16 @@ async function handleInteraction(i: Interaction) {
     const result = joinEvent(eventId, i.user.id, event.guild_id);
     if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral }).catch(() => null);
     await i.reply({ content: result.action === "waitlisted" ? tr("waitlisted") : result.action === "already_joined" ? tr("alreadyJoined") : tr("joined"), flags: MessageFlags.Ephemeral }).catch(() => null);
-    if (result.state === "joined") await applyEventRole(event.guild_id, i.user.id, event.event_role_id, true);
+    if (result.state === "joined") await withEventRoleLock(`${event.guild_id}:${i.user.id}`, () => applyEventRole(event.guild_id, i.user.id, event.event_role_id, true));
   } else {
     const result = leaveEvent(eventId, i.user.id, event.guild_id);
     if (!result.ok) return i.reply({ content: `❌ ${result.error}`, flags: MessageFlags.Ephemeral }).catch(() => null);
     await i.reply({ content: result.action === "not_registered" ? tr("notRegistered") : result.action === "left_waitlist" ? tr("leftWaitlist") : result.promotedUserId ? tr("leftPromoted") : tr("left"), flags: MessageFlags.Ephemeral }).catch(() => null);
-    await applyEventRole(event.guild_id, i.user.id, event.event_role_id, false);
-    if (result.promotedUserId) await applyEventRole(event.guild_id, result.promotedUserId, event.event_role_id, true);
+    await withEventRoleLock(`${event.guild_id}:${i.user.id}`, () => applyEventRole(event.guild_id, i.user.id, event.event_role_id, false));
+    if (result.promotedUserId) await withEventRoleLock(`${event.guild_id}:${result.promotedUserId}`, () => applyEventRole(event.guild_id, result.promotedUserId!, event.event_role_id, true));
   }
   void refreshMessage(event.guild_id, event.id);
+  return;
 }
 
 const queues = new Map<string, Promise<void>>();
@@ -129,9 +146,11 @@ async function tick(client: Client) {
   try {
     const now = Date.now();
     const inGuild = (guildId: string) => client.guilds.cache.has(guildId);
+    // Move overdue events to live first: their reminders are no longer "upcoming".
+    const { changed, created } = transitionDueEvents(now, inGuild);
     for (const reminder of dueReminders(now)) {
       const event = getEvent(reminder.event_id);
-      if (!event || event.status !== "scheduled") {
+      if (!event || event.status !== "scheduled" || event.scheduled_at <= now) {
         claimReminder(reminder.id, now);
         continue;
       }
@@ -140,8 +159,18 @@ async function tick(client: Client) {
       if (!claimReminder(reminder.id, now)) continue;
       guard("EVENTS:REMIND", () => sendReminders(event));
     }
-    const { changed, created } = transitionDueEvents(now, inGuild);
+    const createdIds = new Set(created.map(event => event.id));
     for (const follower of created) await publishEventMessage(follower);
+    const missing = eventsMissingMessage();
+    const missingIds = new Set(missing.map(event => event.id));
+    for (const id of publishRetryAt.keys()) if (!missingIds.has(id)) publishRetryAt.delete(id);
+    for (const event of missing) {
+      if (createdIds.has(event.id) || !inGuild(event.guild_id)) continue;
+      if ((publishRetryAt.get(event.id) ?? 0) > now) continue;
+      publishRetryAt.set(event.id, now + 60_000);
+      await publishEventMessage(event);
+      if (getEvent(event.id)?.message_id) publishRetryAt.delete(event.id);
+    }
     for (const event of changed) void refreshMessage(event.guild_id, event.id);
   } catch (error) {
     logger.error("[EVENTS] Ошибка в цикле событий:", error);

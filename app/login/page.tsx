@@ -12,8 +12,12 @@ export default function Login() {
   async function signIn() {
     setError("");
     await run(async () => {
-      const result = await authClient.signIn.social({ provider: "discord", callbackURL: "/dashboard", scopes: ["identify", "guilds"] });
-      if (result.error) setError("Не удалось начать вход через Discord.");
+      try {
+        const result = await authClient.signIn.social({ provider: "discord", callbackURL: "/dashboard", scopes: ["identify", "guilds"] });
+        if (result.error) setError("Не удалось начать вход через Discord.");
+      } catch {
+        setError("Не удалось связаться с Discord. Попробуйте ещё раз.");
+      }
     });
   }
   return (

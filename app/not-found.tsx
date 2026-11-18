@@ -1,4 +1,8 @@
+import NextLink from "next/link.js";
+import type { ComponentProps, ComponentType } from "react";
 import { Bot } from "lucide-react";
+
+const Link = NextLink as unknown as ComponentType<ComponentProps<"a">>;
 
 export default function NotFound() {
   return <main className="container page">
@@ -6,7 +10,7 @@ export default function NotFound() {
       <span className="tile"><Bot size={20}/></span>
       <h1>Страница не найдена</h1>
       <p>Возможно, ссылка устарела или у вас нет доступа к этому разделу.</p>
-      <a className="btn" href="/dashboard">Вернуться в панель</a>
+      <Link className="btn" href="/dashboard">Вернуться в панель</Link>
     </article>
   </main>;
 }

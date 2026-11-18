@@ -17,12 +17,12 @@ type ResourceValidation =
   | { ok: false; error: string; status: 400 | 502 | 503 };
 
 type ChannelSpec = {
-  ids: readonly (string | null | undefined)[];
+  ids: readonly unknown[];
   types?: readonly number[];
 };
 
 type RoleSpec = {
-  ids: readonly (string | null | undefined)[];
+  ids: readonly unknown[];
   assignable?: boolean;
 };
 
@@ -39,9 +39,20 @@ export const CHANNEL_TYPES = {
 
 const CACHE_TTL = 60_000;
 
-function uniqueIds(ids: readonly (string | null | undefined)[]): string[] {
-  return [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
+type IdList = { ok: true; ids: string[] } | { ok: false };
+
+function uniqueIds(ids: readonly unknown[]): IdList {
+  const unique = new Set<string>();
+  for (const id of ids) {
+    if (id === null || id === undefined || id === "") continue;
+    if (typeof id !== "string") return { ok: false };
+    unique.add(id);
+  }
+  return { ok: true, ids: [...unique] };
 }
+
+const hasAnyId = (ids: readonly unknown[] = []): boolean =>
+  ids.some(id => id !== null && id !== undefined && id !== "");
 
 function discordError(message: string): ResourceValidation {
   return { ok: false, error: message, status: 502 };
@@ -79,10 +90,11 @@ export function validateSnapshot(
   spec: ResourceSpec,
 ): ResourceValidation {
   const channelIds = uniqueIds(spec.channels?.ids ?? []);
-  if (channelIds.length) {
+  if (!channelIds.ok) return { ok: false, error: "Некорректный идентификатор канала.", status: 400 };
+  if (channelIds.ids.length) {
     const byId = new Map(snapshot.channels.map(channel => [channel.id, channel]));
     const allowedTypes = spec.channels?.types;
-    for (const id of channelIds) {
+    for (const id of channelIds.ids) {
       const channel = byId.get(id);
       if (!channel) return { ok: false, error: "Канал не найден на этом сервере.", status: 400 };
       if (allowedTypes && !allowedTypes.includes(channel.type)) {
@@ -92,9 +104,10 @@ export function validateSnapshot(
   }
 
   const roleIds = uniqueIds(spec.roles?.ids ?? []);
-  if (roleIds.length) {
+  if (!roleIds.ok) return { ok: false, error: "Некорректный идентификатор роли.", status: 400 };
+  if (roleIds.ids.length) {
     const byId = new Map(snapshot.roles.map(role => [role.id, role]));
-    for (const id of roleIds) {
+    for (const id of roleIds.ids) {
       const role = byId.get(id);
       if (!role) return { ok: false, error: "Роль не найдена на этом сервере.", status: 400 };
       if (id === guildId || role.name === "@everyone") {
@@ -106,7 +119,7 @@ export function validateSnapshot(
         return { ok: false, error: "Не удалось определить роль бота на сервере.", status: 502 };
       }
       const assignable = new Set(assignableRoles(snapshot.roles, snapshot.botRoleIds).map(role => role.id));
-      for (const id of roleIds) {
+      for (const id of roleIds.ids) {
         if (!assignable.has(id)) {
           return { ok: false, error: "Некоторые роли выше роли бота — их нельзя выдавать.", status: 400 };
         }
@@ -129,8 +142,7 @@ export function createGuildResourceValidator(fetcher: GuildResourceFetcher = dis
       return cache.get(guildId);
     },
     async validate(guildId: string, spec: ResourceSpec): Promise<ResourceValidation> {
-      const needsSnapshot = uniqueIds(spec.channels?.ids ?? []).length > 0
-        || uniqueIds(spec.roles?.ids ?? []).length > 0;
+      const needsSnapshot = hasAnyId(spec.channels?.ids) || hasAnyId(spec.roles?.ids);
       if (!needsSnapshot) return { ok: true };
       if (!process.env.DISCORD_TOKEN) {
         return { ok: false, error: "Бот недоступен. Попробуйте позже.", status: 503 };

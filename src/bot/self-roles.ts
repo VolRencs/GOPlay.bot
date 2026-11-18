@@ -66,9 +66,11 @@ export async function handleReaction(reaction: MessageReaction | PartialMessageR
   const member = await fetchMember(message.guild, author.id);
   if (!member) return;
   if (removing) {
-    const fresh = await fetchMember(member.guild, member.id) ?? member;
-    const role = fresh.guild.roles.cache.get(option.role_id);
-    if (role?.editable && fresh.roles.cache.has(role.id)) await fresh.roles.remove(role).catch(() => null);
+    await withRoleLock(`${message.guild.id}:${author.id}`, async () => {
+      const fresh = await fetchMember(member.guild, member.id) ?? member;
+      const role = fresh.guild.roles.cache.get(option.role_id);
+      if (role?.editable && fresh.roles.cache.has(role.id)) await fresh.roles.remove(role).catch(() => null);
+    });
     return;
   }
   const result = await applyPanelRoleSafe(message.guild.id, panel.id, option.role_id, member);

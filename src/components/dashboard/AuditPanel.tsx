@@ -14,13 +14,14 @@ export function DashboardAuditLog() {
   const [section, setSection] = useState("all");
   const [loadingMore, setLoadingMore] = useState(false);
   const genRef = useRef(0);
+  const auditParams = (offset: number) => {
+    const params = new URLSearchParams({ limit: "50", offset: String(offset) });
+    if (section !== "all") params.set("section", section);
+    return params;
+  };
   const { data, setData, error, reload } = useApiResource<AuditListDto | null>(
     Boolean(guildId),
-    signal => {
-      const params = new URLSearchParams({ limit: "50", offset: "0" });
-      if (section !== "all") params.set("section", section);
-      return apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`, signal);
-    },
+    signal => apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${auditParams(0)}`, signal),
     [guildId, section],
     null,
   );
@@ -29,11 +30,9 @@ export function DashboardAuditLog() {
   useEffect(() => { genRef.current++; setLoadingMore(false); }, [guildId, section]);
   async function loadMore() {
     const gen = genRef.current;
-    const params = new URLSearchParams({ limit: "50", offset: String(entries?.length ?? 0) });
-    if (section !== "all") params.set("section", section);
     setLoadingMore(true);
     try {
-      const page = await apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${params}`);
+      const page = await apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${auditParams(entries?.length ?? 0)}`);
       if (gen !== genRef.current) return;
       if (!page.ok) { fail(page.error); return; }
       setData(value => value ? { entries: [...value.entries, ...page.data.entries], total: page.data.total } : page.data);

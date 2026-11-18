@@ -71,11 +71,11 @@ async function handleVoiceState(oldState: VoiceState, newState: VoiceState) {
   count("events.voice_state");
   const guild = newState.guild ?? oldState.guild;
   const config = guildConfig(guild.id);
-  if (!config) return;
   if (oldState.channelId && oldState.channelId !== newState.channelId) {
     const row = stmt.tempByChannel.get(oldState.channelId);
     if (row) scheduleEmptinessCheck(guild, oldState.channelId);
   }
+  if (!config) return;
   const member = newState.member ?? oldState.member;
   if (!member || member.user.bot) return;
 
@@ -272,12 +272,14 @@ async function handlePanelButton(i: ButtonInteraction, action: string) {
     if (settings.can_close === 0) return i.reply({ content: t("closeDisabled"), flags: MessageFlags.Ephemeral });
     const everyone = guild.roles.everyone;
     const closed = Boolean(channel.permissionOverwrites.cache.get(everyone.id)?.deny.has(PermissionFlagsBits.Connect));
-    await i.reply({ content: closed ? t("channelOpened") : t("channelClosed"), flags: MessageFlags.Ephemeral });
-    await channel.permissionOverwrites.edit(everyone, { Connect: closed ? null : false }).catch((error) => logger.warn("[TEMP] Не удалось изменить доступ", guild.id, error));
+    try { await channel.permissionOverwrites.edit(everyone, { Connect: closed ? null : false }); }
+    catch (error) { logger.warn("[TEMP] Не удалось изменить доступ", guild.id, error); return i.reply({ content: t("actionFailed"), flags: MessageFlags.Ephemeral }); }
+    return i.reply({ content: closed ? t("channelOpened") : t("channelClosed"), flags: MessageFlags.Ephemeral });
   } else if (action === "delete") {
     await i.reply({ content: t("deleting"), flags: MessageFlags.Ephemeral });
     await deleteTempChannel(guild, channel, "[TEMP] Удаление канала не удалось");
   }
+  return;
 }
 
 async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
@@ -291,21 +293,25 @@ async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
   const value = i.fields.getTextInputValue("value").trim();
   if (action === "rename") {
     if (!value.length) return i.reply({ content: t("emptyName"), flags: MessageFlags.Ephemeral });
-    await channel.setName(value.slice(0, 100)).catch((error) => logger.warn("[TEMP] Переименование не удалось", guild.id, error));
+    try { await channel.setName(value.slice(0, 100)); }
+    catch (error) { logger.warn("[TEMP] Переименование не удалось", guild.id, error); return i.reply({ content: t("actionFailed"), flags: MessageFlags.Ephemeral }); }
     return i.reply({ content: t("renamed",{name:value.slice(0,100)}), flags: MessageFlags.Ephemeral });
   }
   if (action === "limit") {
     const limit = Number(value);
     if (!Number.isInteger(limit) || limit < 0 || limit > 99) return i.reply({ content: t("limitRange"), flags: MessageFlags.Ephemeral });
-    await channel.setUserLimit(limit).catch((error) => logger.warn("[TEMP] Лимит не применён", guild.id, error));
+    try { await channel.setUserLimit(limit); }
+    catch (error) { logger.warn("[TEMP] Лимит не применён", guild.id, error); return i.reply({ content: t("actionFailed"), flags: MessageFlags.Ephemeral }); }
     return i.reply({ content: limit ? t("limitSet",{n:String(limit)}) : t("limitOff"), flags: MessageFlags.Ephemeral });
   }
   const targetId = value.replace(/[<@!>]/g, "");
   if (!isSnowflake(targetId)) return i.reply({ content: t("badUser"), flags: MessageFlags.Ephemeral });
   const target = await fetchMember(guild, targetId);
   if (!target) return i.reply({ content: t("userNotFound"), flags: MessageFlags.Ephemeral });
+  if (target.user.bot) return i.reply({ content: t("badUser"), flags: MessageFlags.Ephemeral });
   if (action === "allow" || action === "deny") {
-    await channel.permissionOverwrites.edit(target, { Connect: action === "allow", Speak: action === "allow" }).catch((error) => logger.warn("[TEMP] Доступ не изменён", guild.id, error));
+    try { await channel.permissionOverwrites.edit(target, { Connect: action === "allow", Speak: action === "allow" }); }
+    catch (error) { logger.warn("[TEMP] Доступ не изменён", guild.id, error); return i.reply({ content: t("actionFailed"), flags: MessageFlags.Ephemeral }); }
     return i.reply({ content: action === "allow" ? t("userAllowed",{id:targetId}) : t("userDenied",{id:targetId}), flags: MessageFlags.Ephemeral });
   }
   if (action === "transfer") {
@@ -315,6 +321,7 @@ async function handleModalSubmit(i: ModalSubmitInteraction, action: string) {
     stmt.tempUpdateOwner.run(targetId, channel.id);
     return i.reply({ content: t("transferred",{id:targetId}), flags: MessageFlags.Ephemeral });
   }
+  return;
 }
 
 function textModal(customId: string, title: string, label: string, value = "") {

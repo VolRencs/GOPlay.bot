@@ -5,6 +5,13 @@ on:
     branches: [Dev]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -26,7 +33,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 26.x
+          node-version: 26.13.1
           cache: pnpm
 
       - name: Install project dependencies
@@ -40,9 +47,8 @@ jobs:
 
       - name: Warmup build DB (serial)
         run: |
-          if [ ! -f .env ]; then touch .env; fi
           pnpm migrate:auth
-          sqlite3 "$DATABASE_PATH" "PRAGMA wal_checkpoint(TRUNCATE);" || true
+          node -e "const { DatabaseSync } = require('node:sqlite'); new DatabaseSync(process.env.DATABASE_PATH).exec('PRAGMA wal_checkpoint(TRUNCATE)')" || true
 
       - name: Build
         run: pnpm build
