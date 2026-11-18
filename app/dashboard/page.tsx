@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation.js";
+import NextLink from "next/link.js";
+import type { ComponentProps, ComponentType } from "react";
 import { Bot } from "lucide-react";
 import { SiteHeader } from "#components/site-header.tsx";
 import { PageHeader } from "#components/page-header.tsx";
@@ -6,6 +8,8 @@ import { accessFrom } from "#lib/access.ts";
 import { DiscordRateLimitError, configuredGuilds, resolveSession, type DashboardGuild } from "#lib/guild-access.ts";
 import { discordInviteUrl } from "#lib/constants.ts";
 import { guildIconUrl } from "#lib/format.ts";
+
+const Link = NextLink as unknown as ComponentType<ComponentProps<"a">>;
 
 export default async function Dashboard() {
   const resolved = await resolveSession().catch(() => null);
@@ -38,14 +42,14 @@ export default async function Dashboard() {
     {loadError && <p className="error-note" role="alert">⚠ {loadError}</p>}
     {access.allowed && !loadError && (guilds.length ? (
       <section className="guild-grid">
-        {guilds.map(guild => <a className="guild-card" href={`/dashboard/${guild.id}`} key={guild.id}>
+        {guilds.map(guild => <Link className="guild-card" href={`/dashboard/${guild.id}`} key={guild.id}>
           <div className="guild-avatar">{guildIconUrl(guild.id, guild.icon) ? <img src={guildIconUrl(guild.id, guild.icon)!} alt=""/> : guild.name[0]}</div>
           <div className="guild-card-copy">
             <h2>{guild.name}</h2>
             <span className="muted">Настроить сервер</span>
           </div>
           <span className="guild-card-arrow" aria-hidden="true">→</span>
-        </a>)}
+        </Link>)}
       </section>
     ) : (
       <article className="card empty-state">

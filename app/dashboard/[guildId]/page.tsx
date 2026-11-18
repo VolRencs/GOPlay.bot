@@ -12,26 +12,24 @@ import { guildIconUrl } from "#lib/format.ts";
 
 type PendingNav = { tab: TabKey } | { href: string };
 
-export default function GuildSettings({ params }: PageProps<"/dashboard/[guildId]">) {
+export default function GuildSettings({ params, searchParams }: PageProps<"/dashboard/[guildId]">) {
   const { guildId } = use(params);
+  const query = use(searchParams);
+  const requestedTab = typeof query.tab === "string" ? query.tab : "";
+  const initialTab = isTabKey(requestedTab) ? requestedTab : "stats";
   return <DashboardProvider guildId={guildId}>
-    <DashboardShell key={guildId}/>
+    <DashboardShell key={guildId} initialTab={initialTab}/>
   </DashboardProvider>;
 }
 
-function DashboardShell() {
+function DashboardShell({ initialTab }: { initialTab: TabKey }) {
   const { guildId, resources, resourcesError, reloadResources, loading, isDirty, saveAll, discardAll } = useDashboard();
-  const [tab, setTab] = useState<TabKey>("stats");
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [, startTransition] = useTransition();
   const [pendingNav, setPendingNav] = useState<PendingNav | null>(null);
   const [savingAll, setSavingAll] = useState(false);
   const server = resources?.server ?? { name: SERVER_FALLBACK_NAME, icon: null };
   const ActiveTab = TAB_DEFS[tab].component;
-
-  useEffect(() => {
-    const value = new URLSearchParams(window.location.search).get("tab");
-    if (value && isTabKey(value)) setTab(value);
-  }, []);
 
   function switchTab(next: TabKey) {
     startTransition(() => setTab(next));
@@ -126,8 +124,13 @@ function DashboardShell() {
         description={TAB_DEFS[tab].description}
       />
       {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
-      {!loading && resourcesError && <SectionError message={resourcesError} onRetry={reloadResources}/>}
-      {!loading && !resourcesError && <Suspense fallback={<SectionLoading/>}><ActiveTab/></Suspense>}
+      {resourcesError ? (
+        <SectionError message={resourcesError} onRetry={reloadResources}/>
+      ) : (
+        <div hidden={loading}>
+          <Suspense fallback={<SectionLoading/>}><ActiveTab/></Suspense>
+        </div>
+      )}
     </section>
     {pendingNav && <ConfirmNavigationDialog onSave={() => void saveAndGo()} onDiscard={discardAndGo} onCancel={() => setPendingNav(null)}/>}
     {isDirty && <div className="unsaved-float" role="status">

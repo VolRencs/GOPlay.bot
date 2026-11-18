@@ -1,4 +1,7 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ComponentType, ReactNode } from "react";
+import NextLink from "next/link.js";
+
+const Link = NextLink as unknown as ComponentType<ComponentProps<"a">>;
 
 type PageHeaderProps = {
   eyebrow?: string;
@@ -11,7 +14,7 @@ type PageHeaderProps = {
 
 export function PageHeader({ eyebrow, title, description, icon, back, actions }: PageHeaderProps) {
   return <header className="page-header">
-    {back && <a className="back-link" href={back.href}>← {back.label}</a>}
+    {back && <Link className="back-link" href={back.href}>← {back.label}</Link>}
     <div className="page-header-row">
       {icon && <div className="page-icon">{icon}</div>}
       <div className="page-header-copy">

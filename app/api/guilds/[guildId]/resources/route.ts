@@ -9,13 +9,11 @@ type DiscordEmoji = { id: string | null; name: string | null; animated: boolean 
 
 const ttl = 60_000;
 
-const resourceCache = ttlCacheAsync<string, ResourcesGet>(async (guildId) => {
-  return loadResources(guildId);
-}, ttl, true);
+const resourceCache = ttlCacheAsync<string, ResourcesGet>(loadResources, ttl, true);
 
 async function loadResources(guildId: string): Promise<ResourcesGet> {
-  const snapshot = await guildResourceSnapshot(guildId);
-  const [emojisResponse, guildResponse] = await Promise.all([
+  const [snapshot, emojisResponse, guildResponse] = await Promise.all([
+    guildResourceSnapshot(guildId),
     discordFetch(`/guilds/${guildId}/emojis`),
     discordFetch(`/guilds/${guildId}?with_counts=true`),
   ]);
