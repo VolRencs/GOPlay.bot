@@ -6,7 +6,7 @@ import { deleteGuildFiles } from "#lib/uploads.ts";
 export const POST = adminRoute<{ id: string }>(async (request, { id: guildId }) => {
   if (!isSnowflake(guildId)) return jsonError("Некорректный идентификатор сервера.");
   const body = await readJsonRecord(request);
-  const wipe = Boolean(body?.wipe);
+  const wipe = body?.wipe === true;
 
   let leftOnDiscord = true;
   try {

@@ -26,12 +26,9 @@ type RoleSpec = {
   assignable?: boolean;
 };
 
-type MessageSpec = { channelId: string; messageId: string };
-
 type ResourceSpec = {
   channels?: ChannelSpec;
   roles?: RoleSpec;
-  messages?: readonly MessageSpec[];
 };
 
 export const CHANNEL_TYPES = {
@@ -120,30 +117,6 @@ export function validateSnapshot(
   return { ok: true };
 }
 
-async function validateMessages(
-  snapshot: GuildResourceSnapshot,
-  messages: readonly MessageSpec[],
-  fetcher: GuildResourceFetcher,
-): Promise<ResourceValidation> {
-  if (!messages.length) return { ok: true };
-  const channels = new Set(snapshot.channels.map(channel => channel.id));
-  const unique = new Map(messages.map(message => [`${message.channelId}:${message.messageId}`, message]));
-  for (const message of unique.values()) {
-    if (!channels.has(message.channelId)) {
-      return { ok: false, error: "Канал не найден на этом сервере.", status: 400 };
-    }
-    let response: Response;
-    try {
-      response = await fetcher(`/channels/${message.channelId}/messages/${message.messageId}`);
-    } catch {
-      return discordError("Не удалось проверить сообщение в Discord. Попробуйте позже.");
-    }
-    if (response.status === 404) return { ok: false, error: "Сообщение не найдено в этом сервере.", status: 400 };
-    if (!response.ok) return discordError("Не удалось проверить сообщение в Discord. Попробуйте позже.");
-  }
-  return { ok: true };
-}
-
 export function createGuildResourceValidator(fetcher: GuildResourceFetcher = discordFetch) {
   const cache = ttlCacheAsync<string, GuildResourceSnapshot>(
     guildId => loadGuildResourceSnapshot(guildId, fetcher),
@@ -157,8 +130,7 @@ export function createGuildResourceValidator(fetcher: GuildResourceFetcher = dis
     },
     async validate(guildId: string, spec: ResourceSpec): Promise<ResourceValidation> {
       const needsSnapshot = uniqueIds(spec.channels?.ids ?? []).length > 0
-        || uniqueIds(spec.roles?.ids ?? []).length > 0
-        || Boolean(spec.messages?.length);
+        || uniqueIds(spec.roles?.ids ?? []).length > 0;
       if (!needsSnapshot) return { ok: true };
       if (!process.env.DISCORD_TOKEN) {
         return { ok: false, error: "Бот недоступен. Попробуйте позже.", status: 503 };
@@ -169,9 +141,7 @@ export function createGuildResourceValidator(fetcher: GuildResourceFetcher = dis
       } catch {
         return discordError("Не удалось проверить ресурсы Discord. Попробуйте позже.");
       }
-      const base = validateSnapshot(snapshot, guildId, spec);
-      if (!base.ok) return base;
-      return validateMessages(snapshot, spec.messages ?? [], fetcher);
+      return validateSnapshot(snapshot, guildId, spec);
     },
   };
 }

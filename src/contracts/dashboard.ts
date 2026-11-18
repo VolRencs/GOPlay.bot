@@ -45,14 +45,6 @@ export const settingsEndpoint = (guildId: string, key: SettingsKey): string =>
 export type LangCode = "ru" | "en";
 export type LangDto = { lang: LangCode };
 
-export function toLangDto(lang: LangCode): LangDto {
-  return { lang };
-}
-
-export function fromLangDto(dto: LangDto): LangCode {
-  return dto.lang;
-}
-
 export type AdminGuildDto = {
   id: string;
   name: string;

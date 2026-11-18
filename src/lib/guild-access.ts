@@ -242,18 +242,17 @@ const guildMemberNames = (guildId: string): Promise<Map<string, string>> => memb
 // Small ID sets use per-member lookups; large sets fall back to full pagination.
 const memberNameCache = ttlCacheAsync<string, string | null>(async key => {
   const [guildId, userId] = key.split(":");
-  try {
-    const response = await discordFetch(`/guilds/${guildId}/members/${userId}`, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return null;
-    const member = await response.json() as { nick?: string | null; user?: { username?: string; global_name?: string | null } };
-    return member.user ? member.nick ?? member.user.global_name ?? member.user.username ?? userId! : null;
-  } catch { return null; }
+  const response = await discordFetch(`/guilds/${guildId}/members/${userId}`, { signal: AbortSignal.timeout(5000) });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Discord member request failed (${response.status})`);
+  const member = await response.json() as { nick?: string | null; user?: { username?: string; global_name?: string | null } };
+  return member.user ? member.nick ?? member.user.global_name ?? member.user.username ?? userId! : null;
 }, DAY_MS, true);
 
 export async function guildMemberNamesFor(guildId: string, ids: readonly string[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids)];
   if (!unique.length) return new Map();
   if (unique.length > 50) return guildMemberNames(guildId);
-  const entries = await Promise.all(unique.map(async id => [id, await memberNameCache.get(`${guildId}:${id}`)] as const));
+  const entries = await Promise.all(unique.map(async id => [id, await memberNameCache.get(`${guildId}:${id}`).catch(() => null)] as const));
   return new Map(entries.filter((entry): entry is readonly [string, string] => entry[1] !== null));
 }

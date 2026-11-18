@@ -23,7 +23,6 @@ const fetcher = async (path: string): Promise<Response> => {
   if (path === "/guilds/g1/channels") return json(channels);
   if (path === "/guilds/g1/roles") return json(roles);
   if (path === "/guilds/g1/members/bot-user") return json({ roles: ["r-bot"] });
-  if (path === "/channels/c-text/messages/m1") return json({ id: "m1" });
   if (path === "/guilds/g2/channels") return new Response(null, { status: 500 });
   return new Response(null, { status: 404 });
 };
@@ -57,14 +56,6 @@ test("роли проверяются на владение, @everyone и иер
   if (!high.ok) assert.match(high.error, /выше роли бота/i);
   const foreign = await validator.validate("g1", { roles: { ids: ["r-foreign"] } });
   assert.equal(foreign.ok, false);
-});
-
-test("сообщение проверяется только внутри канала этого сервера", async () => {
-  assert.deepEqual(await validator.validate("g1", { messages: [{ channelId: "c-text", messageId: "m1" }] }), { ok: true });
-  const missing = await validator.validate("g1", { messages: [{ channelId: "c-text", messageId: "missing" }] });
-  assert.equal(missing.ok, false);
-  const foreignChannel = await validator.validate("g1", { messages: [{ channelId: "c-foreign", messageId: "m1" }] });
-  assert.equal(foreignChannel.ok, false);
 });
 
 test("недоступный Discord даёт 502, отсутствие токена — 503", async () => {

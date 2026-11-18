@@ -1,14 +1,14 @@
 "use client";
 
 import { CardHeader, SaveButton, SectionError, SectionLoading, Select } from "./ui.tsx";
-import { fromLangDto, toLangDto, type LangCode, type LangDto } from "#contracts/dashboard.ts";
+import type { LangCode, LangDto } from "#contracts/dashboard.ts";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
 export function BotLanguageCard() {
   const { value, setValue, loading, loadError, reload, saving, saveNow } = useSettingsTab<LangDto, LangCode>({
     initial: "ru",
-    fromGet: fromLangDto,
-    toBody: toLangDto,
+    fromGet: data => data.lang,
+    toBody: lang => ({ lang }),
     saveMode: "markSaved",
     loadError: "Не удалось загрузить язык бота.",
     saveError: "Не удалось сохранить язык бота.",
