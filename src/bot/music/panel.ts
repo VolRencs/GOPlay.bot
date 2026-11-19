@@ -23,6 +23,14 @@ export const trackLabel = (title: string, limit = 180): string => {
   const flat = title.replace(/\s+/g, " ").trim();
   return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat;
 };
+const trackDuration = (track: Track): string => track.duration && track.duration > 0 ? ` · ${fmtTime(track.duration)}` : "";
+
+export function pageWindow(total: number, size: number, requestedPage: number) {
+  const pages = Math.max(1, Math.ceil(total / size));
+  const page = Number.isFinite(requestedPage) ? Math.min(pages - 1, Math.max(0, Math.trunc(requestedPage))) : 0;
+  const start = page * size;
+  return { page, pages, start, end: Math.min(total, start + size) };
+}
 
 type MusicPanelState = {
   current: Track;
@@ -39,13 +47,10 @@ export function queueView(guildId: string, lang: Locale, requestedPage = 0): Que
   const t = trFor(musicTr, lang);
   const { current, queue } = getQueueSnapshot(guildId);
   if (!current && queue.length === 0) return { content: t("queueEmpty"), page: 0, pages: 1 };
-  const pages = Math.max(1, Math.ceil(queue.length / QUEUE_PAGE_SIZE));
-  const page = Math.min(pages - 1, Math.max(0, Math.trunc(requestedPage)));
-  const start = page * QUEUE_PAGE_SIZE;
-  const duration = (track: Track) => track.duration && track.duration > 0 ? ` · ${fmtTime(track.duration)}` : "";
+  const { page, pages, start, end } = pageWindow(queue.length, QUEUE_PAGE_SIZE, requestedPage);
   const lines = [
-    current ? t("queueNow", { title: `${trackLabel(current.title, 90)}${duration(current)}` }) : "",
-    ...queue.slice(start, start + QUEUE_PAGE_SIZE).map((track, index) => `${start + index + 1}. ${trackLabel(track.title, 90)}${duration(track)}`),
+    current ? t("queueNow", { title: `${trackLabel(current.title, 90)}${trackDuration(current)}` }) : "",
+    ...queue.slice(start, end).map((track, index) => `${start + index + 1}. ${trackLabel(track.title, 90)}${trackDuration(track)}`),
   ];
   const pageNote = pages > 1 ? `\n${t("queuePage", { page: String(page + 1), pages: String(pages) })}` : "";
   return {
@@ -66,10 +71,9 @@ export function renderMusicPanel(state: MusicPanelState, lang: Locale) {
   const progress = duration > 0 ? `\n\`${progressBar(position, duration, 14)}\`` : "";
   const body = `${title}\n${meta}${progress}`;
   const queueText = state.queueLength
-    ? `${t("panelUpNextCount", { n: String(state.queueLength) })}\n${state.queuePreview.map((track, index) => {
-      const trackDuration = track.duration && track.duration > 0 ? ` · ${fmtTime(track.duration)}` : "";
-      return `${index + 1}. ${trackLabel(track.title, 90)}${trackDuration}`;
-    }).join("\n")}`
+    ? `${t("panelUpNextCount", { n: String(state.queueLength) })}\n${state.queuePreview.map((track, index) =>
+      `${index + 1}. ${trackLabel(track.title, 90)}${trackDuration(track)}`,
+    ).join("\n")}`
     : t("panelQueueEmptyNote");
 
   const container = new ContainerBuilder().setAccentColor(BRAND_COLOR);

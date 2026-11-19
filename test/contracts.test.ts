@@ -72,7 +72,7 @@ test("role, appeal, audit and temp DTOs expose camelCase", () => {
   const appeal = toAppeal({ id: 1, number: 2, guild_id: "3", user_id: "4", punishment_id: 5, type: "warn", reason: "r", moderator_comment: null, status: "pending", created_at: 6, updated_at: 7, reviewed_by: null, reviewed_at: null, punishment_reason: "p", punishment_created_at: 8 });
   assert.equal(appeal.punishmentReason, "p");
   assert.equal(appeal.createdAt, 6);
-  const audit = toAudit({ id: 1, user_name: "U", section: "S", summary: "M", created_at: 9, total: 1 });
+  const audit = toAudit({ id: 1, user_name: "U", section: "S", summary: "M", created_at: 9 });
   assert.equal(audit.userName, "U");
   assert.equal(audit.createdAt, 9);
   const preset = toTempPreset({ id: 1, name: "P", trigger_channel_ids_json: '["2"]', category_id: null, name_template: "T", user_limit: 0, can_rename: 1, can_manage_access: 0, can_close: 1 });

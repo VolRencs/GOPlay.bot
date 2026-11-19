@@ -20,7 +20,6 @@ export function DashboardAuditLog() {
     return params;
   };
   const { data, setData, error, reload } = useApiResource<AuditListDto | null>(
-    Boolean(guildId),
     signal => apiGet<AuditListDto>(`/api/guilds/${guildId}/audit?${auditParams(0)}`, signal),
     [guildId, section],
     null,
@@ -45,7 +44,7 @@ export function DashboardAuditLog() {
           <Select value={section} onChange={setSection} ariaLabel="Раздел журнала"
             options={[{ value: "all", label: "Все разделы" }, ...AUDIT_SECTIONS.map(section => ({ value: section, label: section }))]}/>
         </label></div>}/>
-    </article><article className="card audit-list">{error ? <SectionError message={error} onRetry={reload}/> : entries === null ? <p className="muted" role="status">Загружаем журнал…</p> : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.createdAt).toISOString()}>{formatTime(entry.createdAt)}</time><span className="audit-user">{entry.userName}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
+    </article><article className="card audit-list">{error ? <SectionError message={error} onRetry={reload}/> : entries === null ? null : entries.length ? entries.map(entry => <div className="audit-item" key={entry.id}><time dateTime={new Date(entry.createdAt).toISOString()}>{formatTime(entry.createdAt)}</time><span className="audit-user">{entry.userName}</span><span className="pill pill-info">{entry.section}</span><p>{entry.summary}</p></div>) : <p className="muted">Изменений ещё не было — сохраните любые настройки, и они появятся здесь.</p>}{entries && entries.length < total && <button type="button" className="btn secondary" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Загружаем…" : `Показать ещё (${entries.length} из ${total})`}</button>}</article></section>;
 }
 
 export function ServerDataCleanup() {

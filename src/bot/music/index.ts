@@ -1,4 +1,4 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type Client, type Interaction, type StringSelectMenuInteraction } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, type ButtonInteraction, type Client, type StringSelectMenuInteraction } from "discord.js";
 import { count } from "../../lib/perf.ts";
 import { logger } from "../../lib/logger.ts";
 import { stmt } from "../../db/statements.ts";
@@ -7,8 +7,9 @@ import { guildLang } from "../../lib/i18n/bot.ts";
 import { SELECT_OPTION_LIMIT } from "../../lib/constants.ts";
 import { resolveChannel } from "../logging/index.ts";
 import { musicSettingsFor } from "../../lib/music-settings.ts";
-import { queueView, renderMusicPanel, trackLabel } from "./panel.ts";
+import { queueView, pageWindow, renderMusicPanel, trackLabel } from "./panel.ts";
 import { NO_MENTIONS, canConnectAndSpeak, isAdminInteraction, musicTFor } from "./shared.ts";
+import { onInteraction } from "../events.ts";
 import {
   cycleLoop, getSessionTextChannelId, getQueueSnapshot,
   moveToVoice, moveQueueTrack, pickFollowTarget, playbackStateOf,
@@ -70,9 +71,13 @@ export function registerMusic(client: Client): void {
     if (oldState.channelId === newState.channelId) return;
     refreshSessionActivity(guildId);
   }));
-  client.on(Events.InteractionCreate, (i: Interaction) => {
-    if (i.isButton() && i.customId.startsWith("music:")) guard("MUSIC_PANEL", () => handlePanelButton(i));
-    else if (i.isStringSelectMenu() && i.customId.startsWith("music:")) guard("MUSIC_SELECT", () => handleMusicSelect(i));
+  onInteraction("MUSIC_PANEL", i => {
+    if (i.isButton() && i.customId.startsWith("music:")) return handlePanelButton(i);
+    return undefined;
+  });
+  onInteraction("MUSIC_SELECT", i => {
+    if (i.isStringSelectMenu() && i.customId.startsWith("music:")) return handleMusicSelect(i);
+    return undefined;
   });
   client.once(Events.ClientReady, () => guard("MUSIC_STARTUP", async () => {
     const rows = stmt.musicSessionAll.all();
@@ -273,10 +278,7 @@ async function openQueueMenu(i: ButtonInteraction, action: "remove" | "move", re
   if (removing) {
     pendingRemovals.set(`${i.guildId}:${i.user.id}`, { ids: queue.map(trackIdentity), at: Date.now() });
   }
-  const pages = Math.max(1, Math.ceil(queue.length / SELECT_OPTION_LIMIT));
-  const page = Math.min(pages - 1, Math.max(0, Math.trunc(requestedPage)));
-  const start = page * SELECT_OPTION_LIMIT;
-  const end = Math.min(queue.length, start + SELECT_OPTION_LIMIT);
+  const { page, pages, start, end } = pageWindow(queue.length, SELECT_OPTION_LIMIT, requestedPage);
   const options = queue.slice(start, end).map((track, index) => {
     const position = start + index;
     return new StringSelectMenuOptionBuilder().setLabel(trackLabel(`${position + 1}. ${track.title}`, 100)).setValue(String(position));

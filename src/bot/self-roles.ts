@@ -1,26 +1,13 @@
 import type { GuildMember, MessageReaction, PartialMessageReaction, PartialUser, User } from "discord.js";
-import { setTimeout as delay } from "node:timers/promises";
 import { normalizeEmojiText, sameEmojiValue } from "goemoji/discord";
 import { count } from "../lib/perf.ts";
+import { createKeyedLock } from "../lib/cache.ts";
 import { cachedPanel, reactionPanel } from "./config-cache.ts";
 import { fetchMember } from "./utils/members.ts";
 import { automodTr, guildLang } from "../lib/i18n/bot.ts";
 
-const roleLocks = new Map<string, Promise<void>>();
 const ROLE_LOCK_TIMEOUT_MS = 10_000;
-const lockTimeout = () => delay(ROLE_LOCK_TIMEOUT_MS, undefined, { ref: false }).then<never>(() => { throw new Error("role lock timeout"); });
-async function withRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const prev = roleLocks.get(key) ?? Promise.resolve();
-  const { promise: cur, resolve: release } = Promise.withResolvers<void>();
-  roleLocks.set(key, cur);
-  await Promise.race([prev, lockTimeout()]).catch(() => null);
-  try {
-    return await fn();
-  } finally {
-    release();
-    if (roleLocks.get(key) === cur) roleLocks.delete(key);
-  }
-}
+const withRoleLock = createKeyedLock(ROLE_LOCK_TIMEOUT_MS);
 
 async function applyPanelRole(guildId: string, panelId: number, roleId: string, member: GuildMember) {
   return withRoleLock(`${guildId}:${member.id}`, async () => {

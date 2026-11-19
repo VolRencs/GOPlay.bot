@@ -129,7 +129,7 @@ setInterval(pruneDetectors, 10 * 60_000).unref();
 registerTempChannels(client);
 registerMusic(client);
 registerLevels(client);
-registerAppeals(client);
+registerAppeals();
 registerEvents(client);
 
 on(client, Events.GuildDelete, "GUILD_DELETE", guild => {

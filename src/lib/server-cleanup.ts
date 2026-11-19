@@ -37,6 +37,6 @@ export function wipeGuildData(guildId: string) {
   });
 }
 
-export function pruneOldEvents(): number {
-  return Number(stmt.eventsPrune.run(Date.now() - 90 * 86_400_000).changes);
+export function pruneOldEvents(): void {
+  stmt.eventsPrune.run(Date.now() - 90 * 86_400_000);
 }

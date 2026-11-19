@@ -72,6 +72,7 @@ test("SSRF-гейт и классификация ошибок бэкенда", 
   assert.equal(mapBackendError("INVALID_RESPONSE"), "network");
   assert.equal(mapBackendError("CHALLENGE_FAILED"), "challenge-failed");
   assert.equal(mapBackendError("FORMAT_NOT_FOUND"), "no-audio");
+  assert.equal(mapBackendError("TOO_LONG"), "too-long");
 });
 
 test("fast-path: одиночное видео доверенного хоста, без list=, с id", () => {

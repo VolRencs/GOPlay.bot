@@ -4,7 +4,7 @@ import { Suspense, use, useEffect, useRef, useState, useTransition } from "react
 import { Bot } from "lucide-react";
 import { Brand } from "#components/brand.tsx";
 import { PageHeader } from "#components/page-header.tsx";
-import { ConfirmHost, SectionError, SectionLoading } from "#components/dashboard/ui.tsx";
+import { ConfirmHost, SectionError } from "#components/dashboard/ui.tsx";
 import { DashboardProvider, useDashboard } from "#components/dashboard/DashboardContext.tsx";
 import { TAB_DEFS, TAB_GROUPS, isTabKey, type TabKey } from "#components/dashboard/tabs.tsx";
 import { SERVER_FALLBACK_NAME } from "#lib/constants.ts";
@@ -21,7 +21,7 @@ export default function GuildSettings({ params, searchParams }: PageProps<"/dash
 }
 
 function DashboardShell({ initialTab }: { initialTab: TabKey }) {
-  const { guildId, resources, resourcesError, reloadResources, loading, isDirty, saveAll, discardAll } = useDashboard();
+  const { guildId, resources, resourcesError, reloadResources, isDirty, saveAll, discardAll } = useDashboard();
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [, startTransition] = useTransition();
   const [savingAll, setSavingAll] = useState(false);
@@ -53,6 +53,10 @@ function DashboardShell({ initialTab }: { initialTab: TabKey }) {
   useEffect(() => () => {
     if (nudgeTimer.current !== null) window.clearTimeout(nudgeTimer.current);
   }, []);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [tab]);
 
   function switchTab(next: TabKey) {
     startTransition(() => setTab(next));
@@ -150,14 +154,8 @@ function DashboardShell({ initialTab }: { initialTab: TabKey }) {
         title={TAB_DEFS[tab].title}
         description={TAB_DEFS[tab].description}
       />
-      {loading && <p className="loading" role="status">Загружаем настройки сервера…</p>}
-      {resourcesError ? (
-        <SectionError message={resourcesError} onRetry={reloadResources}/>
-      ) : (
-        <div hidden={loading}>
-          <Suspense fallback={<SectionLoading/>}><ActiveTab/></Suspense>
-        </div>
-      )}
+      {resourcesError && <SectionError message={resourcesError} onRetry={reloadResources}/>}
+      {(!resourcesError || tab === "stats") && <Suspense fallback={null}><ActiveTab/></Suspense>}
     </section>
     {isDirty && <div ref={barRef} className={nudgeActive ? "unsaved-float is-nudge" : "unsaved-float"} role="status">
       <span className="warn-dot" aria-hidden="true"/>

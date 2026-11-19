@@ -1,7 +1,6 @@
 import type { Client } from "discord.js";
 import { closeDatabase } from "../db/database.ts";
 import { logger } from "../lib/logger.ts";
-import { stopTimer } from "./config-cache.ts";
 import { flushMetrics, stopMetrics } from "./metrics.ts";
 import { applyLevelUps, flushLevels, stopLevels } from "./levels/index.ts";
 import { flushMessageCache, stopMessageCache } from "../db/message-cache.ts";
@@ -16,7 +15,6 @@ export async function shutdown(client: Client) {
   if (shuttingDown) return;
   shuttingDown = true;
   stopHeartbeat();
-  stopTimer();
   stopMetrics();
   stopLevels();
   stopEvents();

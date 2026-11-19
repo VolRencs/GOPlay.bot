@@ -8,9 +8,9 @@ import { burstMessages, clearWarned, isBurstKind, markWarned, shouldWarn, type M
 import { offerAppeal } from "../appeals/index.ts";
 import { addMetric } from "../metrics.ts";
 import { logAction, markBotAction } from "../logging/index.ts";
-import { cachedRules, type CachedRule } from "../config-cache.ts";
+import type { CachedRule } from "../config-cache.ts";
 import { logger } from "../../lib/logger.ts";
-import { automodTr, trFor } from "../../lib/i18n/bot.ts";
+import { automodTr, guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 import { time } from "../../lib/perf.ts";
 
@@ -28,7 +28,7 @@ export async function enforceAutoMod(client: Client, message: Message, row: Cach
   const guild = message.guild!, author = message.author;
   let actions = parseActions(row.action_json).filter(x => automodActionSet.has(x));
   if (!actions.length) actions = [...automodDefaultActions];
-  const lang = cachedRules(guild.id).lang;
+  const lang = guildLang(guild.id);
   const t = trFor(logTr, lang), tAuto = trFor(automodTr, lang);
   const ruleName = automodRuleTitles[lang][row.kind]?.title ?? row.kind, reason = tAuto("reason", { rule: ruleName });
   const rule: Rule = { kind: row.kind, threshold, window: row.window_seconds };

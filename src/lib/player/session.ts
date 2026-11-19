@@ -268,7 +268,7 @@ export function playNext(guildId: string): Track | null {
   refreshActivityTimer(s);
   notify(guildId);
   if (!next) return null;
-  launch(s, next, 0);
+  launch(s, next, 0, false, true);
   prefetchNext(guildId);
   return next;
 }
@@ -286,14 +286,14 @@ function scheduleLaunch(s: Session, track: Track, offsetSec: number, forceRefres
   }, delayMs).unref();
 }
 
-function launch(s: Session, track: Track, offsetSec: number, forceRefresh = false): void {
+function launch(s: Session, track: Track, offsetSec: number, forceRefresh = false, announce = false): void {
   if (track.duration && track.duration > MAX_DURATION_SECONDS) {
     logger.warn("[MUSIC] Трек длиннее лимита — пропускаю", s.guildId, track.title);
     advance(s, null);
     return;
   }
   if (s.skipFlag) { s.skipFlag = false; advance(s, track, false); return; }
-  if (offsetSec === 0) { try { onTrackStart?.(s.guildId, track.requestedBy); } catch {  } }
+  if (announce) { try { onTrackStart?.(s.guildId, track.requestedBy); } catch {  } }
   if (/^https?:\/\//i.test(track.query) && !isAllowedMediaUrl(track.query)) {
     logger.warn("[MUSIC] Отклонена ссылка на недопустимый хост", s.guildId);
     failForward(s, "unsupported-url");
@@ -348,7 +348,9 @@ async function handleIdle(s: Session, playedMs: number, generation: number, hand
     return;
   }
 
-  const naturalEnd = (!outcome || outcome.kind === "eof") && isNaturalEnd(playedSec, finished?.duration);
+  // A missing outcome is a stall, unless a track with a known duration reached its end.
+  const naturalEnd = isNaturalEnd(playedSec, finished?.duration)
+    && (outcome?.kind === "eof" || (outcome === null && Boolean(finished?.duration)));
   if (finished && s.loopMode === "track" && naturalEnd) {
     s.lastResumeSec = 0;
     s.recovery = "none";

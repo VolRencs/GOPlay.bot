@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
-import { CardHeader, channelOptions, confirmAction, EmbedComposer, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { CardHeader, channelOptions, confirmAction, EmbedComposer, SaveButton, SectionError, Select, TemplateLibrary, TemplateRow, formatTime, asFields, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiJson, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
@@ -33,8 +33,7 @@ const emptyEmbedForm = (): EmbedForm => ({ published: false, name: "", mode: "em
 export function EmbedsPanel() {
   const { guildId, resources, notify: onDone, fail: onError } = useDashboard();
   const channels = resources?.channels ?? [];
-  const { data, setData, reload, loading, error } = useApiResource<EmbedsGetDto>(
-    Boolean(guildId),
+  const { data, setData, reload, error } = useApiResource<EmbedsGetDto>(
     signal => apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, signal),
     [guildId],
     { embeds: [], sendings: [] },
@@ -54,7 +53,7 @@ export function EmbedsPanel() {
 
   const draftKey = `goplay-draft-embeds-${guildId}`;
   useSessionDraft(draftKey, Boolean(guildId) && dirty, [form], () => form);
-  useSessionDraftRestore(draftKey, Boolean(guildId), d => {
+  useSessionDraftRestore(draftKey, d => {
     const hasContent = asString(d.title) || asString(d.description) || asString(d.name);
     if (d.id || !hasContent) return;
     setForm({
@@ -174,13 +173,12 @@ export function EmbedsPanel() {
   }
 
   if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading && !items.length) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">
       <TemplateLibrary
+        items={items}
         title="Сохранённые сообщения"
-        note={items.length ? String(items.length) : undefined}
         description="Сохраните шаблон, затем отправьте его в исходный канал или выберите другой. Последняя отправленная копия доступна для обновления."
         action={(
           <div className="template-actions">
@@ -196,36 +194,32 @@ export function EmbedsPanel() {
         )}
         empty="Сохранённых сообщений пока нет."
       >
-        {items.length > 0 ? (
-          <div className="template-list">
-            {items.map(item => {
-              const itemSendings = sendings.filter(s => s.embedId === item.id);
-              return (
-                <TemplateRow key={item.id} actions={<>
-                  <button className="btn secondary" type="button" onClick={() => editTemplate(item)}>Изменить</button>
-                  <button className="btn success" type="button" disabled={busy} onClick={() => void resend(item)}>{item.messageId ? "Отправить ещё раз" : "Отправить"}</button>
-                  <button className="btn danger" type="button" disabled={busy} onClick={() => void remove(item)} aria-label={`Удалить ${item.name}`}><Trash2 size={16}/>Удалить</button>
-                </>}>
-                  <strong>{item.name}</strong>
-                  <p className="muted">{item.messageId ? "Опубликовано — можно обновить" : "Черновик"}{itemSendings.length > 0 ? ` · Отправлено раз: ${itemSendings.length}` : ""}</p>
-                  {itemSendings.length > 0 && (
-                    <div className="sending-list">
-                      {itemSendings.map(s => {
-                        const ch = channels.find(c => c.id === s.channelId);
-                        return (
-                          <span key={s.id} className="sending-item">#{ch?.name ?? s.channelId} — {formatTime(s.sentAt)}
-                            {" "}
-                            <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${formatTime(s.sentAt)}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                </TemplateRow>
-              );
-            })}
-          </div>
-        ) : null}
+        {item => {
+          const itemSendings = sendings.filter(s => s.embedId === item.id);
+          return (
+            <TemplateRow key={item.id} actions={<>
+              <button className="btn secondary" type="button" onClick={() => editTemplate(item)}>Изменить</button>
+              <button className="btn success" type="button" disabled={busy} onClick={() => void resend(item)}>{item.messageId ? "Отправить ещё раз" : "Отправить"}</button>
+              <button className="btn danger" type="button" disabled={busy} onClick={() => void remove(item)} aria-label={`Удалить ${item.name}`}><Trash2 size={16}/>Удалить</button>
+            </>}>
+              <strong>{item.name}</strong>
+              <p className="muted">{item.messageId ? "Опубликовано — можно обновить" : "Черновик"}{itemSendings.length > 0 ? ` · Отправлено раз: ${itemSendings.length}` : ""}</p>
+              {itemSendings.length > 0 && (
+                <div className="sending-list">
+                  {itemSendings.map(s => {
+                    const ch = channels.find(c => c.id === s.channelId);
+                    return (
+                      <span key={s.id} className="sending-item">#{ch?.name ?? s.channelId} — {formatTime(s.sentAt)}
+                        {" "}
+                        <button type="button" className="btn danger small icon-only" aria-label={`Удалить отправленную копию от ${formatTime(s.sentAt)}`} disabled={busy} onClick={() => void removeSending(s)}><Trash2 size={12}/></button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </TemplateRow>
+          );
+        }}
       </TemplateLibrary>
       <div ref={composerRef} className="embed-composer-layout">
         <section className="card settings-card">

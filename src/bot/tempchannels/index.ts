@@ -11,6 +11,7 @@ import { stopAndLeave } from "../../lib/player/session.ts";
 import { tempTr, guildTr } from "../../lib/i18n/bot.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
 import { fetchMember } from "../utils/members.ts";
+import { onInteraction } from "../events.ts";
 
 const SETTINGS_TTL = 10_000;
 const configCache = ttlCacheSync<string, Map<string, TempConfig> | null>((guildId) => {
@@ -41,7 +42,7 @@ export function renderName(template: string, member: { user: { username: string 
 
 export function registerTempChannels(client: Client) {
   client.on(Events.VoiceStateUpdate, (oldState, newState) => guard("TEMP_VOICE", () => handleVoiceState(oldState, newState)));
-  client.on(Events.InteractionCreate, (i) => guard("TEMP_INTERACTION", () => handleInteraction(i)));
+  onInteraction("TEMP_INTERACTION", handleInteraction);
   client.on(Events.GuildMemberRemove, (member) => guard("TEMP_OWNER_LEAVE", () => handleOwnerLeave(member.guild, member.id)));
   client.on(Events.GuildDelete, (guild) => {
     configCache.delete(guild.id);
@@ -162,7 +163,11 @@ async function createTempChannel(guild: Guild, member: GuildMember, settings: Te
   try {
     channel = await createVoiceChannel(options);
   } catch (error) {
-    logger.warn("[TEMP] Создание канала не удалось, повтор без категории", guild.id, error);
+    if (!options.parent || !isMissingDiscordResource(error, "channel")) {
+      logger.error("[TEMP] Создание канала не удалось", guild.id, error);
+      return;
+    }
+    logger.warn("[TEMP] Категория недоступна, повтор без категории", guild.id, error);
     const retry = { ...options };
     delete retry.parent;
     try {

@@ -79,7 +79,6 @@ export type AuditEntrySource = {
   section: string;
   summary: string;
   created_at: number;
-  total: number;
 };
 
 export function toAuditDto(row: AuditEntrySource): AuditEntryDto {

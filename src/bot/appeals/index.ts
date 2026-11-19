@@ -1,13 +1,14 @@
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Interaction, type ModalSubmitInteraction } from "discord.js";
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, type ButtonInteraction, type Client, type Interaction, type ModalSubmitInteraction } from "discord.js";
 import { appealPunishmentTypes, createAppeal, declineAppeal, type AppealPunishmentType } from "../../lib/appeals.ts";
 import { punishmentLabel } from "../../lib/labels.ts";
 import { failInteraction } from "../../lib/errors.ts";
 import { count } from "../../lib/perf.ts";
 import { guildLang, trFor } from "../../lib/i18n/bot.ts";
 import { trAppeals } from "../../lib/i18n/bot/appeals.ts";
+import { onInteraction } from "../events.ts";
 
-export function registerAppeals(client: Client) {
-  client.on(Events.InteractionCreate, (i) => void handleInteraction(i));
+export function registerAppeals() {
+  onInteraction("APPEALS", handleInteraction);
 }
 
 async function handleInteraction(i: Interaction) {

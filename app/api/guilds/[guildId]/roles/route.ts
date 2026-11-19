@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server.js";
 import { discordFetch, guildRoute, isSnowflake, jsonError, readJson, requireBotToken } from "#lib/guild-access.ts";
 import { withTransaction } from "#db/database.ts";
+import { stmt } from "#db/statements.ts";
 import { embedsQueries, rolesQueries } from "#db/queries.ts";
 import { recordDashboardChange, recordDashboardDiff } from "#lib/dashboard-audit.ts";
 import { AUDIT_SECTION } from "#lib/audit-sections.ts";
@@ -83,7 +84,7 @@ export const POST = guildRoute(async (request, { guildId, user }) => {
     beforePanel = rolesQueries.panelGet.get(value.panelId, guildId);
     if (!beforePanel) return jsonError("Панель не найдена", 404);
     panelId = value.panelId;
-    beforeRoleIds = rolesQueries.panelOptions.all(panelId).map(row => row.role_id);
+    beforeRoleIds = stmt.panelOptionEmoji.all(panelId).map(row => row.role_id);
   } else {
     panelId = Number(rolesQueries.insert.run(guildId, embed.channel_id, embed.message_id, embed.name, style, roleLimit, roleMode, +Boolean(value.notifyEnabled), template, Date.now()).lastInsertRowid);
     created = true;
@@ -194,7 +195,7 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
   let response: Response | undefined;
   try {
   if (panel.style === "reaction") {
-    const options = rolesQueries.emojis.all(id);
+    const options = stmt.panelOptionEmoji.all(id);
     for (const option of options) {
       const current = await discordFetch(`/channels/${panel.channel_id}/messages/${panel.message_id}/reactions/${encodeURIComponent(toDiscordReaction(option.emoji ?? "✅"))}/@me`, { method: "DELETE" });
       if (response === undefined && !current.ok && current.status !== 404) response = current;

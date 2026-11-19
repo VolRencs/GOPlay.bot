@@ -17,57 +17,53 @@ export function useMediaField(savedValue: string) {
 }
 
 type AsyncFetchOptions<T> = {
-  enabled?: boolean;
   request: (signal: AbortSignal) => Promise<ApiResult<T>>;
   onData: (data: T) => void;
-  onError?: (error: string) => void;
 };
 
+type FetchError = { key: string; message: string };
+
 function useAsyncFetch<T>(options: AsyncFetchOptions<T>, deps: readonly unknown[]) {
-  const enabled = options.enabled !== false;
-  const [loading, setLoading] = useState(enabled);
-  const [error, setError] = useState<string | null>(null);
+  const [errorState, setErrorState] = useState<FetchError | null>(null);
   const [generation, setGeneration] = useState(0);
   const optionsRef = useRef(options);
   optionsRef.current = options;
   const depsKey = stableJson(deps);
   useEffect(() => {
-    if (!enabled) { setLoading(false); setError(null); return; }
     let active = true;
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    void optionsRef.current.request(controller.signal).then(
+    const options = optionsRef.current;
+    setErrorState(null);
+    void options.request(controller.signal).then(
       result => {
         if (!active) return;
-        if (result.ok) optionsRef.current.onData(result.data);
-        else {
-          setError(result.error);
-          optionsRef.current.onError?.(result.error);
-        }
-        setLoading(false);
+        if (result.ok) options.onData(result.data);
+        else setErrorState({ key: depsKey, message: result.error });
       },
       () => {
-        if (!active) return;
-        const message = "Не удалось загрузить данные.";
-        setError(message);
-        optionsRef.current.onError?.(message);
-        setLoading(false);
+        if (active) setErrorState({ key: depsKey, message: "Не удалось загрузить данные." });
       },
     );
     return () => { active = false; controller.abort(); };
-  }, [enabled, depsKey, generation]);
-  return { loading, error, reload: useCallback(() => setGeneration(value => value + 1), []) };
+  }, [depsKey, generation]);
+  const error = errorState?.key === depsKey ? errorState.message : null;
+  return { error, reload: useCallback(() => setGeneration(value => value + 1), []) };
 }
 
-export function useApiResource<T>(enabled: boolean, load: (signal: AbortSignal) => Promise<ApiResult<T>>, deps: readonly unknown[], initial: T) {
-  const [data, setData] = useState<T>(initial);
+export function useApiResource<T>(load: (signal: AbortSignal) => Promise<ApiResult<T>>, deps: readonly unknown[], initial: T) {
+  const depsKey = stableJson(deps);
   const initialRef = useRef(initial);
   initialRef.current = initial;
-  const depsKey = stableJson(deps);
-  useEffect(() => { setData(initialRef.current); }, [depsKey]);
-  const { loading, error, reload } = useAsyncFetch<T>({ enabled, request: load, onData: setData }, deps);
-  return { data, setData, loading, error, reload };
+  const [state, setState] = useState(() => ({ key: depsKey, data: initial }));
+  const data = state.key === depsKey ? state.data : initialRef.current;
+  const setData = useCallback((value: T | ((current: T) => T)) => {
+    setState(current => {
+      const base = current.key === depsKey ? current.data : initialRef.current;
+      return { key: depsKey, data: typeof value === "function" ? (value as (current: T) => T)(base) : value };
+    });
+  }, [depsKey]);
+  const { error, reload } = useAsyncFetch<T>({ request: load, onData: setData }, deps);
+  return { data, setData, error, reload };
 }
 
 export { useAsyncFetch as useApiLoad };

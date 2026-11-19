@@ -151,20 +151,32 @@ function accessError(error: unknown) {
   return { ok: false as const, error: "Не удалось проверить доступ Discord. Обновите страницу; если ошибка повторится, войдите через Discord снова.", status: 403 };
 }
 
-export async function authorize(guildId: string) {
+type AuthorizeResult = { ok: true; user: SessionUser } | { ok: false; error: string; status: number };
+const authorizePending = new Map<string, Promise<AuthorizeResult>>();
+
+export async function authorize(guildId: string): Promise<AuthorizeResult> {
   const gate = await requireUser();
   if (!gate.ok) return gate;
-  let remote: DiscordGuild[];
-  try {
-    remote = await discordGuilds(gate.requestHeaders, gate.discordAccount?.id);
-  } catch (error) {
-    logger.warn("[WARN] Discord guild access failed", error);
-    return accessError(error);
-  }
-  const guild = remote.find(x => x.id === guildId);
-  if (!guild || !canManageGuild(guild)) return { ok: false as const, error: "У вас нет права «Управление сервером» на этом сервере.", status: 403 };
-  if (!guildExists.get(guildId)) return { ok: false as const, error: "Guild is not configured", status: 404 };
-  return { ok: true as const, user: gate.user };
+  const key = `${gate.user.id}:${guildId}`;
+  const running = authorizePending.get(key);
+  if (running) return running;
+  const request: Promise<AuthorizeResult> = (async () => {
+    let remote: DiscordGuild[];
+    try {
+      remote = await discordGuilds(gate.requestHeaders, gate.discordAccount?.id);
+    } catch (error) {
+      logger.warn("[WARN] Discord guild access failed", error);
+      return accessError(error);
+    }
+    const guild = remote.find(x => x.id === guildId);
+    if (!guild || !canManageGuild(guild)) return { ok: false as const, error: "У вас нет права «Управление сервером» на этом сервере.", status: 403 };
+    if (!guildExists.get(guildId)) return { ok: false as const, error: "Guild is not configured", status: 404 };
+    return { ok: true as const, user: gate.user };
+  })().finally(() => {
+    if (authorizePending.get(key) === request) authorizePending.delete(key);
+  });
+  authorizePending.set(key, request);
+  return request;
 }
 
 export { isSnowflake, isSnowflakeArray, isSnowflakeOrNull } from "./ids.ts";
@@ -250,8 +262,9 @@ export async function guildMemberNamesFor(guildId: string, ids: readonly string[
   // calls that can trip Discord's rate limit.
   if (unique.length > 10) return memberNamesCache.get(guildId);
   const entries: (readonly [string, string | null])[] = [];
-  for (let i = 0; i < unique.length; i += 3) {
-    entries.push(...await Promise.all(unique.slice(i, i + 3).map(async id =>
+  const batchSize = unique.length <= 5 ? unique.length : 3;
+  for (let i = 0; i < unique.length; i += batchSize) {
+    entries.push(...await Promise.all(unique.slice(i, i + batchSize).map(async id =>
       [id, await memberNameCache.get(`${guildId}:${id}`).catch(() => null)] as const)));
   }
   return new Map(entries.filter((entry): entry is readonly [string, string] => entry[1] !== null));

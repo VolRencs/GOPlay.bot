@@ -38,6 +38,11 @@ CREATE INDEX IF NOT EXISTS idx_dashboard_audit_section ON dashboard_audit(guild_
 CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(guild_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_embed_sendings_message ON embed_sendings(guild_id, channel_id, message_id);
 CREATE INDEX IF NOT EXISTS idx_event_participants_user ON event_participants(user_id, event_id);
+CREATE TABLE IF NOT EXISTS cleanup_markers (
+  guild_id TEXT PRIMARY KEY REFERENCES guilds(id) ON DELETE CASCADE,
+  target TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `);
 export function closeDatabase() { db.close(); }
 

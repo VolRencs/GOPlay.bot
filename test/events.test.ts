@@ -139,6 +139,7 @@ test("updateEvent completes the event: stats snapshot and reminder cleanup", () 
   assert.ok(stats.completedAt);
   const undone = updateEvent("g1", row.id, { ...baseInput(), status: "scheduled" })!;
   assert.equal(undone.completed_at, null);
+  assert.equal(undone.started_at, null, "возврат в расписание сбрасывает время старта");
   assert.equal(undone.stats_json, null, "повторный переход сбрасывает итоги");
   const cancelled = updateEvent("g1", row.id, { ...baseInput(), status: "cancelled" })!;
   assert.equal(cancelled.status, "cancelled");

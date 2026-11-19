@@ -17,10 +17,12 @@ import {
   probeWelcomeImage,
 } from "../../lib/welcome-render.ts";
 import { logger } from "../../lib/logger.ts";
+import { createLimiter } from "../../lib/cache.ts";
 
 const DATA_ROOT = resolve(process.cwd(), "data");
 const WELCOME_ROOT = resolve(DATA_ROOT, "uploads/welcome");
 const MAX_WELCOME_CONCURRENCY = 2;
+const withWelcomeSlot = createLimiter(MAX_WELCOME_CONCURRENCY);
 
 type LruCache<V> = { get(key: string): V | undefined; set(key: string, value: V): void };
 
@@ -53,23 +55,8 @@ function lruCache<V>(maxEntries: number, maxBytes: number, sizeOf: (value: V) =>
 
 type PreparedBackground = { data: Buffer; width: number; height: number; key: string };
 const renderCache = lruCache<Buffer>(60, 32 * 1024 * 1024, value => value.length);
-const backgroundCache = lruCache<Buffer>(8, 24 * 1024 * 1024, value => value.length);
 const preparedCache = lruCache<PreparedBackground>(8, 8 * 1024 * 1024, value => value.data.length);
 const avatarCache = lruCache<Buffer>(50, 8 * 1024 * 1024, value => value.length);
-
-let welcomeActive = 0;
-const welcomeQueue: (() => void)[] = [];
-async function withWelcomeSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (welcomeActive >= MAX_WELCOME_CONCURRENCY) await new Promise<void>((resolve) => welcomeQueue.push(resolve));
-  else welcomeActive++;
-  try {
-    return await fn();
-  } finally {
-    welcomeActive--;
-    const next = welcomeQueue.shift();
-    if (next) { welcomeActive++; next(); }
-  }
-}
 
 const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
 const AVATAR_FAILURE_TTL = 60_000;
@@ -150,8 +137,8 @@ async function backgroundFingerprint(path?: string | null): Promise<BackgroundFi
   }
 }
 
-async function loadBackground(state: BackgroundFingerprint): Promise<Buffer | null> {
-  const cached = backgroundCache.get(state.key);
+async function prepareBackground(state: BackgroundFingerprint): Promise<PreparedBackground | null> {
+  const cached = preparedCache.get(state.key);
   if (cached) return cached;
   if (!state.path) return null;
   const data = await readFile(state.path).catch((error: unknown) => {
@@ -159,35 +146,30 @@ async function loadBackground(state: BackgroundFingerprint): Promise<Buffer | nu
     return null;
   });
   if (!data) return null;
-  backgroundCache.set(state.key, data);
-  return data;
-}
-
-async function prepareBackground(data: Buffer, key: string): Promise<PreparedBackground> {
-  const cached = preparedCache.get(key);
-  if (cached) return cached;
   const info = await probeWelcomeImage(data);
+  let prepared: PreparedBackground;
   if (
     info.orientation === 1
     && info.width <= MAX_IMAGE_DIMENSION
     && info.height <= MAX_IMAGE_DIMENSION
     && info.width * info.height <= MAX_IMAGE_PIXELS
   ) {
-    return { data, width: info.width, height: info.height, key };
+    prepared = { data, width: info.width, height: info.height, key: state.key };
+  } else {
+    const normalized = await normalizeWelcomeImage(data, {
+      maxDimension: MAX_IMAGE_DIMENSION,
+      maxPixels: MAX_IMAGE_PIXELS,
+      format: "jpeg",
+      quality: 88,
+    });
+    prepared = {
+      data: normalized.data,
+      width: normalized.width,
+      height: normalized.height,
+      key: `${state.key}|normalized`,
+    };
   }
-  const normalized = await normalizeWelcomeImage(data, {
-    maxDimension: MAX_IMAGE_DIMENSION,
-    maxPixels: MAX_IMAGE_PIXELS,
-    format: "jpeg",
-    quality: 88,
-  });
-  const prepared = {
-    data: normalized.data,
-    width: normalized.width,
-    height: normalized.height,
-    key: `${key}|normalized`,
-  };
-  preparedCache.set(key, prepared);
+  preparedCache.set(state.key, prepared);
   return prepared;
 }
 
@@ -204,9 +186,8 @@ export async function welcomeImage(input: { avatar: string; name: string; userna
   const result = await withWelcomeSlot(async () => {
     let prepared: PreparedBackground | null = null;
     if (background.expected) {
-      const data = await loadBackground(background);
-      if (!data) throw new Error(`welcome background is unavailable: ${background.path}`);
-      prepared = await prepareBackground(data, background.key);
+      prepared = await prepareBackground(background);
+      if (!prepared) throw new Error(`welcome background is unavailable: ${background.path}`);
     }
 
     const avatar = await avatarBuffer(input.avatar);

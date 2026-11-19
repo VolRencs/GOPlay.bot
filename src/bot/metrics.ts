@@ -3,7 +3,6 @@ import { logger } from "../lib/logger.ts";
 import { withTransaction } from "../db/database.ts";
 import { time } from "../lib/perf.ts";
 import { pruneOldEvents } from "../lib/server-cleanup.ts";
-import { AUDIT_SECTION } from "../lib/audit-sections.ts";
 
 type MetricKey = "joins" | "leaves" | "messages" | "moderation";
 type Counts = Record<MetricKey, number>;
@@ -90,22 +89,21 @@ export function flushMetrics() {
   time("db.metrics_flush", performance.now() - started);
 }
 
-function cleanupMarker(guildId: string): number {
-  return Number(stmt.cleanupMarker.get(guildId, AUDIT_SECTION.cleanup)?.created_at ?? 0);
+const CLEANUP_METRICS_TARGETS = new Set(["stats", "warns"]);
+function cleanupMarker(guildId: string): { at: number; target: string } {
+  const row = stmt.cleanupMarker.get(guildId);
+  return { at: Number(row?.updated_at ?? 0), target: row?.target ?? "" };
 }
 
-function commitWindow(rows: FlushRow[]): Set<string> {
-  const cleaned = new Set<string>();
-  const markers = new Map<string, number>();
+function commitWindow(rows: FlushRow[]): void {
+  const markers = new Map<string, { at: number; target: string }>();
   withTransaction(() => {
     for (const row of rows) {
       if (!markers.has(row.guildId)) markers.set(row.guildId, cleanupMarker(row.guildId));
       const marker = markers.get(row.guildId)!;
       const previous = lastCleanup.get(row.guildId);
-      if ((previous !== undefined && marker > previous) || (previous === undefined && marker >= startedAt)) {
-        cleaned.add(row.guildId);
-        continue;
-      }
+      const changed = (previous !== undefined && marker.at > previous) || (previous === undefined && marker.at >= startedAt);
+      if (changed && CLEANUP_METRICS_TARGETS.has(marker.target)) continue;
       stmt.metric.run({ guild_id: row.guildId, day: row.day, joins: row.counts.joins, leaves: row.counts.leaves, messages: row.counts.messages, moderation: row.counts.moderation });
       const channels = channelCounts.get(row.key);
       if (channels) for (const [channelId, messages] of channels) stmt.channelMetric.run({ guild_id: row.guildId, day: row.day, channel_id: channelId, messages });
@@ -115,8 +113,7 @@ function commitWindow(rows: FlushRow[]): Set<string> {
       if (hours) for (const [hour, hourly] of hours) stmt.hourlyMetric.run({ guild_id: row.guildId, day: row.day, hour, messages: hourly.messages, joins: hourly.joins, leaves: hourly.leaves });
     }
   });
-  for (const [guildId, marker] of markers) lastCleanup.set(guildId, marker);
-  return cleaned;
+  for (const [guildId, marker] of markers) lastCleanup.set(guildId, marker.at);
 }
 
 const guildIdOfKey = (key: string): string => key.slice(0, key.indexOf(":"));

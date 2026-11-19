@@ -92,11 +92,18 @@ test("уровень хранится как максимум: рост поро
   assert.equal(row.xp, 510);
 });
 
-test("XP удалённой гильдии выбрасывается из буфера, а не зацикливает флаш", async () => {
+test("flushLevels выбрасывает XP удалённой гильдии и очищенной по маркеру", async () => {
   const { EventEmitter } = await import("node:events");
   const { registerLevels, flushLevels } = await import("../src/bot/levels/index.ts");
   const emitter = new EventEmitter();
   registerLevels(emitter as never);
+  const send = (guildId: string, userId: string) => emitter.emit("messageCreate", {
+    guild: { id: guildId },
+    author: { id: userId, bot: false },
+    channelId: "c1",
+    content: "hello world",
+    member: { roles: { cache: { some: () => false } } },
+  });
   const guildId = "g9";
   db.prepare("INSERT INTO guilds(id,name) VALUES(?,?)").run(guildId, "G");
   stmt.levelSettingsUpsert.run({
@@ -105,16 +112,30 @@ test("XP удалённой гильдии выбрасывается из бу�
     ignored_channel_ids_json: "[]", ignored_role_ids_json: "[]",
     notify_mode: "off", notify_channel_id: null, updated_at: Date.now(),
   });
-  emitter.emit("messageCreate", {
-    guild: { id: guildId },
-    author: { id: "u1", bot: false },
-    channelId: "c1",
-    content: "hello world",
-    member: { roles: { cache: { some: () => false } } },
-  });
+  send(guildId, "u1");
   db.prepare("DELETE FROM guilds WHERE id=?").run(guildId);
   flushLevels();
   db.prepare("INSERT INTO guilds(id,name) VALUES(?,?)").run(guildId, "G");
   flushLevels();
   assert.equal(stmt.levelRow.get(guildId, "u1"), undefined);
+
+  const markerGuild = "g10";
+  db.prepare("INSERT INTO guilds(id,name) VALUES(?,?)").run(markerGuild, "G");
+  stmt.levelSettingsUpsert.run({
+    guild_id: markerGuild, enabled: 1, xp_per_message: 10, message_cooldown_seconds: 0,
+    min_message_length: 0, xp_per_voice_minute: 0, base_xp: 100, growth_percent: 15,
+    ignored_channel_ids_json: "[]", ignored_role_ids_json: "[]",
+    notify_mode: "off", notify_channel_id: null, updated_at: Date.now(),
+  });
+  const mark = (target: string, updatedAt: number) => db.prepare("INSERT INTO cleanup_markers(guild_id,target,updated_at) VALUES(?,?,?) ON CONFLICT(guild_id) DO UPDATE SET target=excluded.target,updated_at=excluded.updated_at")
+    .run(markerGuild, target, updatedAt);
+  mark("stats", Date.now() + 1_000);
+  send(markerGuild, "u1");
+  flushLevels();
+  assert.ok(stmt.levelRow.get(markerGuild, "u1"), "очистка stats не трогает XP");
+  db.prepare("DELETE FROM member_levels WHERE guild_id=?").run(markerGuild);
+  mark("levels", Date.now() + 2_000);
+  send(markerGuild, "u2");
+  flushLevels();
+  assert.equal(stmt.levelRow.get(markerGuild, "u2"), undefined, "очистка levels сбрасывает ожидающий XP");
 });

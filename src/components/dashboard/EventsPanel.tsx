@@ -7,7 +7,7 @@ import { userRef } from "#lib/format.ts";
 import type { EventButtonStyle, EventStatus, RecurrenceFrequency } from "#lib/events.ts";
 import type { EventListDto, EventListItemDto } from "#contracts/events.ts";
 import { buttonColorOptionsList, colorNumberToHex, hexToColorNumber, DEFAULT_ACCENT, type EmbedField, type ServerEmoji } from "./types.ts";
-import { CardHeader, channelOptions, confirmAction, EmojiPicker, EmbedComposer, formatTime, NumberField, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
+import { CardHeader, channelOptions, confirmAction, EmojiPicker, EmbedComposer, formatTime, NumberField, SaveButton, SectionError, Select, TemplateLibrary, TemplateRow, asBoolean, asFields, asNumber, asString, useSessionDraft, useSessionDraftRestore } from "./ui.tsx";
 import { apiGet, apiSend } from "./api.ts";
 import { useApiResource, useMediaField, usePanelAction } from "./hooks.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
@@ -46,8 +46,7 @@ export function EventsPanel() {
   const channels = resources?.channels ?? [];
   const roles = resources?.roles ?? [];
   const emojis = resources?.emojis ?? [];
-  const { data: events, reload, loading, error } = useApiResource<EventListItemDto[]>(
-    Boolean(guildId),
+  const { data: events, reload, error } = useApiResource<EventListItemDto[]>(
     signal => apiGet<EventListDto>(`/api/guilds/${guildId}/events`, signal).then(result => result.ok
       ? { ok: true as const, data: result.data.events }
       : { ok: false as const, error: result.error }),
@@ -64,7 +63,7 @@ export function EventsPanel() {
 
   const draftKey = `goplay-draft-event-${guildId}`;
   useSessionDraft(draftKey, Boolean(guildId) && dirty, [editingId, draft], () => ({ editingId, ...draft }));
-  useSessionDraftRestore(draftKey, Boolean(guildId), saved => {
+  useSessionDraftRestore(draftKey, saved => {
     if (!asString(saved.title) && !asString(saved.description)) return;
     setEditingId(asString(saved.editingId) || null);
     setDraft(d => ({
@@ -195,33 +194,29 @@ export function EventsPanel() {
   };
 
   if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading && !events.length) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">
       <TemplateLibrary
+        items={events}
+        listClassName="event-list"
         title="События сервера"
-        note={events.length ? String(events.length) : undefined}
         description="События публикуются сообщением с кнопками «Участвовать» и «Отказаться». Участники, очередь, статус и напоминания обновляются автоматически."
         action={<button type="button" className="btn" onClick={reset}>Новое событие</button>}
         empty="Событий пока нет — создайте первое."
       >
-        {events.length > 0 ? (
-          <div className="event-list">
-            {events.map(e => {
-              const ch = channels.find(c => c.id === e.channelId);
-              return (
-                <TemplateRow key={e.id} className="event-item" actions={<>
-                  <button type="button" className="btn secondary" disabled={busy} onClick={() => edit(e)}>Изменить</button>
-                  <button type="button" className="btn danger" disabled={busy} onClick={() => void remove(e)} aria-label={`Удалить ${e.embed.title ?? "событие"}`}><Trash2 size={16}/>Удалить</button>
-                </>}>
-                  <strong>{e.embed.title ?? "Без названия"}</strong>
-                  <p className="muted"><span className={`pill ${EVENT_TONE[e.status] ?? ""}`}>{eventStatusMeta[e.status]?.label ?? e.status}</span> · {formatTime(e.scheduledAt)} · #{ch?.name ?? e.channelId} · {e.counts.joined}{e.maxParticipants > 0 ? ` / ${e.maxParticipants}` : ""}{e.counts.waitlist > 0 ? ` +${e.counts.waitlist} в очереди` : ""}</p>
-                </TemplateRow>
-              );
-            })}
-          </div>
-        ) : null}
+        {e => {
+          const ch = channels.find(c => c.id === e.channelId);
+          return (
+            <TemplateRow key={e.id} className="event-item" actions={<>
+              <button type="button" className="btn secondary" disabled={busy} onClick={() => edit(e)}>Изменить</button>
+              <button type="button" className="btn danger" disabled={busy} onClick={() => void remove(e)} aria-label={`Удалить ${e.embed.title ?? "событие"}`}><Trash2 size={16}/>Удалить</button>
+            </>}>
+              <strong>{e.embed.title ?? "Без названия"}</strong>
+              <p className="muted"><span className={`pill ${EVENT_TONE[e.status] ?? ""}`}>{eventStatusMeta[e.status]?.label ?? e.status}</span> · {formatTime(e.scheduledAt)} · #{ch?.name ?? e.channelId} · {e.counts.joined}{e.maxParticipants > 0 ? ` / ${e.maxParticipants}` : ""}{e.counts.waitlist > 0 ? ` +${e.counts.waitlist} в очереди` : ""}</p>
+            </TemplateRow>
+          );
+        }}
       </TemplateLibrary>
       <div className="events-composer-layout">
         <section className="card settings-card">

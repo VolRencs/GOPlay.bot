@@ -61,7 +61,7 @@ export function backendOptions(playlistLimit?: number): ResolveOptions {
 }
 
 /** Single-track audio resolution must never expand an attached playlist. */
-export function audioOptions(): ResolveOptions {
+function audioOptions(): ResolveOptions {
   const options = baseOptions();
   options.noPlaylist = true;
   // ytrust waits out YouTube's cold CDN edge before returning the URL, so

@@ -68,9 +68,7 @@ export function AppealsPanel() {
       <article className="card appeal-list">
         {error ? (
           <SectionError message={error} onRetry={() => setRefresh(value => value + 1)}/>
-        ) : appeals===null ? (
-          <p className="muted" role="status">Загружаем апелляции…</p>
-        ) : appeals.length ? appeals.map(row=>{
+        ) : appeals===null ? null : appeals.length ? appeals.map(row=>{
           const meta=appealStatusMeta[row.status]??{label:row.status},activeAppeal=row.status==="pending"||row.status==="reviewing";
           return (
             <div className="appeal-item" key={row.id}>

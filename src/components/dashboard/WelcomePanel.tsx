@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { WelcomeImageConfig } from "#lib/welcome.ts";
+import { useState } from "react";
+import { parseImageConfig, type WelcomeImageConfig } from "#lib/welcome.ts";
 import { welcomeDefaults, type WelcomeDto } from "#contracts/welcome.ts";
-import { parseImageConfig } from "#lib/welcome.ts";
 import { WelcomePreview } from "./WelcomePreview.tsx";
-import { CardHeader, SectionError, SectionLoading, channelOptions, ColorRow, confirmAction, NumberField, SaveButton, Select } from "./ui.tsx";
+import { CardHeader, SectionError, channelOptions, ColorRow, confirmAction, NumberField, SaveButton, Select, useObjectUrl } from "./ui.tsx";
 import { apiSend, apiUpload, type UploadProgress } from "./api.ts";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
@@ -19,12 +18,11 @@ const formatBytes = (bytes: number) => bytes >= 1024 * 1024 ? `${(bytes / (1024 
 
 export function WelcomeSettings() {
   const { guildId, resources, notify, fail } = useDashboard();
-  const { value, setValue, patch, loading, loadError, reload, saving, saveNow } = useSettingsTab<WelcomeDto, WelcomeDto>({
+  const { value, setValue, patch, saved, loadError, reload, saving, saveNow } = useSettingsTab<WelcomeDto, WelcomeDto>({
     initial: { ...welcomeDefaults },
     fromGet: data => ({ ...welcomeDefaults, ...data }),
     toBody: value => value,
     afterSave: value => ({ ...value, imageConfig: parseImageConfig(value.imageConfig) }),
-    saveMode: "markSaved",
     loadError: "Не удалось загрузить настройки приветствия.",
     saveError: "Не удалось сохранить настройки приветствия.",
     savedMessage: "Настройки приветствия и прощания сохранены.",
@@ -33,23 +31,12 @@ export function WelcomeSettings() {
   const [bgTimestamp, setBgTimestamp] = useState(0);
   const [uploadState, setUploadState] = useState<UploadProgress | null>(null);
   const [removing, setRemoving] = useState(false);
-  const [localPreview, setLocalPreview] = useState<string | null>(null);
-  const localPreviewRef = useRef<string | null>(null);
-  useEffect(() => () => {
-    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
-  }, []);
-  if (loading) return <SectionLoading/>;
+  const [localFile, setLocalFile] = useState<File | null>(null);
+  const localPreview = useObjectUrl(localFile);
   if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
+  if (saved === null) return null;
   const channels = resources?.channels ?? [];
   const endpoint = `/api/guilds/${guildId}/welcome`;
-
-  function clearLocalPreview() {
-    if (localPreviewRef.current) {
-      URL.revokeObjectURL(localPreviewRef.current);
-      localPreviewRef.current = null;
-    }
-    setLocalPreview(null);
-  }
 
   async function upload(file: File) {
     if (!ALLOWED_BACKGROUND_TYPES.has(file.type)) {
@@ -60,22 +47,18 @@ export function WelcomeSettings() {
       fail("Файл больше 5 МБ.");
       return;
     }
-    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current);
-    const preview = URL.createObjectURL(file);
-    localPreviewRef.current = preview;
-    setLocalPreview(preview);
+    setLocalFile(file);
     setUploadState({ loaded: 0, total: file.size, percent: 0 });
     const body = new FormData();
     body.set("background", file);
     const sent = await apiUpload<{ backgroundPath: string; imageEnabled?: boolean }>(endpoint, body, "Не удалось загрузить фон.", setUploadState);
     setUploadState(null);
+    setLocalFile(null);
     if (sent.ok) {
       patch(current => ({ ...current, backgroundPath: sent.data.backgroundPath, imageEnabled: true }));
       setBgTimestamp(Date.now());
-      clearLocalPreview();
       notify("Фон загружен и включён.");
     } else {
-      clearLocalPreview();
       fail(sent.error);
     }
   }
@@ -87,7 +70,7 @@ export function WelcomeSettings() {
     const sent = await apiSend<unknown>(endpoint, { method: "DELETE" }, "Не удалось удалить фон.");
     setRemoving(false);
     if (!sent.ok) { fail(sent.error); return; }
-    clearLocalPreview();
+    setLocalFile(null);
     patch(current => ({ ...current, backgroundPath: null }));
     setBgTimestamp(Date.now());
     notify("Фон удалён.");
@@ -95,8 +78,8 @@ export function WelcomeSettings() {
 
   return <div className="welcome-layout">
     <div className="event-settings">
-      <MemberEvent title="Приветствие новых участников" event="welcome" channels={channels} value={value} onChange={setValue} onUpload={upload} onRemove={removeBackground} bgTimestamp={bgTimestamp} previewBackground={localPreview} uploadProgress={uploadState} removing={removing}/>
-      <MemberEvent title="Прощание с участником" event="goodbye" channels={channels} value={value} onChange={setValue} onUpload={upload} onRemove={removeBackground} bgTimestamp={bgTimestamp} previewBackground={localPreview} uploadProgress={uploadState} removing={removing}/>
+      <MemberEvent title="Приветствие новых участников" event="welcome" channels={channels} value={value} onChange={setValue} onUpload={upload} onRemove={removeBackground} bgTimestamp={bgTimestamp} previewBackground={localPreview || null} uploadProgress={uploadState} removing={removing}/>
+      <MemberEvent title="Прощание с участником" event="goodbye" channels={channels} value={value} onChange={setValue} onUpload={upload} onRemove={removeBackground} bgTimestamp={bgTimestamp} previewBackground={localPreview || null} uploadProgress={uploadState} removing={removing}/>
     </div>
     <aside className="card variables-card floating-preview"><h2>Переменные</h2><div className="variables-list">{welcomeVariables.map(([token, help]) => <span key={token}><code>{token}</code> {help}</span>)}</div><SaveButton saving={saving} onClick={saveNow}/></aside>
   </div>;

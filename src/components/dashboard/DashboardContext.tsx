@@ -16,7 +16,6 @@ type DashboardContextValue = {
   resources: ResourcesGet | null;
   resourcesError: string | null;
   reloadResources: () => void;
-  loading: boolean;
   notify: PanelNotify;
   fail: PanelFail;
   isDirty: boolean;
@@ -54,12 +53,12 @@ export function DashboardProvider({ guildId, children }: { guildId: string; chil
 
   const notify = useCallback<PanelNotify>((message, tone) => pushToast(message, tone ?? "ok"), [pushToast]);
   const fail = useCallback<PanelFail>(message => pushToast(message, "error"), [pushToast]);
+  useEffect(() => { setResources(null); }, [guildId]);
 
-  const { loading, error: resourcesError, reload: reloadResources } = useApiLoad<ResourcesGet>({
+  const { error: resourcesError, reload: reloadResources } = useApiLoad<ResourcesGet>({
     request: signal => apiSend<ResourcesGet>(`/api/guilds/${guildId}/resources`, { signal }, "Не удалось загрузить настройки. Проверьте вход в Discord и доступ бота к серверу."),
     onData: setResources,
-    onError: fail,
-  }, [guildId, fail]);
+  }, [guildId]);
 
   const changes = useRef(new Map<string, ChangeRef>());
   const [changeVersion, setChangeVersion] = useState(0);
@@ -97,8 +96,8 @@ export function DashboardProvider({ guildId, children }: { guildId: string; chil
   }, [bumpChanges]);
 
   const value = useMemo<DashboardContextValue>(() => ({
-    guildId, resources, resourcesError, reloadResources, loading, notify, fail, isDirty, saveAll, discardAll, registerChanges,
-  }), [guildId, resources, resourcesError, reloadResources, loading, notify, fail, isDirty, saveAll, discardAll, registerChanges]);
+    guildId, resources, resourcesError, reloadResources, notify, fail, isDirty, saveAll, discardAll, registerChanges,
+  }), [guildId, resources, resourcesError, reloadResources, notify, fail, isDirty, saveAll, discardAll, registerChanges]);
 
   return <DashboardContext.Provider value={value}>
     {children}

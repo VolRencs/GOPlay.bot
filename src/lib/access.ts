@@ -24,9 +24,12 @@ export async function accessFrom(resolved: Awaited<ReturnType<typeof resolveSess
   const { requestHeaders, user, discordAccount } = resolved;
   const allowed = isAllowedAccount(discordAccount);
   const isAdmin = Boolean(discordAccount && allowedAdminIds().includes(discordAccount.accountId));
-  let canManage = false;
-  if (discordAccount) try { canManage = (await discordGuilds(requestHeaders, discordAccount.id)).some(canManageGuild); } catch (e) { logger.warn("[WARN] Could not resolve Discord manage permission", e); }
-  const freshImage = discordAccount ? await avatarCache.get(discordAccount.accountId) : null;
+  const [canManage, freshImage] = await Promise.all([
+    discordAccount
+      ? discordGuilds(requestHeaders, discordAccount.id).then(guilds => guilds.some(canManageGuild), error => { logger.warn("[WARN] Could not resolve Discord manage permission", error); return false; })
+      : false,
+    discordAccount ? avatarCache.get(discordAccount.accountId) : null,
+  ]);
   return { authenticated: true, name: user.name, discordId: discordAccount?.accountId ?? "", image: freshImage, allowed, canManage, isAdmin };
 }
 

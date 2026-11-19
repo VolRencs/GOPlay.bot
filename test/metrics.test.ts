@@ -4,7 +4,6 @@ import { seedGuilds, useTempDb } from "./helpers.ts";
 useTempDb("goplay-test-");
 const { addMessage, flushMetrics } = await import("../src/bot/metrics.ts");
 const { db } = await import("../src/db/database.ts");
-const { AUDIT_SECTION } = await import("../src/lib/audit-sections.ts");
 const { renderName, getConfig } = await import("../src/bot/tempchannels/index.ts");
 const { parseStringArray: parseTriggers } = await import("../src/lib/json.ts");
 const { DEFAULT_SETTINGS } = await import("../src/lib/tempchannels.ts");
@@ -43,14 +42,20 @@ test("a deleted guild is evicted without blocking live metrics", () => {
   assert.equal(dead.n, 0);
 });
 
-test("a cleanup marker drops pending metrics instead of resurrecting deleted rows", () => {
+test("a cleanup marker drops pending metrics only for metric targets", () => {
+  const count = () => (db.prepare("SELECT COUNT(*) AS n FROM guild_daily_metrics WHERE guild_id='g1'").get() as { n: number }).n;
+  const mark = (target: string, updatedAt: number) => db.prepare("INSERT INTO cleanup_markers(guild_id,target,updated_at) VALUES(?,?,?) ON CONFLICT(guild_id) DO UPDATE SET target=excluded.target,updated_at=excluded.updated_at")
+    .run("g1", target, updatedAt);
   db.prepare("DELETE FROM guild_daily_metrics WHERE guild_id='g1'").run();
-  db.prepare("INSERT INTO dashboard_audit(guild_id,user_id,user_name,section,summary,created_at) VALUES(?,?,?,?,?,?)")
-    .run("g1", "system", "system", AUDIT_SECTION.cleanup, "stats", Date.now());
+  mark("levels", Date.now() + 1_000);
   addMessage("g1", "c1", "u1");
   flushMetrics();
-  const row = db.prepare("SELECT COUNT(*) AS n FROM guild_daily_metrics WHERE guild_id='g1'").get() as { n: number };
-  assert.equal(row.n, 0);
+  assert.equal(count(), 1);
+  db.prepare("DELETE FROM guild_daily_metrics WHERE guild_id='g1'").run();
+  mark("stats", Date.now() + 2_000);
+  addMessage("g1", "c1", "u1");
+  flushMetrics();
+  assert.equal(count(), 0);
 });
 
 test("temp trigger parsing and name template rendering", () => {

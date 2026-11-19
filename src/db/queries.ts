@@ -41,14 +41,12 @@ export const rolesQueries = {
   list: read<RolePanelRowSource>("SELECT p.*,o.role_id,o.label,o.emoji,o.button_color FROM self_role_panels p LEFT JOIN self_role_options o ON o.panel_id=p.id WHERE p.guild_id=? ORDER BY p.updated_at DESC"),
   embedTemplate: read<{ name: string }>("SELECT name FROM embeds WHERE id=? AND guild_id=?"),
   panelGet: read<{ channel_id: string | null; message_id: string | null; title: string; style: string; role_limit: number; role_mode: string; notify_enabled: number; notify_template: string }>("SELECT channel_id,message_id,title,style,role_limit,role_mode,notify_enabled,notify_template FROM self_role_panels WHERE id=? AND guild_id=?"),
-  panelOptions: read<{ role_id: string }>("SELECT role_id FROM self_role_options WHERE panel_id=?"),
   insert: write("INSERT INTO self_role_panels(guild_id,channel_id,message_id,title,style,role_limit,role_mode,notify_enabled,notify_template,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)"),
   update: write("UPDATE self_role_panels SET channel_id=?,message_id=?,title=?,style=?,role_limit=?,role_mode=?,notify_enabled=?,notify_template=?,updated_at=? WHERE id=? AND guild_id=?"),
   delete: write("DELETE FROM self_role_panels WHERE id=? AND guild_id=?"),
   optionsDelete: write("DELETE FROM self_role_options WHERE panel_id=?"),
   optionInsert: write("INSERT INTO self_role_options(panel_id,role_id,label,emoji,button_color) VALUES(?,?,?,?,?)"),
   forDelete: read<{ channel_id: string; message_id: string; style: string; title: string }>("SELECT p.channel_id,p.message_id,p.style,p.title FROM self_role_panels p WHERE p.id=? AND p.guild_id=?"),
-  emojis: read<{ emoji: string | null }>("SELECT emoji FROM self_role_options WHERE panel_id=?"),
 };
 
 export const embedsQueries = {
@@ -64,7 +62,6 @@ export const embedsQueries = {
   sendingById: read<{ channel_id: string; message_id: string }>("SELECT channel_id,message_id FROM embed_sendings WHERE id=? AND guild_id=?"),
   sendingByMessage: read<{ id: number }>("SELECT id FROM embed_sendings WHERE guild_id=? AND channel_id=? AND message_id=? LIMIT 1"),
   sendingDelete: write("DELETE FROM embed_sendings WHERE id=? AND guild_id=?"),
-  sendingsByEmbedDelete: write("DELETE FROM embed_sendings WHERE embed_id=? AND guild_id=?"),
   delete: write("DELETE FROM embeds WHERE id=? AND guild_id=?"),
 };
 
@@ -83,7 +80,7 @@ export const statsQueries = {
   peakHour: read<{ day: string; hour: number; messages: number }>("SELECT day,hour,messages FROM guild_hourly_messages WHERE guild_id=? AND day>=? ORDER BY messages DESC LIMIT 1"),
 };
 
-const auditBase = "SELECT id,user_name,section,summary,created_at,COUNT(*) OVER() AS total FROM dashboard_audit WHERE guild_id=?";
+const auditBase = "SELECT id,user_name,section,summary,created_at FROM dashboard_audit WHERE guild_id=?";
 export const auditQueries = {
   list: read<AuditEntrySource>(`${auditBase} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`),
   bySection: read<AuditEntrySource>(`${auditBase} AND section=? ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`),
@@ -93,10 +90,12 @@ export const auditQueries = {
 
 export const adminQueries = {
   activity7d: read<{ m: number; mod: number }>("SELECT COALESCE(SUM(messages),0) AS m, COALESCE(SUM(moderation),0) AS mod FROM guild_daily_metrics WHERE day>=?"),
-  guilds: read<{ id: string; name: string }>("SELECT id,name FROM guilds ORDER BY name"),
-  messages: read<{ guild_id: string; m: number }>("SELECT guild_id,SUM(messages) AS m FROM guild_daily_metrics GROUP BY guild_id"),
-  panels: read<{ guild_id: string; c: number }>("SELECT guild_id,COUNT(*) AS c FROM self_role_panels GROUP BY guild_id"),
-  events: read<{ guild_id: string; c: number }>("SELECT guild_id,COUNT(*) AS c FROM events GROUP BY guild_id"),
+  guilds: read<{ id: string; name: string; messages: number; panels: number; events: number }>(`
+    SELECT g.id, g.name,
+      COALESCE((SELECT SUM(m.messages) FROM guild_daily_metrics m WHERE m.guild_id=g.id), 0) AS messages,
+      (SELECT COUNT(*) FROM self_role_panels p WHERE p.guild_id=g.id) AS panels,
+      (SELECT COUNT(*) FROM events e WHERE e.guild_id=g.id) AS events
+    FROM guilds g ORDER BY g.name`),
 };
 
 export const loggingQueries = {

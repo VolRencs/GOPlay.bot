@@ -73,11 +73,14 @@ export function declineAppeal(input: { guildId: string; userId: string; punishme
   const punishment = getPunishment(input.punishmentId);
   if (!punishment || punishment.guild_id !== input.guildId) return { ok: false, error: trAppeals(lang, "notFound") };
   if (punishment.user_id !== input.userId) return { ok: false, error: trAppeals(lang, "notYours") };
-  if (stmt.appealExisting.get(input.punishmentId)) return { ok: true, value: null };
+  const existing = stmt.appealExisting.get(input.punishmentId);
+  if (existing) return existing.status === "declined" ? { ok: true, value: null } : { ok: false, error: existingError(lang, existing) };
   try {
     return { ok: true as const, value: insertAppeal(input.guildId, input.userId, input.punishmentId, punishment.type, trAppeals(lang, "declinedReason"), "declined") };
   } catch (error) {
-    if (stmt.appealExisting.get(input.punishmentId)) return { ok: true, value: null };
+    const raced = stmt.appealExisting.get(input.punishmentId);
+    if (raced?.status === "declined") return { ok: true, value: null };
+    if (raced) return { ok: false, error: existingError(lang, raced) };
     throw error;
   }
 }

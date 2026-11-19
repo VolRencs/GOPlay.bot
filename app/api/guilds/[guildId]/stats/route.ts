@@ -6,18 +6,19 @@ import { moderationLabel } from "#lib/labels.ts";
 import { guildLang } from "#lib/i18n/bot.ts";
 import { DAY_MS } from "#lib/constants.ts";
 import { formatDay } from "#lib/format.ts";
+import { ttlCacheAsync } from "#lib/cache.ts";
 import type { StatsGet } from "#contracts/dashboard.ts";
 
 const iso = (at: number) => new Date(at).toISOString().slice(0, 10);
+type StatsPeriod = "24h" | "7d" | "30d";
 
-export const GET = guildRoute(async (request, { guildId }) => {
+async function loadStats(guildId: string, period: StatsPeriod): Promise<StatsGet> {
   const lang = guildLang(guildId);
-  const requested = new URL(request.url).searchParams.get("period");
-  const period = requested === "24h" || requested === "30d" ? requested : "7d";
   const windowDays = ({"24h":1,"7d":7,"30d":30} as const)[period];
   const nowMs = Date.now();
   // Day buckets include today; 7d must mean today + the previous six days, not eight.
   const cutoff = iso(nowMs - (period === "24h" ? 1 : windowDays - 1) * DAY_MS);
+  const snapshotPromise = guildResourceSnapshot(guildId).catch(() => null);
 
   const days = period === "24h" ? [] : Array.from({ length: windowDays }, (_, i) => iso(nowMs - (windowDays - 1 - i) * DAY_MS));
   const byDay = new Map((days.length ? statsQueries.daily.all(guildId, cutoff) : []).map(row => [row.day, row]));
@@ -56,15 +57,28 @@ export const GET = guildRoute(async (request, { guildId }) => {
   }
 
   const topUserRows = statsQueries.topUsers.all(guildId, cutoff);
-  const [snapshot, memberNames] = await Promise.all([
-    guildResourceSnapshot(guildId).catch(() => null),
-    guildMemberNamesFor(guildId, topUserRows.map(row => row.id)).catch(() => new Map<string, string>()),
-  ]);
-  const channelNames = new Map(snapshot?.channels.map(channel => [channel.id, channel.name]) ?? []);
-  const topChannels = statsQueries.topChannels.all(guildId, cutoff).map(row => ({ ...row, name: channelNames.get(row.id) ?? "Неизвестный канал" }));
-  const topUsers = topUserRows.map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" }));
-
+  const namesPromise = guildMemberNamesFor(guildId, topUserRows.map(row => row.id)).catch(() => new Map<string, string>());
+  const topChannelRows = statsQueries.topChannels.all(guildId, cutoff);
   const peakHour = peakInWindow ?? statsQueries.peakHour.get(guildId, cutoff) ?? null;
+  const [snapshot, memberNames] = await Promise.all([snapshotPromise, namesPromise]);
+  const channelNames = new Map(snapshot?.channels.map(channel => [channel.id, channel.name]) ?? []);
+  return {
+    points,
+    totals,
+    moderation,
+    topChannels: topChannelRows.map(row => ({ ...row, name: channelNames.get(row.id) ?? "Неизвестный канал" })),
+    topUsers: topUserRows.map(row => ({ ...row, name: memberNames.get(row.id) ?? "Неизвестный участник" })),
+    peakHour,
+  };
+}
 
-  return NextResponse.json<StatsGet>({ points, totals, moderation, topChannels, topUsers, peakHour });
+const statsCache = ttlCacheAsync<string, StatsGet>((key) => {
+  const [guildId, period] = key.split(":") as [string, StatsPeriod];
+  return loadStats(guildId, period);
+}, 15_000, true);
+
+export const GET = guildRoute(async (request, { guildId }) => {
+  const requested = new URL(request.url).searchParams.get("period");
+  const period: StatsPeriod = requested === "24h" || requested === "30d" ? requested : "7d";
+  return NextResponse.json(await statsCache.get(`${guildId}:${period}`));
 });

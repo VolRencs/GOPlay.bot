@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { createLimiter } from "./cache.ts";
 import type {
   ImageInfo,
   NormalizeImageOptions,
@@ -17,20 +18,8 @@ let modulePromise: Promise<typeof import("welcome-render")> | undefined;
 let rendererPromise: Promise<WelcomeRenderer> | undefined;
 let unavailableUntil = 0;
 let unavailableError: unknown;
-let normalizeActive = 0;
-const normalizeQueue: (() => void)[] = [];
 
-async function withNormalizeSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (normalizeActive >= 1) await new Promise<void>((resolve) => normalizeQueue.push(resolve));
-  else normalizeActive++;
-  try {
-    return await fn();
-  } finally {
-    normalizeActive--;
-    const next = normalizeQueue.shift();
-    if (next) { normalizeActive++; next(); }
-  }
-}
+const withNormalizeSlot = createLimiter(1);
 
 async function welcomeRenderModule(): Promise<typeof import("welcome-render")> {
   modulePromise ??= import("welcome-render").catch((error: unknown) => {

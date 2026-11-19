@@ -5,9 +5,9 @@ import { count, time } from "../../lib/perf.ts";
 import { setTimeout as sleep } from "node:timers/promises";
 import { safeJson } from "../../lib/json.ts";
 import { ttlCacheAsync, ttlCacheSync } from "../../lib/cache.ts";
-import { isMissingDiscordResource } from "../../lib/errors.ts";
+import { isMissingDiscordResource, guard } from "../../lib/errors.ts";
 import { logTitleFor } from "../../lib/labels.ts";
-import { guildLang, trFor } from "../../lib/i18n/bot.ts";
+import { guildLang, guildTr, trFor } from "../../lib/i18n/bot.ts";
 import { logTr } from "../../lib/i18n/bot/logs.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
 import { channelRef, userRef } from "../../lib/format.ts";
@@ -176,10 +176,11 @@ async function drainChannel(channelId: string) {
 
 export async function flushLogs(timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  for (const channelId of queues.keys()) void drainChannel(channelId);
   while (Date.now() < deadline) {
+    if (editLogs.size) flushEditLogs();
+    for (const channelId of queues.keys()) void drainChannel(channelId);
     const pending = [...queues.values()].reduce((sum, list) => sum + list.length, 0);
-    if (!pending && !draining.size) return;
+    if (!pending && !draining.size && !auditQueue.length && !auditWorker && !editLogs.size) return;
     await sleep(100);
   }
   logger.warn("[LOG] Часть логов не успела отправиться при остановке");
@@ -298,4 +299,36 @@ export function logAction(input: LogActionInput) {
   const settings = settingsCache.get(guildId);
   const embed = buildEmbed(guildId, settings, { type, targetId, ...rest });
   if (embed) enqueueLog(settings.channelId!, embed);
+}
+
+const codeBlock = (value: string) => `\`\`\`${value.replace(/```/g, "ˋˋˋ") || "—"}\`\`\``;
+const EDIT_LOG_DELAY = 2_000;
+type EditLog = { guildId: string; authorId: string; channelId: string; before: string; after: string };
+type PendingEditLog = EditLog & { timer: ReturnType<typeof setTimeout> };
+const editLogs = new Map<string, PendingEditLog>();
+
+function fireEditLog(edit: EditLog) {
+  const t = guildTr(logTr, edit.guildId);
+  logAction({ guildId: edit.guildId, type: "message_edit", targetId: edit.authorId, details: `${t("channelField", { channel: channelRef(edit.channelId) })}\n${t("beforeLabel")}:\n${codeBlock(edit.before.slice(0, 450))}\n${t("afterLabel")}:\n${codeBlock(edit.after.slice(0, 450))}` });
+}
+
+export function queueEditLog(guildId: string, authorId: string, channelId: string, messageId: string, before: string, after: string): void {
+  const key = `${guildId}:${channelId}:${messageId}`;
+  const pending = editLogs.get(key);
+  if (pending) clearTimeout(pending.timer);
+  const beforeText = pending?.before ?? before;
+  const timer = setTimeout(() => {
+    editLogs.delete(key);
+    guard("EDIT_LOG", () => fireEditLog({ guildId, authorId, channelId, before: beforeText, after }));
+  }, EDIT_LOG_DELAY).unref();
+  editLogs.set(key, { guildId, authorId, channelId, before: beforeText, after, timer });
+}
+
+function flushEditLogs(): void {
+  const pending = [...editLogs.values()];
+  editLogs.clear();
+  for (const edit of pending) {
+    clearTimeout(edit.timer);
+    guard("EDIT_LOG", () => fireEditLog(edit));
+  }
 }

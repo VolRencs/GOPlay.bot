@@ -203,7 +203,6 @@ export const DELETE = guildRoute(async (request, { guildId, user }) => {
     if (tokenError) return tokenError;
     if (!(await deleteDiscordMessage(item.channel_id, item.message_id))) return jsonError("Не удалось удалить сообщение в Discord.", 502);
   }
-  embedsQueries.sendingsByEmbedDelete.run(id,guildId);
   embedsQueries.delete.run(id,guildId);
   after(() => cleanupUnusedDraftImages(guildId));
   recordDashboardChange(guildId, user, AUDIT_SECTION.embeds, `Удалён шаблон «${item.name}»`);

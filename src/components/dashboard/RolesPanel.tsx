@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import { buttonColorOptionsList, type EmbedDto, type EmbedSendingDto, type EmbedsGetDto, type Role, type RolePanelRowDto, type SavedRolePanel, type ServerEmoji } from "./types.ts";
 import { roleStyleLabels } from "../../lib/labels.ts";
 import { SELECT_OPTION_LIMIT } from "../../lib/constants.ts";
-import { CardHeader, confirmAction, EmojiPicker, SaveButton, SectionError, SectionLoading, Select, TemplateLibrary, TemplateRow, formatTime } from "./ui.tsx";
+import { CardHeader, confirmAction, EmojiPicker, SaveButton, SectionError, Select, TemplateLibrary, TemplateRow, formatTime } from "./ui.tsx";
 import { apiGet, apiJson, apiSend } from "./api.ts";
 import { useApiResource, usePanelAction } from "./hooks.ts";
 import { useDashboard, useRegisterChanges } from "./DashboardContext.tsx";
@@ -53,8 +53,7 @@ export function RoleSettings() {
   const roles = resources?.roles ?? [];
   const emojis = resources?.emojis ?? [];
   const channels = resources?.channels ?? [];
-  const { data: { embeds, sendings, panels }, reload, loading, error } = useApiResource(
-    Boolean(guildId),
+  const { data: { embeds, sendings, panels }, reload, error } = useApiResource(
     async (signal) => {
       const [embedResult, rowsResult] = await Promise.all([
         apiGet<EmbedsGetDto>(`/api/guilds/${guildId}/embeds`, signal),
@@ -148,29 +147,24 @@ export function RoleSettings() {
   useRegisterChanges("roles", { dirty, save: publish, discard: reset });
 
   if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading && !panels.length) return <SectionLoading/>;
 
   return (
     <section className="panel-stack">
       <TemplateLibrary
+        items={panels}
         title="Панели самовыдачи"
-        note={panels.length ? String(panels.length) : undefined}
         description="Готовые панели работают в Discord: кнопки, меню выбора или реакции на одном сообщении."
         empty="Панелей пока нет — создайте первую ниже."
       >
-        {panels.length > 0 ? (
-          <div className="template-list">
-            {panels.map(panel => (
-              <TemplateRow key={panel.id} actions={<>
-                <button type="button" className="btn secondary" onClick={() => edit(panel)}>Изменить</button>
-                <button type="button" className="btn danger" onClick={() => void remove(panel)} aria-label={`Удалить панель ${panel.title}`}><Trash2 size={16}/>Удалить</button>
-              </>}>
-                <strong>{panel.title}</strong>
-                <p className="muted">{roleStyleLabels[panel.style]} · {panel.options.length} ролей</p>
-              </TemplateRow>
-            ))}
-          </div>
-        ) : null}
+        {panel => (
+          <TemplateRow key={panel.id} actions={<>
+            <button type="button" className="btn secondary" onClick={() => edit(panel)}>Изменить</button>
+            <button type="button" className="btn danger" onClick={() => void remove(panel)} aria-label={`Удалить панель ${panel.title}`}><Trash2 size={16}/>Удалить</button>
+          </>}>
+            <strong>{panel.title}</strong>
+            <p className="muted">{roleStyleLabels[panel.style]} · {panel.options.length} ролей</p>
+          </TemplateRow>
+        )}
       </TemplateLibrary>
       <section className="card settings-card">
         <CardHeader title={panelId ? "Редактирование панели" : "Новая панель самовыдачи"}

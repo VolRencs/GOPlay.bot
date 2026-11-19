@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { logger } from "../logger.ts";
 import { count, time } from "../perf.ts";
+import { createLimiter } from "../cache.ts";
 import { backendOptions, resolveAudioMedia, resolveMedia, type BackendFailure } from "./backend.ts";
 import { MAX_DURATION_SECONDS, MAX_PLAYLIST, type Track } from "./types.ts";
 import type { ResolveResult, VideoResult } from "ytrust";
@@ -220,17 +221,7 @@ function trackFromFullMeta(meta: VideoResult, fallbackQuery: string, requestedBy
 }
 
 const RESOLVE_CONCURRENCY = 3;
-let activeResolves = 0;
-const resolveQueue: (() => void)[] = [];
-async function withResolveSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (activeResolves >= RESOLVE_CONCURRENCY) await new Promise<void>(resolve => resolveQueue.push(resolve));
-  else activeResolves++;
-  try { return await fn(); } finally {
-    activeResolves--;
-    const next = resolveQueue.shift();
-    if (next) { activeResolves++; next(); }
-  }
-}
+const withResolveSlot = createLimiter(RESOLVE_CONCURRENCY);
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -284,6 +275,7 @@ export function mapBackendError(code: string): ResolveErrorKind {
     case "UNSUPPORTED_URL": return "unsupported-url";
     case "INVALID_INPUT": return "invalid-query";
     case "NO_AUDIO": case "FORMAT_NOT_FOUND": return "no-audio";
+    case "TOO_LONG": return "too-long";
     case "COOKIES": return "cookies";
     case "TIMEOUT": case "NETWORK": case "HTTP": case "INVALID_RESPONSE": return "network";
     case "CHALLENGE_FAILED": return "challenge-failed";
@@ -341,12 +333,13 @@ export async function resolveTracks(query: string, requestedBy: string, playlist
     });
   }
   if (!tracks.length && skippedLong) return { tracks: [], error: "too-long", playlist: true };
+  // The cache owns the stored objects; callers mutate returned tracks while hydrating.
   if (!limited && tracks.length) {
     evictOldest(listMeta);
     listMeta.delete(cacheKey);
     listMeta.set(cacheKey, { at: Date.now(), tracks });
   }
-  return { tracks, error: null, playlist: true };
+  return { tracks: tracks.map(track => ({ ...track })), error: null, playlist: true };
 }
 
 type HydrateHooks = {

@@ -83,7 +83,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     if (!backendOk) { await i.editReply(t("missingMusicBackend")); leaveIfIdle(i.guildId); return true; }
     if (!ffmpegOk) { await i.editReply(t("missingFfmpeg")); leaveIfIdle(i.guildId); return true; }
     if (!opusOk) { await i.editReply(t("missingOpus")); leaveIfIdle(i.guildId); return true; }
-    connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
 
     let tracks: Track[];
     let fastPath = false;
@@ -111,6 +110,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     }
     if (added === 0) { await i.editReply(t("queueFull", { max: String(MAX_QUEUE) })); leaveIfIdle(i.guildId); return true; }
 
+    connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
     if (!hasCurrent(i.guildId!)) {
       const started = playNext(i.guildId!)!;
       if (fastPath) hydrateTrackMeta(started, i.guildId!);

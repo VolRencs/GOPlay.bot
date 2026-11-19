@@ -13,7 +13,6 @@ type SettingsTabOptions<TGet, TValue> = {
   fromGet: (data: TGet) => TValue;
   toBody: (value: TValue) => unknown;
   afterSave?: (value: TValue, data: unknown) => TValue;
-  saveMode?: "commit" | "markSaved";
   loadError: string;
   saveError: string;
   savedMessage: string;
@@ -30,13 +29,13 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
   // Settings endpoints live in SETTINGS_ENDPOINTS; never derive API paths ad hoc.
   const endpoint = settingsEndpoint(guildId, options.settingsKey);
 
-  const { loading, error: loadError, reload } = useApiLoad<TGet>({
+  const { error: loadError, reload } = useApiLoad<TGet>({
     request: signal => apiSend<TGet>(endpoint, { signal }, options.loadError),
     onData: data => draftRef.current.commit(optionsRef.current.fromGet(data)),
-    onError: fail,
-  }, [endpoint, options.loadError, fail]);
+  }, [endpoint, options.loadError]);
 
   const save = useCallback(async (report = true): Promise<boolean> => {
+    if (draftRef.current.saved === null) return false;
     const current = draftRef.current;
     const sent = await apiJson<{ unchanged?: boolean } & Record<string, unknown>>(endpoint, "PUT", optionsRef.current.toBody(current.value), optionsRef.current.saveError);
     if (!sent.ok) {
@@ -44,8 +43,7 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
       return false;
     }
     const next = optionsRef.current.afterSave ? optionsRef.current.afterSave(current.value, sent.data) : current.value;
-    if (optionsRef.current.saveMode === "markSaved") current.markSaved(next);
-    else if (draftRef.current.value === current.value) current.commit(next);
+    if (draftRef.current.value === current.value) current.commit(next);
     else current.markSaved(next);
     if (report) notify(sent.data.unchanged ? "Изменений нет." : optionsRef.current.savedMessage);
     return true;
@@ -56,5 +54,5 @@ export function useSettingsTab<TGet, TValue>(options: SettingsTabOptions<TGet, T
 
   useRegisterChanges(options.settingsKey, { dirty: draft.dirty, save, discard: () => draftRef.current.reset() });
 
-  return { ...draft, loading, loadError, reload, save, saving, saveNow };
+  return { ...draft, loadError, reload, save, saving, saveNow };
 }

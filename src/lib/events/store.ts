@@ -196,6 +196,7 @@ export function updateEvent(guildId: string, id: string, input: EventInputDto): 
     const now = Date.now();
     let startedAt = current.started_at;
     if (input.status === "live" && !startedAt) startedAt = now;
+    else if (input.status === "scheduled") startedAt = null;
     let completedAt = current.completed_at;
     let cancelledAt = current.cancelled_at;
     let statsJson = current.stats_json;

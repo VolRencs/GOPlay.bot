@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import type { Channel } from "./types.ts";
 import { clampUserLimit } from "#lib/tempchannels.ts";
 import { defaultTempConfig, type TempChannelConfigDto, type TempPresetDto, type TempchannelsDto } from "#contracts/tempchannels.ts";
-import { CardHeader, CheckList, SectionError, SectionLoading, confirmAction, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow } from "./ui.tsx";
+import { CardHeader, CheckList, SectionError, confirmAction, NumberField, SaveButton, Select, TemplateLibrary, TemplateRow } from "./ui.tsx";
 import { useDashboard } from "./DashboardContext.tsx";
 import { useSettingsTab } from "./useSettingsTab.ts";
 
@@ -28,7 +28,7 @@ const channelLabel = (count: number) => count === 1 ? "1 канал" : count >= 
 
 export function TemporaryChannelsSettings() {
   const { resources } = useDashboard();
-  const { value, setValue: onChange, dirty, loading, loadError, reload, saving, saveNow } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
+  const { value, setValue: onChange, dirty, saved, loadError, reload, saving, saveNow } = useSettingsTab<TempchannelsDto, TempchannelsDto>({
     initial: { presets: [] },
     fromGet: data => ({ presets: data.presets }),
     toBody: value => ({ presets: value.presets }),
@@ -39,8 +39,8 @@ export function TemporaryChannelsSettings() {
     settingsKey: "tempchannels",
   });
   const [editingId, setEditingId] = useState<number | null>(null);
-  if (loading) return <SectionLoading/>;
   if (loadError) return <SectionError message={loadError} onRetry={reload}/>;
+  if (saved === null) return null;
   const voiceChannels = resources?.voiceChannels ?? [];
   const categories = resources?.categories ?? [];
   const editing = value.presets.find(p => p.id === editingId) ?? null;
@@ -60,24 +60,20 @@ export function TemporaryChannelsSettings() {
   return (
     <section className="panel-stack">
       <TemplateLibrary
+        items={value.presets}
         title="Сохранённые шаблоны"
-        note={value.presets.length ? String(value.presets.length) : undefined}
         description="Каждый шаблон — свой набор каналов-триггеров и настроек. Сохранённый шаблон можно изменить позже, а новый — создать в любой момент."
         empty="Сохранённых шаблонов пока нет."
       >
-        {value.presets.length > 0 ? (
-          <div className="template-list">
-            {value.presets.map(preset => (
-              <TemplateRow key={preset.id} actions={<>
-                <button type="button" className="btn secondary" onClick={() => setEditingId(preset.id)}>Изменить</button>
-                <button type="button" className="btn danger" onClick={() => void removePreset(preset)} aria-label={`Удалить ${preset.name || "шаблон"}`}><Trash2 size={16}/>Удалить</button>
-              </>}>
-                <strong>{preset.name || "Без названия"}</strong>
-                <p className="muted">{preset.triggerChannelIds.length ? `${channelLabel(preset.triggerChannelIds.length)} · ${preset.config.nameTemplate}` : "Каналы не выбраны"}</p>
-              </TemplateRow>
-            ))}
-          </div>
-        ) : null}
+        {preset => (
+          <TemplateRow key={preset.id} actions={<>
+            <button type="button" className="btn secondary" onClick={() => setEditingId(preset.id)}>Изменить</button>
+            <button type="button" className="btn danger" onClick={() => void removePreset(preset)} aria-label={`Удалить ${preset.name || "шаблон"}`}><Trash2 size={16}/>Удалить</button>
+          </>}>
+            <strong>{preset.name || "Без названия"}</strong>
+            <p className="muted">{preset.triggerChannelIds.length ? `${channelLabel(preset.triggerChannelIds.length)} · ${preset.config.nameTemplate}` : "Каналы не выбраны"}</p>
+          </TemplateRow>
+        )}
       </TemplateLibrary>
       <article className="card settings-card">
         <CardHeader title={editing ? `Шаблон «${editing.name || "без названия"}»` : "Новый шаблон"}

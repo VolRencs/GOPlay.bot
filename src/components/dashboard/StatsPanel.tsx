@@ -5,7 +5,7 @@ import type { StatsGet } from "./types.ts";
 import { apiGet } from "./api.ts";
 import { useApiResource } from "./hooks.ts";
 import { useDashboard } from "./DashboardContext.tsx";
-import { CardHeader, SectionError, SectionLoading, StatCard, formatNumber } from "./ui.tsx";
+import { CardHeader, SectionError, StatCard, formatNumber } from "./ui.tsx";
 import { formatDay } from "../../lib/format.ts";
 
 type TopRow = { key: string; name: string; value: number };
@@ -34,18 +34,16 @@ export function ServerStatistics() {
   const { guildId, resources } = useDashboard();
   const stats = resources?.stats ?? { members: null, online: null };
   const [period, setPeriod] = useState<"24h" | "7d" | "30d">("7d");
-  const { data, loading, error, reload } = useApiResource<StatsGet | null>(
-    Boolean(guildId),
+  const { data, error, reload } = useApiResource<StatsGet | null>(
     signal => apiGet<StatsGet | null>(`/api/guilds/${guildId}/stats?period=${period}`, signal),
     [guildId, period],
     null,
   );
-
   if (error) return <SectionError message={error} onRetry={reload}/>;
-  if (loading) return <SectionLoading/>;
 
   const totals = data?.totals ?? { joins: 0, leaves: 0, messages: 0, moderation: 0 };
   const points = data?.points ?? [];
+  const peakHour = data?.peakHour ?? null;
   const max = Math.max(1, ...points.map(p => p.messages));
   const avg = points.length ? Math.round(points.reduce((sum, p) => sum + p.messages, 0) / points.length) : 0;
   const periodLabel = PERIOD_LABELS[period];
@@ -85,8 +83,8 @@ export function ServerStatistics() {
         <TopCard title="Модерация" rows={data?.moderation.map(row => ({ key: row.type, name: row.label, value: row.count }))} empty={`Нет действий модерации ${periodLabel}.`}/>
         <article className="card settings-card">
           <h2>Пик активности</h2>
-          {data?.peakHour ? <p className="peak-value">{formatNumber(data.peakHour.messages)} <small>сообщений в час</small></p> : <p className="hint">Нет данных.</p>}
-          <p className="muted">{data?.peakHour ? `${formatDay(data.peakHour.day)} ${String(data.peakHour.hour).padStart(2, "0")}:00 UTC` : "Час с наибольшим числом сообщений."}</p>
+          {peakHour ? <p className="peak-value">{formatNumber(peakHour.messages)} <small>сообщений в час</small></p> : <p className="hint">Нет данных.</p>}
+          <p className="muted">{peakHour ? `${formatDay(peakHour.day)} ${String(peakHour.hour).padStart(2, "0")}:00 UTC` : "Час с наибольшим числом сообщений."}</p>
         </article>
       </div>
     </section>

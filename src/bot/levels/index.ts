@@ -8,7 +8,6 @@ import { levelFromXp, levelProgress, rewardForLevel, type LevelReward, type Leve
 import { levelRewardsFor, levelSettingsFor } from "../../lib/levels-store.ts";
 import { guildLang, guildTr } from "../../lib/i18n/bot.ts";
 import { levelsTr } from "../../lib/i18n/bot/levels.ts";
-import { AUDIT_SECTION } from "../../lib/audit-sections.ts";
 import { BRAND_COLOR } from "../../lib/colors.ts";
 import { progressBar, userRef } from "../../lib/format.ts";
 import { resolveChannel } from "../logging/index.ts";
@@ -48,14 +47,18 @@ export function flushLevels(): LevelUp[] {
   pending.clear();
   const levelUps: LevelUp[] = [];
   const cleaned = new Set<string>();
-  const markers = new Map<string, number>();
+  const markers = new Map<string, { at: number; target: string }>();
   try {
     withTransaction(() => {
       for (const [guildId, guildEntries] of Map.groupBy(entries, entry => entry.guildId)) {
-        if (!markers.has(guildId)) markers.set(guildId, Number(stmt.cleanupMarker.get(guildId, AUDIT_SECTION.cleanup)?.created_at ?? 0));
+        if (!markers.has(guildId)) {
+          const row = stmt.cleanupMarker.get(guildId);
+          markers.set(guildId, { at: Number(row?.updated_at ?? 0), target: row?.target ?? "" });
+        }
         const marker = markers.get(guildId)!;
         const previous = lastCleanup.get(guildId);
-        if ((previous !== undefined && marker > previous) || (previous === undefined && marker >= startedAt)) {
+        const changed = (previous !== undefined && marker.at > previous) || (previous === undefined && marker.at >= startedAt);
+        if (changed && marker.target === "levels") {
           cleaned.add(guildId);
           continue;
         }
@@ -79,7 +82,7 @@ export function flushLevels(): LevelUp[] {
     levelFlushFailures = logger.warnEvery(levelFlushFailures, 12, "[LEVELS] Не удалось слить XP — повторю позже", error);
     return [];
   } finally {
-    for (const [guildId, marker] of markers) lastCleanup.set(guildId, marker);
+    for (const [guildId, marker] of markers) lastCleanup.set(guildId, marker.at);
   }
   levelFlushFailures = 0;
   return levelUps;

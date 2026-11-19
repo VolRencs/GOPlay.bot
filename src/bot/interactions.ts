@@ -1,4 +1,4 @@
-import { Events, MessageFlags, type ButtonInteraction, type Client, type Interaction, type StringSelectMenuInteraction } from "discord.js";
+import { MessageFlags, type ButtonInteraction, type Client, type Interaction, type StringSelectMenuInteraction } from "discord.js";
 import { handleChatCommand } from "./commands.ts";
 import { handleLevelCommand } from "./levels/index.ts";
 import { handleMusicCommand } from "./music/index.ts";
@@ -8,10 +8,11 @@ import { failInteraction } from "../lib/errors.ts";
 import { fetchMember } from "./utils/members.ts";
 import { applyPanelRoleSafe, panelNotifies } from "./self-roles.ts";
 import { count } from "../lib/perf.ts";
-import { on } from "./events.ts";
+import { onInteraction, registerInteractionDispatcher } from "./events.ts";
 
 export function registerInteractions(client: Client): void {
-  on(client, Events.InteractionCreate, "INTERACTION", i => routeInteraction(i));
+  registerInteractionDispatcher(client);
+  onInteraction("INTERACTION", routeInteraction);
 }
 
 async function handleRoleInteraction(i: ButtonInteraction | StringSelectMenuInteraction, panelId: number, roleIds: string[]): Promise<void> {

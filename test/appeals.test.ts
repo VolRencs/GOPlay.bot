@@ -192,6 +192,8 @@ test("status DM: content is sent, failures never change the stored status", asyn
 });
 
 test("declineAppeal closes the punishment for appeals forever", () => {
+  const pending = declineAppeal({ guildId: "g1", userId: "u1", punishmentId: 2 });
+  assert.equal(pending.ok, false, "нельзя отказаться, если апелляция уже подана");
   const declined = declineAppeal({ guildId: "g1", userId: "u1", punishmentId: 10 });
   assert.ok(declined.ok);
   assert.ok(declined.value);

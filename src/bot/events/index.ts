@@ -7,22 +7,15 @@ import { count } from "../../lib/perf.ts";
 import { buttonStyleId } from "../../lib/constants.ts";
 import { eventUploadPrefix, eventUploadsDir } from "../../lib/uploads.ts";
 import { reattachStoredAssets } from "../../lib/assets.ts";
+import { createKeyedLock } from "../../lib/cache.ts";
+import { onInteraction } from "../events.ts";
 import { eventsTr, guildLang, guildTr } from "../../lib/i18n/bot.ts";
 
 const toDiscordButtonStyle = (name: EventButton["style"]): ButtonStyle => buttonStyleId(name) as ButtonStyle;
 let registered = false;
 let eventsTimer: ReturnType<typeof setInterval> | null = null;
-const roleLocks = new Map<string, Promise<void>>();
+const withEventRoleLock = createKeyedLock();
 const publishRetryAt = new Map<string, number>();
-function withEventRoleLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-  const previous = roleLocks.get(key) ?? Promise.resolve();
-  const { promise, resolve } = Promise.withResolvers<void>();
-  roleLocks.set(key, promise);
-  return previous.then(fn).finally(() => {
-    resolve();
-    if (roleLocks.get(key) === promise) roleLocks.delete(key);
-  });
-}
 
 async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
   const setAsset = (target: "thumbnail" | "image", url: string) => { if (target === "thumbnail") embed.thumbnail = { url }; else embed.image = { url }; };
@@ -41,13 +34,12 @@ async function attachLocalImages(guildId: string, embed: EventEmbedPayload) {
 export function registerEvents(client: Client) {
   if (registered) return;
   registered = true;
-  client.on(Events.InteractionCreate, (i) => guard("EVENTS", () => handleInteraction(i)));
+  onInteraction("EVENTS", handleInteraction);
   client.on(Events.GuildMemberRemove, (member) => guard("EVENTS:GONE", () => {
     for (const result of removeParticipantFromGuild(member.guild.id, member.user.id)) {
       const event = getEvent(result.eventId);
-      if (event?.event_role_id) {
-        void withEventRoleLock(`${member.guild.id}:${member.user.id}`, () => applyEventRole(member.guild.id, member.user.id, event.event_role_id, false));
-        if (result.promotedUserId) void withEventRoleLock(`${member.guild.id}:${result.promotedUserId}`, () => applyEventRole(member.guild.id, result.promotedUserId!, event.event_role_id, true));
+      if (event?.event_role_id && result.promotedUserId) {
+        void withEventRoleLock(`${member.guild.id}:${result.promotedUserId}`, () => applyEventRole(member.guild.id, result.promotedUserId!, event.event_role_id, true));
       }
       void refreshMessage(member.guild.id, result.eventId);
     }

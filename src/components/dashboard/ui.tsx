@@ -8,10 +8,6 @@ import { COLOR_PRESETS, type Channel, type EmbedField, type ServerEmoji } from "
 import { safeJson } from "../../lib/json.ts";
 import { EMBED_LIMITS } from "#contracts/embeds.ts";
 
-export function SectionLoading() {
-  return <p className="loading" role="status">Загружаем раздел…</p>;
-}
-
 export function SectionError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return <div className="card settings-card" role="alert">
     <p className="error-note">⚠ {message}</p>
@@ -168,10 +164,9 @@ export function useSessionDraft(key: string, enabled: boolean, deps: readonly un
   useEffect(() => () => write(), []);
 }
 
-export function useSessionDraftRestore(key: string, enabled: boolean, apply: (saved: Record<string, unknown>) => void): void {
+export function useSessionDraftRestore(key: string, apply: (saved: Record<string, unknown>) => void): void {
   const applyEvent = useEffectEvent(apply);
   useEffect(() => {
-    if (!enabled) return;
     try {
       const raw = sessionStorage.getItem(key);
       if (!raw) return;
@@ -179,7 +174,7 @@ export function useSessionDraftRestore(key: string, enabled: boolean, apply: (sa
       if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
       applyEvent(saved);
     } catch {  }
-  }, [key, enabled]);
+  }, [key]);
 }
 
 export const asString = (value: unknown, fallback = ""): string => typeof value === "string" ? value : fallback;
@@ -380,12 +375,12 @@ export function TemplateRow({ children, actions, className }: { children: ReactN
   );
 }
 
-export function TemplateLibrary({ title, note, description, action, extra, empty, children }: { title: string; note?: string | undefined; description: string; action?: ReactNode; extra?: ReactNode; empty: string; children?: ReactNode }) {
+export function TemplateLibrary<T>({ title, description, action, extra, empty, items, listClassName = "template-list", children }: { title: string; description: string; action?: ReactNode; extra?: ReactNode; empty: string; items: readonly T[]; listClassName?: string; children: (item: T) => ReactNode }) {
   return (
     <article className="card settings-card">
-      <CardHeader title={title} note={note} muted={description} action={action}/>
+      <CardHeader title={title} note={items.length ? String(items.length) : undefined} muted={description} action={action}/>
       {extra}
-      {children ?? <p className="muted">{empty}</p>}
+      {items.length > 0 ? <div className={listClassName}>{items.map(children)}</div> : <p className="muted">{empty}</p>}
     </article>
   );
 }
