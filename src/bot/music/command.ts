@@ -102,6 +102,7 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
         return true;
       }
     }
+    connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
     const room = MAX_QUEUE - queueSizeOf(i.guildId!);
     let added = 0;
     let firstTitle = "";
@@ -110,7 +111,6 @@ export async function handleMusicCommand(i: Interaction): Promise<boolean> {
     }
     if (added === 0) { await i.editReply(t("queueFull", { max: String(MAX_QUEUE) })); leaveIfIdle(i.guildId); return true; }
 
-    connectToVoice(i.guild!, voiceChannel.id, i.channelId!);
     if (!hasCurrent(i.guildId!)) {
       const started = playNext(i.guildId!)!;
       if (fastPath) hydrateTrackMeta(started, i.guildId!);
